@@ -1,8 +1,82 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
-import { ArrowUpRight, MessageChatCircle, Plus, Share07 } from "@untitledui/icons";
+import { ArrowUpRight, MessageChatCircle, Plus, Share07, XClose } from "@untitledui/icons";
 import { supabase, type ClientPageData } from "@/lib/supabase";
 import { cx } from "@/utils/cx";
+
+const PASSWORD = "ANHTUAN";
+
+/* ── Password gate ────────────────────────────────────────────────── */
+
+const PasswordGate = ({ onUnlock }: { onUnlock: () => void }) => {
+    const [value, setValue] = useState("");
+    const [error, setError] = useState(false);
+    const [success, setSuccess] = useState(false);
+
+    const attempt = () => {
+        if (value === PASSWORD) {
+            setSuccess(true);
+            setTimeout(onUnlock, 600);
+        } else {
+            setError(true);
+            setValue("");
+        }
+    };
+
+    return (
+        <main className="flex min-h-dvh flex-col items-center justify-center bg-secondary px-4">
+            <div
+                className={cx(
+                    "w-full max-w-sm rounded-2xl bg-primary p-8 shadow-xl ring-1 ring-secondary transition-all duration-500",
+                    success && "scale-95 opacity-0",
+                )}
+            >
+                <img
+                    src="/hgm logo/Logo WIth Word Mark(Style 1).svg"
+                    alt="HiddenGem Media"
+                    className="h-8"
+                    draggable={false}
+                />
+
+                <div className="mt-6">
+                    <h1 className="text-lg font-semibold text-primary">Dashboard Access</h1>
+                    <p className="mt-1 text-sm text-tertiary">Enter the team password to continue.</p>
+                </div>
+
+                <div className="mt-5">
+                    <input
+                        type="password"
+                        placeholder="Password"
+                        value={value}
+                        autoFocus
+                        onChange={(e) => { setValue(e.target.value); setError(false); }}
+                        onKeyDown={(e) => e.key === "Enter" && attempt()}
+                        className={cx(
+                            "w-full rounded-lg border px-3 py-2.5 text-sm text-primary placeholder:text-placeholder outline-none transition duration-100 ease-linear",
+                            error
+                                ? "border-error-primary ring-1 ring-error-primary"
+                                : "border-secondary focus:border-brand focus:ring-1 focus:ring-brand",
+                        )}
+                    />
+                    {error && (
+                        <p className="mt-1.5 flex items-center gap-1.5 text-xs text-error-primary">
+                            <XClose className="size-3.5" />
+                            Incorrect password. Please try again.
+                        </p>
+                    )}
+                </div>
+
+                <button
+                    type="button"
+                    onClick={attempt}
+                    className="mt-4 w-full rounded-lg bg-brand-solid px-4 py-2.5 text-sm font-semibold text-white transition duration-100 ease-linear hover:opacity-90"
+                >
+                    {success ? "Unlocking…" : "Unlock"}
+                </button>
+            </div>
+        </main>
+    );
+};
 
 /* ── Helpers ──────────────────────────────────────────────────────── */
 
@@ -230,11 +304,26 @@ const MetaPixelContent = () => {
     );
 };
 
-/* ── Page export ──────────────────────────────────────────────────── */
+/* ── Dashboard layout ─────────────────────────────────────────────── */
 
-export const DashboardScreen = () => (
+const DashboardLayout = () => (
     <div className="flex h-dvh overflow-hidden">
         <Sidebar activeSection="meta-pixel" />
         <MetaPixelContent />
     </div>
 );
+
+/* ── Page export ──────────────────────────────────────────────────── */
+
+export const DashboardScreen = () => {
+    const [unlocked, setUnlocked] = useState(
+        () => sessionStorage.getItem("hgm_dashboard_unlocked") === "1",
+    );
+
+    const handleUnlock = () => {
+        sessionStorage.setItem("hgm_dashboard_unlocked", "1");
+        setUnlocked(true);
+    };
+
+    return unlocked ? <DashboardLayout /> : <PasswordGate onUnlock={handleUnlock} />;
+};
