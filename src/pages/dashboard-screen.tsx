@@ -231,7 +231,7 @@ const PageRow = ({
                         <button
                             type="button"
                             onClick={() => onDelete(page.slug)}
-                            className="rounded-md bg-error-primary px-2 py-1 text-xs font-semibold text-white transition duration-100 ease-linear hover:opacity-90"
+                            className="rounded-md bg-error-solid px-2 py-1 text-xs font-semibold text-white transition duration-100 ease-linear hover:bg-error-solid_hover"
                         >
                             Delete
                         </button>
