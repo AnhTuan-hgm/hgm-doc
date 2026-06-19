@@ -18,4 +18,5 @@ export interface ClientPageData {
     client_name: string;
     client_website: string;
     pixel_code: string;
+    starred?: boolean;
 }

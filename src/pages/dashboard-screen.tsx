@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
-import { ArrowUpRight, MessageChatCircle, Plus, Share07, XClose } from "@untitledui/icons";
+import { ArrowUpRight, MessageChatCircle, Plus, Share07, Star01, Trash01, XClose } from "@untitledui/icons";
 import { supabase, type ClientPageData } from "@/lib/supabase";
 import { cx } from "@/utils/cx";
 
@@ -148,8 +148,19 @@ const Sidebar = ({ activeSection }: { activeSection: string }) => (
 
 /* ── Page row ─────────────────────────────────────────────────────── */
 
-const PageRow = ({ page, index }: { page: ClientPageData & { created_at?: string }; index: number }) => {
+const PageRow = ({
+    page,
+    index,
+    onStar,
+    onDelete,
+}: {
+    page: ClientPageData & { created_at?: string };
+    index: number;
+    onStar: (slug: string, starred: boolean) => void;
+    onDelete: (slug: string) => void;
+}) => {
     const navigate = useNavigate();
+    const [confirmDelete, setConfirmDelete] = useState(false);
     const initials = getInitials(page.client_name || page.slug);
 
     const colors = [
@@ -162,12 +173,18 @@ const PageRow = ({ page, index }: { page: ClientPageData & { created_at?: string
 
     return (
         <tr
-            onClick={() => navigate(`/${page.slug}`)}
-            className="group cursor-pointer border-b border-secondary transition duration-100 ease-linear last:border-0 hover:bg-secondary"
+            onClick={() => !confirmDelete && navigate(`/${page.slug}`)}
+            className="group border-b border-secondary transition duration-100 ease-linear last:border-0 hover:bg-secondary"
         >
-            {/* Client */}
+            {/* Star indicator + client info */}
             <td className="px-6 py-4">
                 <div className="flex items-center gap-3">
+                    {page.starred && (
+                        <Star01
+                            className="size-3.5 shrink-0 fill-current text-yellow-400"
+                            aria-hidden="true"
+                        />
+                    )}
                     <span
                         className={cx(
                             "flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
@@ -176,7 +193,7 @@ const PageRow = ({ page, index }: { page: ClientPageData & { created_at?: string
                     >
                         {initials || "?"}
                     </span>
-                    <div className="min-w-0">
+                    <div className="min-w-0 cursor-pointer">
                         <p className="truncate text-sm font-medium text-primary">
                             {page.client_name || "(no name)"}
                         </p>
@@ -199,12 +216,65 @@ const PageRow = ({ page, index }: { page: ClientPageData & { created_at?: string
                 {page.created_at ? formatDate(page.created_at) : "—"}
             </td>
 
-            {/* Action */}
-            <td className="px-6 py-4 text-right">
-                <span className="inline-flex items-center gap-1 text-xs font-medium text-brand-secondary opacity-0 transition duration-100 ease-linear group-hover:opacity-100">
-                    Open
-                    <ArrowUpRight className="size-3.5" aria-hidden="true" />
-                </span>
+            {/* Actions */}
+            <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
+                {confirmDelete ? (
+                    <div className="flex items-center justify-end gap-2">
+                        <span className="text-xs text-tertiary">Delete?</span>
+                        <button
+                            type="button"
+                            onClick={() => setConfirmDelete(false)}
+                            className="rounded-md px-2 py-1 text-xs font-medium text-secondary transition duration-100 ease-linear hover:bg-primary"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => onDelete(page.slug)}
+                            className="rounded-md bg-error-primary px-2 py-1 text-xs font-semibold text-white transition duration-100 ease-linear hover:opacity-90"
+                        >
+                            Delete
+                        </button>
+                    </div>
+                ) : (
+                    <div className="flex items-center justify-end gap-1 opacity-0 transition duration-100 ease-linear group-hover:opacity-100">
+                        {/* Star */}
+                        <button
+                            type="button"
+                            title={page.starred ? "Unstar" : "Star"}
+                            onClick={() => onStar(page.slug, !page.starred)}
+                            className={cx(
+                                "flex size-7 items-center justify-center rounded-md transition duration-100 ease-linear hover:bg-primary",
+                                page.starred ? "text-yellow-400" : "text-tertiary hover:text-yellow-400",
+                            )}
+                        >
+                            <Star01
+                                className={cx("size-3.5", page.starred && "fill-current")}
+                                aria-hidden="true"
+                            />
+                        </button>
+
+                        {/* Delete */}
+                        <button
+                            type="button"
+                            title="Delete"
+                            onClick={() => setConfirmDelete(true)}
+                            className="flex size-7 items-center justify-center rounded-md text-tertiary transition duration-100 ease-linear hover:bg-primary hover:text-error-primary"
+                        >
+                            <Trash01 className="size-3.5" aria-hidden="true" />
+                        </button>
+
+                        {/* Open */}
+                        <button
+                            type="button"
+                            title="Open page"
+                            onClick={() => navigate(`/${page.slug}`)}
+                            className="flex size-7 items-center justify-center rounded-md text-tertiary transition duration-100 ease-linear hover:bg-primary hover:text-brand-secondary"
+                        >
+                            <ArrowUpRight className="size-3.5" aria-hidden="true" />
+                        </button>
+                    </div>
+                )}
             </td>
         </tr>
     );
@@ -212,9 +282,11 @@ const PageRow = ({ page, index }: { page: ClientPageData & { created_at?: string
 
 /* ── Main content ─────────────────────────────────────────────────── */
 
+type PageRow = ClientPageData & { created_at?: string };
+
 const MetaPixelContent = () => {
     const navigate = useNavigate();
-    const [pages, setPages] = useState<(ClientPageData & { created_at?: string })[]>([]);
+    const [pages, setPages] = useState<PageRow[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -223,10 +295,27 @@ const MetaPixelContent = () => {
             .select("*")
             .order("created_at", { ascending: false })
             .then(({ data, error }) => {
-                if (!error && data) setPages(data as (ClientPageData & { created_at?: string })[]);
+                if (!error && data) setPages(data as PageRow[]);
                 setLoading(false);
             });
     }, []);
+
+    const handleStar = async (slug: string, starred: boolean) => {
+        setPages((prev) =>
+            prev.map((p) => (p.slug === slug ? { ...p, starred } : p)),
+        );
+        await supabase.from("client_pages").update({ starred }).eq("slug", slug);
+    };
+
+    const handleDelete = async (slug: string) => {
+        setPages((prev) => prev.filter((p) => p.slug !== slug));
+        await supabase.from("client_pages").delete().eq("slug", slug);
+    };
+
+    const sortedPages = [...pages].sort((a, b) => {
+        if (a.starred === b.starred) return 0;
+        return a.starred ? -1 : 1;
+    });
 
     return (
         <div className="flex h-dvh flex-1 flex-col overflow-hidden bg-secondary">
@@ -293,8 +382,14 @@ const MetaPixelContent = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {pages.map((page, i) => (
-                                    <PageRow key={page.slug} page={page} index={i} />
+                                {sortedPages.map((page, i) => (
+                                    <PageRow
+                                        key={page.slug}
+                                        page={page}
+                                        index={i}
+                                        onStar={handleStar}
+                                        onDelete={handleDelete}
+                                    />
                                 ))}
                             </tbody>
                         </table>
