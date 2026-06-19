@@ -4,7 +4,7 @@ import { ArrowUpRight, MessageChatCircle, Plus, Share07, XClose } from "@untitle
 import { supabase, type ClientPageData } from "@/lib/supabase";
 import { cx } from "@/utils/cx";
 
-const PASSWORD = "ANHTUAN";
+const PASSWORDS = ["ANHTUAN", "HGTEAM"];
 
 /* ── Password gate ────────────────────────────────────────────────── */
 
@@ -14,7 +14,7 @@ const PasswordGate = ({ onUnlock }: { onUnlock: () => void }) => {
     const [success, setSuccess] = useState(false);
 
     const attempt = () => {
-        if (value === PASSWORD) {
+        if (PASSWORDS.includes(value)) {
             setSuccess(true);
             setTimeout(onUnlock, 600);
         } else {
