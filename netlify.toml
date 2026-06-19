@@ -5,6 +5,8 @@
 [build.environment]
   # Vite 8 requires Node 20.19+ / 22.12+
   NODE_VERSION = "22"
+  VITE_SUPABASE_URL = "https://iymhjrmmgwrxdggcvmjn.supabase.co"
+  VITE_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5bWhqcm1tZ3dyeGRnZ2N2bWpuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4ODczMjMsImV4cCI6MjA5NzQ2MzMyM30.chkToSYCr6jRk6dCIwF1mqygIt1jiRTnoEUa_d-sJ-Y"
 
 # SPA fallback: let React Router handle client-side routes
 [[redirects]]
