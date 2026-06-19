@@ -9,7 +9,9 @@ if (import.meta.env.DEV && (!supabaseUrl || !supabaseAnonKey)) {
     );
 }
 
-export const supabase = createClient(supabaseUrl ?? "", supabaseAnonKey ?? "");
+export const supabase = createClient(supabaseUrl ?? "", supabaseAnonKey ?? "", {
+    auth: { persistSession: false },
+});
 
 export interface ClientPageData {
     slug: string;
