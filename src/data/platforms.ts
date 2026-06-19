@@ -6,6 +6,7 @@ export interface Platform {
     name: string;
     icon: FC<{ className?: string }>;
     steps: string[];
+    image?: string;
 }
 
 /**
@@ -17,6 +18,7 @@ export const platforms: Platform[] = [
         id: "wix",
         name: "Wix",
         icon: Globe01,
+        image: "/Section 3 Images/WIXZ.webp",
         steps: [
             "Log in to your Wix dashboard",
             "Go to Settings > Custom Code in your site's dashboard",
@@ -31,29 +33,32 @@ export const platforms: Platform[] = [
         id: "squarespace",
         name: "Squarespace",
         icon: LayoutAlt01,
+        image: "/Section 3 Images/SquareSpace.webp",
         steps: [
             "Log in to your Squarespace account",
-            "Navigate to Settings > Advanced > Code Injection",
-            "Paste the pixel code into the 'Header' field",
-            "Click Save at the top of the panel",
+            "Click on Go to website",
+            "Click Pages",
+            "Click Custom Code / Code Injection",
+            "Paste the Meta Pixel code then Save",
         ],
     },
     {
         id: "wordpress",
         name: "WordPress",
         icon: Code02,
+        image: "/Section 3 Images/WordPress.webp",
         steps: [
-            "Log in to your WordPress admin dashboard",
-            "Navigate to Appearance > Theme Editor (or use a Header/Footer plugin)",
-            "Locate the header.php file and find the </head> tag",
-            "Paste the pixel code immediately before the </head> tag",
-            "Click 'Update File' to save changes",
+            "Log in to your WordPress account by going to yourdomain.com/admin",
+            "Click Code Snippets on the side menu, or navigate to Header & Footer",
+            "Paste the code into the Header section",
+            "Click Save Changes",
         ],
     },
     {
         id: "framer",
         name: "Framer",
         icon: CodeBrowser,
+        image: "/Section 3 Images/Framer.webp",
         steps: [
             "Open your project in the Framer editor",
             "Go to Site Settings > General > Custom Code",
@@ -66,6 +71,7 @@ export const platforms: Platform[] = [
         id: "webflow",
         name: "Webflow",
         icon: Browser,
+        image: "/Section 3 Images/Webflow.webp",
         steps: [
             "Open your project in the Webflow Designer",
             "Go to Project Settings > Custom Code",

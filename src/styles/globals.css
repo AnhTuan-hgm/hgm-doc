@@ -28,6 +28,10 @@
     transition-timing-function: inherit;
 }
 
+html {
+    scroll-behavior: smooth;
+}
+
 html,
 body {
     font-family: var(--font-body);
@@ -37,6 +41,11 @@ body {
     font-variant-ligatures: contextual;
     -webkit-font-kerning: normal;
     font-kerning: normal;
+}
+
+@keyframes globe-scroll {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
 }
 
 /* Hide the default expand arrow on Safari.  */

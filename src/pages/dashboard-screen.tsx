@@ -1,0 +1,240 @@
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router";
+import { ArrowUpRight, MessageChatCircle, Plus, Share07 } from "@untitledui/icons";
+import { supabase, type ClientPageData } from "@/lib/supabase";
+import { cx } from "@/utils/cx";
+
+/* ── Helpers ──────────────────────────────────────────────────────── */
+
+function formatDate(iso: string): string {
+    return new Intl.DateTimeFormat("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+    }).format(new Date(iso));
+}
+
+function getInitials(name: string): string {
+    return name
+        .split(" ")
+        .slice(0, 2)
+        .map((w) => w[0]?.toUpperCase() ?? "")
+        .join("");
+}
+
+/* ── Sidebar ──────────────────────────────────────────────────────── */
+
+const WORKFLOW_MAILTO =
+    "mailto:anhtuan@hiddengem.media?subject=New%20Workflow%20Request&body=Hi%20AnhTuan%2C%0A%0AI%27d%20like%20to%20request%20a%20new%20workflow%3A%0A%0A";
+
+const Sidebar = ({ activeSection }: { activeSection: string }) => (
+    <aside className="flex h-dvh w-60 shrink-0 flex-col border-r border-secondary bg-primary">
+        {/* Logo */}
+        <div className="border-b border-secondary px-5 py-5">
+            <img
+                src="/hgm logo/Logo WIth Word Mark(Style 1).svg"
+                alt="HiddenGem Media"
+                className="h-7 opacity-80"
+                draggable={false}
+            />
+        </div>
+
+        {/* Nav */}
+        <nav className="flex-1 px-3 py-4">
+            <p className="mb-1 px-2 text-xs font-semibold uppercase tracking-widest text-quaternary">
+                Pages
+            </p>
+            <button
+                type="button"
+                className={cx(
+                    "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition duration-100 ease-linear",
+                    activeSection === "meta-pixel"
+                        ? "bg-brand-50 text-brand-700"
+                        : "text-secondary hover:bg-secondary hover:text-primary",
+                )}
+            >
+                <Share07 className="size-4 shrink-0" aria-hidden="true" />
+                Meta Pixel
+            </button>
+        </nav>
+
+        {/* Bottom */}
+        <div className="border-t border-secondary px-5 py-5">
+            <p className="text-xs font-medium text-secondary">Created by AnhTuan</p>
+            <a
+                href={WORKFLOW_MAILTO}
+                className="mt-2 flex items-center gap-1.5 text-xs text-brand-secondary transition duration-100 ease-linear hover:text-brand-primary"
+            >
+                <MessageChatCircle className="size-3.5 shrink-0" aria-hidden="true" />
+                Send new workflow request
+            </a>
+        </div>
+    </aside>
+);
+
+/* ── Page row ─────────────────────────────────────────────────────── */
+
+const PageRow = ({ page, index }: { page: ClientPageData & { created_at?: string }; index: number }) => {
+    const navigate = useNavigate();
+    const initials = getInitials(page.client_name || page.slug);
+
+    const colors = [
+        "bg-brand-100 text-brand-700",
+        "bg-success-secondary text-success-primary",
+        "bg-warning-secondary text-warning-primary",
+        "bg-error-secondary text-error-primary",
+    ];
+    const colorClass = colors[index % colors.length];
+
+    return (
+        <tr
+            onClick={() => navigate(`/${page.slug}`)}
+            className="group cursor-pointer border-b border-secondary transition duration-100 ease-linear last:border-0 hover:bg-secondary"
+        >
+            {/* Client */}
+            <td className="px-6 py-4">
+                <div className="flex items-center gap-3">
+                    <span
+                        className={cx(
+                            "flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
+                            colorClass,
+                        )}
+                    >
+                        {initials || "?"}
+                    </span>
+                    <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-primary">
+                            {page.client_name || "(no name)"}
+                        </p>
+                        <p className="truncate text-xs text-tertiary">
+                            {page.client_website || "—"}
+                        </p>
+                    </div>
+                </div>
+            </td>
+
+            {/* URL */}
+            <td className="px-6 py-4">
+                <span className="inline-flex items-center gap-1 rounded-md bg-secondary px-2 py-1 font-mono text-xs text-tertiary">
+                    hgm-docs.netlify.app/{page.slug}
+                </span>
+            </td>
+
+            {/* Date */}
+            <td className="px-6 py-4 text-sm text-tertiary">
+                {page.created_at ? formatDate(page.created_at) : "—"}
+            </td>
+
+            {/* Action */}
+            <td className="px-6 py-4 text-right">
+                <span className="inline-flex items-center gap-1 text-xs font-medium text-brand-secondary opacity-0 transition duration-100 ease-linear group-hover:opacity-100">
+                    Open
+                    <ArrowUpRight className="size-3.5" aria-hidden="true" />
+                </span>
+            </td>
+        </tr>
+    );
+};
+
+/* ── Main content ─────────────────────────────────────────────────── */
+
+const MetaPixelContent = () => {
+    const navigate = useNavigate();
+    const [pages, setPages] = useState<(ClientPageData & { created_at?: string })[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        supabase
+            .from("client_pages")
+            .select("*")
+            .order("created_at", { ascending: false })
+            .then(({ data, error }) => {
+                if (!error && data) setPages(data as (ClientPageData & { created_at?: string })[]);
+                setLoading(false);
+            });
+    }, []);
+
+    return (
+        <div className="flex h-dvh flex-1 flex-col overflow-hidden bg-secondary">
+            {/* Top bar */}
+            <header className="flex shrink-0 items-center justify-between border-b border-secondary bg-primary px-6 py-4">
+                <div>
+                    <h1 className="text-md font-semibold text-primary">Meta Pixel Pages</h1>
+                    <p className="text-sm text-tertiary">
+                        {loading ? "Loading…" : `${pages.length} page${pages.length !== 1 ? "s" : ""} created`}
+                    </p>
+                </div>
+                <button
+                    type="button"
+                    onClick={() => navigate("/template")}
+                    className="flex items-center gap-1.5 rounded-lg bg-brand-solid px-3.5 py-2 text-sm font-semibold text-white transition duration-100 ease-linear hover:opacity-90"
+                >
+                    <Plus className="size-4" aria-hidden="true" />
+                    New Page
+                </button>
+            </header>
+
+            {/* Table */}
+            <div className="flex-1 overflow-y-auto">
+                {loading ? (
+                    <div className="flex h-48 items-center justify-center">
+                        <div className="size-6 animate-spin rounded-full border-2 border-brand border-t-transparent opacity-60" />
+                    </div>
+                ) : pages.length === 0 ? (
+                    <div className="flex h-64 flex-col items-center justify-center gap-3 text-center">
+                        <div className="flex size-12 items-center justify-center rounded-full bg-brand-50">
+                            <Share07 className="size-5 text-fg-brand-primary" aria-hidden="true" />
+                        </div>
+                        <div>
+                            <p className="text-sm font-medium text-primary">No pages yet</p>
+                            <p className="mt-0.5 text-sm text-tertiary">
+                                Create your first Meta Pixel page to get started.
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => navigate("/template")}
+                            className="mt-1 flex items-center gap-1.5 rounded-lg bg-brand-solid px-3.5 py-2 text-sm font-semibold text-white transition duration-100 ease-linear hover:opacity-90"
+                        >
+                            <Plus className="size-4" aria-hidden="true" />
+                            New Page
+                        </button>
+                    </div>
+                ) : (
+                    <div className="rounded-xl overflow-hidden mx-6 my-6 ring-1 ring-secondary bg-primary shadow-sm">
+                        <table className="w-full">
+                            <thead>
+                                <tr className="border-b border-secondary bg-secondary">
+                                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-quaternary">
+                                        Client
+                                    </th>
+                                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-quaternary">
+                                        Page URL
+                                    </th>
+                                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-quaternary">
+                                        Created
+                                    </th>
+                                    <th className="px-6 py-3" />
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {pages.map((page, i) => (
+                                    <PageRow key={page.slug} page={page} index={i} />
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+/* ── Page export ──────────────────────────────────────────────────── */
+
+export const DashboardScreen = () => (
+    <div className="flex h-dvh overflow-hidden">
+        <Sidebar activeSection="meta-pixel" />
+        <MetaPixelContent />
+    </div>
+);
