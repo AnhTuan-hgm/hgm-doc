@@ -451,7 +451,7 @@ export const PixelPage = ({
                                     setUnlockError(false);
                                 }}
                                 onKeyDown={(e) => e.key === "Enter" && handleUnlock()}
-                                autoFocus
+                                ref={(el) => el?.focus({ preventScroll: true })}
                                 className={cx(
                                     "w-full rounded-lg border px-3 py-2 text-sm text-primary placeholder:text-placeholder outline-none transition duration-100 ease-linear",
                                     unlockError
@@ -513,7 +513,7 @@ export const PixelPage = ({
                                             setPlusPasswordError(false);
                                         }}
                                         onKeyDown={(e) => e.key === "Enter" && handlePlusPassword()}
-                                        autoFocus
+                                        ref={(el) => el?.focus({ preventScroll: true })}
                                         className={cx(
                                             "w-full rounded-lg border px-3 py-2 text-sm text-primary placeholder:text-placeholder outline-none transition duration-100 ease-linear",
                                             plusPasswordError
@@ -567,7 +567,7 @@ export const PixelPage = ({
                                             value={newClientName}
                                             onChange={(e) => setNewClientName(e.target.value)}
                                             onKeyDown={(e) => e.key === "Enter" && handlePlusClientInfo()}
-                                            autoFocus
+                                            ref={(el) => el?.focus({ preventScroll: true })}
                                             className="w-full rounded-lg border border-secondary px-3 py-2 text-sm text-primary placeholder:text-placeholder outline-none transition duration-100 ease-linear focus:border-brand focus:ring-1 focus:ring-brand"
                                         />
                                     </div>

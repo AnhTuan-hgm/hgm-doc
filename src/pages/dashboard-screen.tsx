@@ -250,6 +250,7 @@ const MetaPixelContent = () => {
 
             {/* Table */}
             <div className="flex-1 overflow-y-auto">
+                <div className="mx-auto w-full max-w-[900px] px-6">
                 {loading ? (
                     <div className="flex h-48 items-center justify-center">
                         <div className="size-6 animate-spin rounded-full border-2 border-brand border-t-transparent opacity-60" />
@@ -275,7 +276,7 @@ const MetaPixelContent = () => {
                         </button>
                     </div>
                 ) : (
-                    <div className="rounded-xl overflow-hidden mx-6 my-6 ring-1 ring-secondary bg-primary shadow-sm">
+                    <div className="my-6 overflow-hidden rounded-xl bg-primary shadow-sm ring-1 ring-secondary">
                         <table className="w-full">
                             <thead>
                                 <tr className="border-b border-secondary bg-secondary">
@@ -299,6 +300,7 @@ const MetaPixelContent = () => {
                         </table>
                     </div>
                 )}
+                </div>
             </div>
         </div>
     );
