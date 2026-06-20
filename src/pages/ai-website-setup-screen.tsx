@@ -161,17 +161,6 @@ function save(s: SOPState) {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); } catch {}
 }
 
-/* ── Diamond logo SVG ────────────────────────────────────────────── */
-
-const DiamondLogo = () => (
-    <svg viewBox="0 0 32 32" width="32" height="32" className="shrink-0" style={{ filter: "drop-shadow(0 4px 10px rgba(127,86,217,0.45))" }}>
-        <path d="M16 2 L30 13 L16 30 L2 13 Z" fill="#7F56D9" />
-        <path d="M16 2 L30 13 L16 13 Z" fill="#ffffff" opacity="0.28" />
-        <path d="M2 13 L16 13 L16 30 Z" fill="#000000" opacity="0.16" />
-        <path d="M16 13 L30 13 L16 30 Z" fill="#000000" opacity="0.30" />
-        <path d="M9 13 L23 13" stroke="#ffffff" strokeWidth="0.6" opacity="0.35" />
-    </svg>
-);
 
 /* ── Lock icon ───────────────────────────────────────────────────── */
 
