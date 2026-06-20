@@ -16,7 +16,7 @@ import "@/styles/globals.css";
 
 const GlobalThemeToggle = () => {
     const { pathname } = useLocation();
-    if (pathname === "/webteam/ai-website-setup" || pathname === "/webteam/owner-guide") return null;
+    if (pathname === "/webteam/ai-website-setup" || pathname === "/owner-guide") return null;
     return <ThemeToggle />;
 };
 
@@ -32,7 +32,7 @@ createRoot(document.getElementById("root")!).render(
                         <Route path="/template" element={<TemplateScreen />} />
                         <Route path="/dashboard" element={<DashboardScreen />} />
                         <Route path="/webteam/ai-website-setup" element={<AiWebsiteSetupScreen />} />
-                        <Route path="/webteam/owner-guide" element={<OwnerGuideScreen />} />
+                        <Route path="/owner-guide" element={<OwnerGuideScreen />} />
                         <Route path="/:clientSlug" element={<ClientScreen />} />
                         <Route path="*" element={<NotFound />} />
                     </Routes>

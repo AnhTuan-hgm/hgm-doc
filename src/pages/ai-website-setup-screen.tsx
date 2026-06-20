@@ -435,7 +435,7 @@ const StepCard = ({
                 </div>
             )}
 
-            <div className="rounded-2xl border border-secondary bg-primary pb-8 shadow-xs">
+            <div className="rounded-2xl border border-secondary bg-primary pb-6 shadow-xs">
                 {/* title row */}
                 <div className="flex items-start gap-3.5 p-5 pb-0">
                     <div className="flex size-[34px] shrink-0 items-center justify-center rounded-full bg-brand-100 font-bold text-[15px] text-brand-700 dark:bg-brand-950/40 dark:text-brand-300">
