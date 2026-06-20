@@ -380,43 +380,42 @@ export const PixelPage = ({
                     </section>
 
                     {/* ── Footer ── */}
-                    <footer className="mt-14 flex items-center justify-between border-t border-secondary pt-6">
-                        {/* HGM logo wordmark */}
+                    <footer className="mt-14 border-t border-secondary pt-6">
                         <img
                             src="/hgm logo/Logo WIth Word Mark(Style 1).svg"
                             alt="HiddenGem Media"
                             className="h-10 opacity-60 dark:invert"
                         />
-
-                        {/* Action icons */}
-                        <div className="flex items-center gap-0.5">
-                            {/* Plus — create new client page */}
-                            <button
-                                type="button"
-                                onClick={handlePlusClick}
-                                title="Create new client page"
-                                className="flex size-8 items-center justify-center rounded-lg text-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-secondary"
-                            >
-                                <Plus className="size-4" aria-hidden="true" />
-                            </button>
-
-                            {/* Lock / Unlock */}
-                            <button
-                                type="button"
-                                onClick={handleLockClick}
-                                title={isLocked ? "Unlock content" : "Lock content"}
-                                className="flex size-8 items-center justify-center rounded-lg text-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-secondary"
-                            >
-                                {isLocked ? (
-                                    <Lock01 className="size-4" aria-hidden="true" />
-                                ) : (
-                                    <LockUnlocked01 className="size-4" aria-hidden="true" />
-                                )}
-                            </button>
-                        </div>
                     </footer>
                 </div>
             </article>
+
+            {/* ── Fixed bottom-right action buttons ── */}
+            <div className="fixed bottom-5 right-5 z-40 flex flex-col items-center gap-2">
+                {/* Plus — create new client page */}
+                <button
+                    type="button"
+                    onClick={handlePlusClick}
+                    title="Create new client page"
+                    className="flex size-10 items-center justify-center rounded-full bg-primary shadow-lg ring-1 ring-secondary text-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-secondary"
+                >
+                    <Plus className="size-4" aria-hidden="true" />
+                </button>
+
+                {/* Lock / Unlock */}
+                <button
+                    type="button"
+                    onClick={handleLockClick}
+                    title={isLocked ? "Unlock content" : "Lock content"}
+                    className="flex size-10 items-center justify-center rounded-full bg-primary shadow-lg ring-1 ring-secondary text-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-secondary"
+                >
+                    {isLocked ? (
+                        <Lock01 className="size-4" aria-hidden="true" />
+                    ) : (
+                        <LockUnlocked01 className="size-4" aria-hidden="true" />
+                    )}
+                </button>
+            </div>
 
             {/* ═══════════════════════════════════════════════
                 Unlock Modal

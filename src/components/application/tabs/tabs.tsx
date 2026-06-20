@@ -1,5 +1,5 @@
 import type { ComponentPropsWithRef, FC, ReactNode } from "react";
-import { createContext, isValidElement, useContext } from "react";
+import { createContext, isValidElement, useContext, useEffect, useRef } from "react";
 import type { TabListProps as AriaTabListProps, TabProps as AriaTabProps, TabRenderProps as AriaTabRenderProps } from "react-aria-components";
 import { Tab as AriaTab, TabList as AriaTabList, TabPanel as AriaTabPanel, Tabs as AriaTabs, TabsContext, useSlottedContext } from "react-aria-components";
 import { Badge } from "@/components/base/badges/badges";
@@ -141,9 +141,25 @@ export const TabList = <T extends Orientation>({
     );
 };
 
-export const TabPanel = (props: ComponentPropsWithRef<typeof AriaTabPanel>) => {
+export const TabPanel = ({ ref: externalRef, ...props }: ComponentPropsWithRef<typeof AriaTabPanel>) => {
+    const innerRef = useRef<HTMLDivElement>(null);
+
+    // Patch the panel's .focus() so React Aria never triggers a page scroll on tab switch
+    useEffect(() => {
+        const el = innerRef.current;
+        if (!el) return;
+        const orig = el.focus.bind(el);
+        el.focus = (opts?: FocusOptions) => orig({ preventScroll: true, ...opts });
+        return () => { el.focus = orig; };
+    }, []);
+
     return (
         <AriaTabPanel
+            ref={(node) => {
+                (innerRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
+                if (typeof externalRef === "function") externalRef(node);
+                else if (externalRef) (externalRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
+            }}
             {...props}
             className={(state) =>
                 cx(
