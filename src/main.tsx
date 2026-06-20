@@ -6,6 +6,7 @@ import { LandingScreen } from "@/pages/landing-screen";
 import { TemplateScreen } from "@/pages/template-screen";
 import { DashboardScreen } from "@/pages/dashboard-screen";
 import { AiWebsiteSetupScreen } from "@/pages/ai-website-setup-screen";
+import { OwnerGuideScreen } from "@/pages/owner-guide-screen";
 import { ClientScreen } from "@/pages/client-screen";
 import { ThemeToggle } from "@/components/base/theme-toggle/theme-toggle";
 import { NotFound } from "@/pages/not-found";
@@ -15,7 +16,7 @@ import "@/styles/globals.css";
 
 const GlobalThemeToggle = () => {
     const { pathname } = useLocation();
-    if (pathname === "/webteam/ai-website-setup") return null;
+    if (pathname === "/webteam/ai-website-setup" || pathname === "/webteam/owner-guide") return null;
     return <ThemeToggle />;
 };
 
@@ -31,6 +32,7 @@ createRoot(document.getElementById("root")!).render(
                         <Route path="/template" element={<TemplateScreen />} />
                         <Route path="/dashboard" element={<DashboardScreen />} />
                         <Route path="/webteam/ai-website-setup" element={<AiWebsiteSetupScreen />} />
+                        <Route path="/webteam/owner-guide" element={<OwnerGuideScreen />} />
                         <Route path="/:clientSlug" element={<ClientScreen />} />
                         <Route path="*" element={<NotFound />} />
                     </Routes>
