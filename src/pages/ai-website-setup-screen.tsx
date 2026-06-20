@@ -330,7 +330,7 @@ const Sidebar = ({
             <img
                 src={isDark ? "/hgm logo/LOGO ON Dark.svg" : "/hgm logo/Logo ON LIGHT.svg"}
                 alt="HiddenGem Media"
-                className="h-16"
+                className="h-10"
                 draggable={false}
             />
             <button
