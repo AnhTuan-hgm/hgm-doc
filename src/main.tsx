@@ -2,7 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router";
 import { LandingScreen } from "@/pages/landing-screen";
-import { TeamGuideScreen } from "@/pages/team-guide-screen";
+
 import { TemplateScreen } from "@/pages/template-screen";
 import { DashboardScreen } from "@/pages/dashboard-screen";
 import { AiWebsiteSetupScreen } from "@/pages/ai-website-setup-screen";
@@ -27,7 +27,7 @@ createRoot(document.getElementById("root")!).render(
                     <GlobalThemeToggle />
                     <Routes>
                         <Route path="/" element={<LandingScreen />} />
-                        <Route path="/team" element={<TeamGuideScreen />} />
+
                         <Route path="/template" element={<TemplateScreen />} />
                         <Route path="/dashboard" element={<DashboardScreen />} />
                         <Route path="/webteam/ai-website-setup" element={<AiWebsiteSetupScreen />} />
