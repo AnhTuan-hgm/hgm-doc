@@ -236,15 +236,17 @@ const CopyButton = ({ text }: { text: string }) => {
 
 /* ── Image with magnifier ────────────────────────────────────────── */
 
-const LENS = 130; // circle diameter px
-const ZOOM = 2;
+const LENS = 72;
+const ZOOM = 1.3;
 
 const ImageWithMagnifier = ({ src }: { src: string }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const imgRef = useRef<HTMLImageElement>(null);
     const [pos, setPos] = useState({ x: 0.5, y: 0.5 });
     const [dims, setDims] = useState({ w: 0, h: 0 });
+    const [lightbox, setLightbox] = useState(false);
     const dragging = useRef(false);
+    const didDrag = useRef(false); // distinguishes click from drag
 
     const refreshDims = () => {
         if (imgRef.current) setDims({ w: imgRef.current.offsetWidth, h: imgRef.current.offsetHeight });
@@ -255,9 +257,18 @@ const ImageWithMagnifier = ({ src }: { src: string }) => {
         return () => window.removeEventListener("resize", refreshDims);
     }, []);
 
+    // Close lightbox on Escape
+    useEffect(() => {
+        if (!lightbox) return;
+        const handler = (e: KeyboardEvent) => { if (e.key === "Escape") setLightbox(false); };
+        window.addEventListener("keydown", handler);
+        return () => window.removeEventListener("keydown", handler);
+    }, [lightbox]);
+
     const move = (clientX: number, clientY: number) => {
         const rect = containerRef.current?.getBoundingClientRect();
         if (!rect) return;
+        didDrag.current = true;
         setPos({
             x: Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)),
             y: Math.max(0, Math.min(1, (clientY - rect.top) / rect.height)),
@@ -270,45 +281,74 @@ const ImageWithMagnifier = ({ src }: { src: string }) => {
     const bgY = -(pos.y * dims.h * ZOOM - LENS / 2);
 
     return (
-        <div
-            ref={containerRef}
-            className="relative select-none"
-            onMouseMove={(e) => { if (dragging.current) move(e.clientX, e.clientY); }}
-            onMouseUp={() => { dragging.current = false; }}
-            onMouseLeave={() => { dragging.current = false; }}
-            onTouchMove={(e) => { if (dragging.current) move(e.touches[0].clientX, e.touches[0].clientY); }}
-            onTouchEnd={() => { dragging.current = false; }}
-        >
-            <img
-                ref={imgRef}
-                src={src}
-                alt="reference"
-                className="block w-full rounded-xl border border-secondary"
-                onLoad={refreshDims}
-                draggable={false}
-            />
-            {dims.w > 0 && (
-                <div
-                    onMouseDown={(e) => { e.preventDefault(); dragging.current = true; move(e.clientX, e.clientY); }}
-                    onTouchStart={(e) => { e.preventDefault(); dragging.current = true; move(e.touches[0].clientX, e.touches[0].clientY); }}
-                    style={{
-                        position: "absolute",
-                        width: LENS,
-                        height: LENS,
-                        left: lensLeft,
-                        top: lensTop,
-                        borderRadius: "50%",
-                        border: "3px solid rgba(255,255,255,0.9)",
-                        boxShadow: "0 0 0 1.5px rgba(0,0,0,0.18), 0 4px 18px rgba(0,0,0,0.28)",
-                        backgroundImage: `url(${src})`,
-                        backgroundSize: `${dims.w * ZOOM}px ${dims.h * ZOOM}px`,
-                        backgroundPosition: `${bgX}px ${bgY}px`,
-                        backgroundRepeat: "no-repeat",
-                        cursor: "grab",
-                    }}
+        <>
+            <div
+                ref={containerRef}
+                className="relative select-none"
+                onMouseMove={(e) => { if (dragging.current) move(e.clientX, e.clientY); }}
+                onMouseUp={() => { dragging.current = false; }}
+                onMouseLeave={() => { dragging.current = false; }}
+                onTouchMove={(e) => { e.preventDefault(); if (dragging.current) move(e.touches[0].clientX, e.touches[0].clientY); }}
+                onTouchEnd={() => { dragging.current = false; }}
+            >
+                {/* image — click opens lightbox unless it was a drag */}
+                <img
+                    ref={imgRef}
+                    src={src}
+                    alt="reference"
+                    className="block w-full cursor-zoom-in rounded-xl border border-secondary"
+                    onLoad={refreshDims}
+                    draggable={false}
+                    onClick={() => { if (!didDrag.current) setLightbox(true); }}
                 />
+                {/* magnifier circle — always draggable */}
+                {dims.w > 0 && (
+                    <div
+                        onMouseDown={(e) => { e.preventDefault(); dragging.current = true; didDrag.current = false; move(e.clientX, e.clientY); }}
+                        onTouchStart={(e) => { e.preventDefault(); dragging.current = true; didDrag.current = false; move(e.touches[0].clientX, e.touches[0].clientY); }}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                            position: "absolute",
+                            width: LENS,
+                            height: LENS,
+                            left: lensLeft,
+                            top: lensTop,
+                            borderRadius: "50%",
+                            border: "2.5px solid rgba(255,255,255,0.9)",
+                            boxShadow: "0 0 0 1.5px rgba(0,0,0,0.18), 0 3px 12px rgba(0,0,0,0.25)",
+                            backgroundImage: `url(${src})`,
+                            backgroundSize: `${dims.w * ZOOM}px ${dims.h * ZOOM}px`,
+                            backgroundPosition: `${bgX}px ${bgY}px`,
+                            backgroundRepeat: "no-repeat",
+                            cursor: "grab",
+                        }}
+                    />
+                )}
+            </div>
+
+            {/* lightbox */}
+            {lightbox && (
+                <div
+                    onClick={() => setLightbox(false)}
+                    className="fixed inset-0 z-50 flex cursor-zoom-out items-center justify-center bg-black/82 p-10 backdrop-blur-sm"
+                >
+                    <img
+                        src={src}
+                        alt="full view"
+                        onClick={(e) => e.stopPropagation()}
+                        className="max-h-[90vh] max-w-[90vw] rounded-xl object-contain shadow-2xl"
+                    />
+                    <button
+                        type="button"
+                        onClick={() => setLightbox(false)}
+                        title="Close"
+                        className="absolute right-6 top-6 flex size-10 items-center justify-center rounded-xl bg-white/10 text-white transition hover:bg-white/22"
+                    >
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+                    </button>
+                </div>
             )}
-        </div>
+        </>
     );
 };
 
