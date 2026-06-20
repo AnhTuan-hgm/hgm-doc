@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTheme } from "@/providers/theme-provider";
 import { cx } from "@/utils/cx";
 
 /* ── Types ───────────────────────────────────────────────────────── */
@@ -316,19 +317,22 @@ const Sidebar = ({
     onAddStage: () => void;
     onDeleteStage: (id: string) => void;
     onMoveStage: (id: string, dir: -1 | 1) => void;
-}) => (
+}) => {
+    const { theme } = useTheme();
+    const isDark =
+        theme === "dark" ||
+        (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+
+    return (
     <aside className="flex h-dvh w-[300px] shrink-0 flex-col border-r border-secondary bg-primary">
         {/* header */}
-        <div className="flex items-center gap-3.5 border-b border-secondary px-5 py-[22px]">
-            <DiamondLogo />
-            <div className="flex flex-col gap-0.5 leading-none">
-                <span className="text-[22px] font-semibold tracking-[-0.01em] text-primary" style={{ fontFamily: "var(--font-display, inherit)" }}>
-                    Hidden<span className="text-brand-600">Gem</span>
-                </span>
-                <span className="text-[9.5px] font-semibold uppercase tracking-[0.22em] text-quaternary">
-                    MEDIA · SOP LIBRARY
-                </span>
-            </div>
+        <div className="flex items-center border-b border-secondary px-5 py-5">
+            <img
+                src={isDark ? "/hgm logo/LOGO ON Dark.svg" : "/hgm logo/Logo ON LIGHT.svg"}
+                alt="HiddenGem Media"
+                className="h-8"
+                draggable={false}
+            />
         </div>
 
         {/* stage list */}
@@ -422,7 +426,8 @@ const Sidebar = ({
             </button>
         </div>
     </aside>
-);
+    );
+};
 
 /* ── Main screen ─────────────────────────────────────────────────── */
 
@@ -607,8 +612,11 @@ export const AiWebsiteSetupScreen = () => {
                     </div>
                 ) : (
                     <div className="flex h-full flex-col items-center justify-center gap-3.5 p-10 text-center">
-                        <div className="flex size-14 items-center justify-center rounded-2xl bg-brand-100">
-                            <DiamondLogo />
+                        <div className="flex size-14 items-center justify-center rounded-2xl bg-brand-50 dark:bg-brand-950/30">
+                            <svg viewBox="0 0 32 32" width="30" height="30">
+                                <path d="M16 2 L30 13 L16 30 L2 13 Z" fill="#7F56D9" />
+                                <path d="M16 2 L30 13 L16 13 Z" fill="#fff" opacity="0.3" />
+                            </svg>
                         </div>
                         <div>
                             <p className="text-[20px] font-semibold text-primary">No stages yet</p>
