@@ -7,6 +7,7 @@ import { TemplateScreen } from "@/pages/template-screen";
 import { DashboardScreen } from "@/pages/dashboard-screen";
 import { AiWebsiteSetupScreen } from "@/pages/ai-website-setup-screen";
 import { ClientScreen } from "@/pages/client-screen";
+import { ThemeToggle } from "@/components/base/theme-toggle/theme-toggle";
 import { NotFound } from "@/pages/not-found";
 import { RouteProvider } from "@/providers/router-provider";
 import { ThemeProvider } from "@/providers/theme-provider";
@@ -17,6 +18,7 @@ createRoot(document.getElementById("root")!).render(
         <ThemeProvider>
             <BrowserRouter>
                 <RouteProvider>
+                    <ThemeToggle />
                     <Routes>
                         <Route path="/" element={<LandingScreen />} />
                         <Route path="/team" element={<TeamGuideScreen />} />
