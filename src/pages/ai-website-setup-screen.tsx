@@ -318,7 +318,7 @@ const Sidebar = ({
     onDeleteStage: (id: string) => void;
     onMoveStage: (id: string, dir: -1 | 1) => void;
 }) => {
-    const { theme } = useTheme();
+    const { theme, setTheme } = useTheme();
     const isDark =
         theme === "dark" ||
         (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
@@ -326,13 +326,29 @@ const Sidebar = ({
     return (
     <aside className="flex h-dvh w-[300px] shrink-0 flex-col border-r border-secondary bg-primary">
         {/* header */}
-        <div className="flex items-center border-b border-secondary px-5 py-5">
+        <div className="flex items-center justify-between border-b border-secondary px-5 py-4">
             <img
                 src={isDark ? "/hgm logo/LOGO ON Dark.svg" : "/hgm logo/Logo ON LIGHT.svg"}
                 alt="HiddenGem Media"
-                className="h-8"
+                className="h-16"
                 draggable={false}
             />
+            <button
+                type="button"
+                onClick={() => setTheme(isDark ? "light" : "dark")}
+                title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+                className="flex size-9 shrink-0 items-center justify-center rounded-full border border-secondary bg-secondary text-secondary transition duration-100 ease-linear hover:bg-tertiary hover:text-primary"
+            >
+                {isDark ? (
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+                    </svg>
+                ) : (
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                    </svg>
+                )}
+            </button>
         </div>
 
         {/* stage list */}
