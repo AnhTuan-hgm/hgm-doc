@@ -5,6 +5,7 @@ import { LandingScreen } from "@/pages/landing-screen";
 import { TeamGuideScreen } from "@/pages/team-guide-screen";
 import { TemplateScreen } from "@/pages/template-screen";
 import { DashboardScreen } from "@/pages/dashboard-screen";
+import { AiWebsiteSetupScreen } from "@/pages/ai-website-setup-screen";
 import { ClientScreen } from "@/pages/client-screen";
 import { NotFound } from "@/pages/not-found";
 import { RouteProvider } from "@/providers/router-provider";
@@ -21,6 +22,7 @@ createRoot(document.getElementById("root")!).render(
                         <Route path="/team" element={<TeamGuideScreen />} />
                         <Route path="/template" element={<TemplateScreen />} />
                         <Route path="/dashboard" element={<DashboardScreen />} />
+                        <Route path="/webteam/ai-website-setup" element={<AiWebsiteSetupScreen />} />
                         <Route path="/:clientSlug" element={<ClientScreen />} />
                         <Route path="*" element={<NotFound />} />
                     </Routes>
