@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/untitled-ui-design-system-019df4de-15b7-7b52-aeff-7f9ed9a6d952/colors_and_type.css">
+  <style>
+    *{box-sizing:border-box;}
+    body{margin:0;}
+    [data-ph]:empty:before{content:attr(data-ph);color:var(--fg-placeholder);font-weight:400;pointer-events:none;}
+    .hgm-scroll::-webkit-scrollbar{width:10px;height:10px;}
+    .hgm-scroll::-webkit-scrollbar-thumb{background:rgba(0,0,0,.14);border-radius:8px;border:3px solid transparent;background-clip:content-box;}
+    .hgm-scroll::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,.24);background-clip:content-box;}
+    .hgm-dark.hgm-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16);background-clip:content-box;}
+    .hgm-step{position:relative;}
+    .hgm-ins{position:absolute;left:0;right:0;display:flex;align-items:center;gap:10px;padding:0 14px;opacity:0;transition:opacity .12s;pointer-events:none;z-index:6;}
+    .hgm-step:hover .hgm-ins{opacity:1;pointer-events:auto;}
+    .hgm-ins-top{top:-21px;}
+    .hgm-ins-bot{bottom:-21px;}
+  </style>
+</helmet>
+
+<div style="{{ rootStyle }}">
+
+  <!-- ===================== SIDEBAR ===================== -->
+  <aside style="flex:none;width:300px;height:100%;background:var(--sb-bg);display:flex;flex-direction:column;border-right:1px solid var(--sb-border);">
+
+    <!-- header / brand -->
+    <div style="padding:22px 20px 18px;display:flex;align-items:center;gap:13px;border-bottom:1px solid var(--sb-border);">
+      <svg viewBox="0 0 32 32" width="32" height="32" style="flex:none;filter:drop-shadow(0 4px 10px color-mix(in srgb,var(--accent) 45%,transparent));">
+        <path d="M16 2 L30 13 L16 30 L2 13 Z" fill="var(--accent)"></path>
+        <path d="M16 2 L30 13 L16 13 Z" fill="#ffffff" opacity="0.28"></path>
+        <path d="M2 13 L16 13 L16 30 Z" fill="#000000" opacity="0.16"></path>
+        <path d="M16 13 L30 13 L16 30 Z" fill="#000000" opacity="0.30"></path>
+        <path d="M9 13 L23 13" stroke="#ffffff" stroke-width="0.6" opacity="0.35"></path>
+      </svg>
+      <div style="display:flex;flex-direction:column;gap:2px;line-height:1;">
+        <div style="font:var(--fw-semibold) 22px/1 var(--font-display);letter-spacing:-0.01em;color:var(--sb-title);">Hidden<span style="color:var(--sb-gem);">Gem</span></div>
+        <div style="font:var(--fw-semibold) 9.5px/1 var(--font-body);letter-spacing:0.22em;color:var(--sb-label);">MEDIA · SOP LIBRARY</div>
+      </div>
+    </div>
+
+    <!-- stage list -->
+    <div class="hgm-scroll hgm-dark" style="flex:1;overflow-y:auto;padding:14px 12px;">
+      <div style="font:var(--fw-semibold) 10.5px/1 var(--font-body);letter-spacing:0.14em;color:var(--sb-label);padding:4px 8px 12px;">WORKFLOW</div>
+      <div style="display:flex;flex-direction:column;gap:3px;">
+        <sc-for list="{{ stagesView }}" as="stage" hint-placeholder-count="6">
+          <div data-id="{{ stage.id }}" onClick="{{ selectStage }}" style="{{ stage.itemStyle }}" style-hover="background:var(--sb-hover);">
+            <div style="{{ stage.barStyle }}"></div>
+            <div style="{{ stage.numStyle }}">{{ stage.num }}</div>
+            <div style="{{ stage.nameStyle }}">{{ stage.name }}</div>
+            <sc-if value="{{ locked }}" hint-placeholder-val="{{ true }}">
+              <div style="{{ stage.countStyle }}">{{ stage.count }}</div>
+            </sc-if>
+            <sc-if value="{{ editing }}" hint-placeholder-val="{{ false }}">
+              <div style="flex:none;display:flex;gap:1px;">
+                <button data-id="{{ stage.id }}" data-dir="-1" onClick="{{ moveStage }}" title="Move stage up" style="flex:none;width:22px;height:22px;display:flex;align-items:center;justify-content:center;border:0;border-radius:6px;background:transparent;color:var(--sb-ctrl-fg);cursor:pointer;" style-hover="background:var(--sb-ctrl-hover);color:var(--sb-title);">
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 15l-6-6-6 6"></path></svg>
+                </button>
+                <button data-id="{{ stage.id }}" data-dir="1" onClick="{{ moveStage }}" title="Move stage down" style="flex:none;width:22px;height:22px;display:flex;align-items:center;justify-content:center;border:0;border-radius:6px;background:transparent;color:var(--sb-ctrl-fg);cursor:pointer;" style-hover="background:var(--sb-ctrl-hover);color:var(--sb-title);">
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>
+                </button>
+                <button data-id="{{ stage.id }}" onClick="{{ deleteStage }}" title="Delete stage" style="flex:none;width:22px;height:22px;display:flex;align-items:center;justify-content:center;border:0;border-radius:6px;background:transparent;color:var(--sb-ctrl-fg);cursor:pointer;" style-hover="background:var(--sb-del-hover);color:var(--sb-del-fg-hover);">
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"></path></svg>
+                </button>
+              </div>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <!-- footer -->
+    <div style="padding:14px;border-top:1px solid var(--sb-border);display:flex;flex-direction:column;gap:8px;">
+      <sc-if value="{{ editing }}" hint-placeholder-val="{{ false }}">
+        <button onClick="{{ addStage }}" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:10px;border-radius:9px;border:1px solid var(--sb-btn-border);background:var(--sb-btn-bg);color:var(--sb-btn-fg);font:var(--fw-semibold) 13px/1 var(--font-body);cursor:pointer;" style-hover="background:var(--sb-btn-hover);">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
+          Add stage
+        </button>
+      </sc-if>
+      <button onClick="{{ toggleLock }}" style="{{ lockBtnStyle }}">
+        <sc-if value="{{ locked }}" hint-placeholder-val="{{ true }}">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
+        </sc-if>
+        <sc-if value="{{ editing }}" hint-placeholder-val="{{ true }}">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 7.5-1.9"></path></svg>
+        </sc-if>
+        {{ lockLabel }}
+      </button>
+    </div>
+  </aside>
+
+  <!-- ===================== RIGHT PANEL ===================== -->
+  <main class="hgm-scroll" style="flex:1;height:100%;overflow-y:auto;background:var(--gray-50);">
+
+    <sc-if value="{{ hasStages }}" hint-placeholder-val="{{ true }}">
+      <div style="max-width:840px;margin:0 auto;padding:36px 40px 80px;">
+
+        <!-- stage header -->
+        <div style="display:flex;align-items:flex-start;gap:16px;margin-bottom:6px;">
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+              <span style="font:var(--fw-semibold) 11px/1 var(--font-body);letter-spacing:0.1em;color:var(--fg-brand-primary);">STAGE {{ selNum }}</span>
+              <span style="width:4px;height:4px;border-radius:50%;background:var(--gray-300);"></span>
+              <span style="font:var(--fw-medium) 12px/1 var(--font-body);color:var(--fg-quaternary);">{{ stepCountLabel }}</span>
+            </div>
+            <div contentEditable="{{ editing }}" suppressContentEditableWarning="{{ true }}" data-scope="stage" data-field="name" data-id="{{ selId }}" data-ph="Stage name" onBlur="{{ commitField }}" onKeyDown="{{ onFieldKey }}" onPaste="{{ onPaste }}" style="font:var(--fw-semibold) 34px/40px var(--font-display);letter-spacing:-0.02em;color:var(--fg-primary);border:1px solid var(--field-border);background:var(--field-bg);border-radius:10px;padding:2px 10px;margin-left:-10px;outline:none;min-height:40px;" style-focus="border-color:var(--accent);box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 16%,transparent);">{{ selName }}</div>
+          </div>
+          <div style="{{ statusStyle }}">{{ statusText }}</div>
+        </div>
+
+        <div style="height:1px;background:var(--border-secondary);margin:22px 0 24px;"></div>
+
+        <!-- steps -->
+        <sc-if value="{{ hasSteps }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;gap:16px;">
+            <sc-for list="{{ stepsView }}" as="step" hint-placeholder-count="3">
+              <div class="hgm-step">
+              <sc-if value="{{ step.showInsertTop }}" hint-placeholder-val="{{ false }}">
+                <div class="hgm-ins hgm-ins-top">
+                  <span style="flex:1;height:2px;background:color-mix(in srgb,var(--accent) 30%,transparent);border-radius:2px;"></span>
+                  <button data-id="{{ step.id }}" data-pos="before" onClick="{{ insertStep }}" title="Insert step above" style="flex:none;width:26px;height:26px;border-radius:999px;border:0;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 8px color-mix(in srgb,var(--accent) 45%,transparent);" style-hover="filter:brightness(1.08);">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
+                  </button>
+                  <span style="flex:1;height:2px;background:color-mix(in srgb,var(--accent) 30%,transparent);border-radius:2px;"></span>
+                </div>
+              </sc-if>
+              <div style="background:#fff;border:1px solid var(--border-secondary);border-radius:14px;box-shadow:var(--shadow-xs);padding:18px 20px;display:flex;flex-direction:column;gap:14px;">
+
+                <!-- title row -->
+                <div style="display:flex;align-items:flex-start;gap:14px;">
+                  <div style="flex:none;width:34px;height:34px;border-radius:999px;background:color-mix(in srgb,var(--accent) 13%,#fff);color:color-mix(in srgb,var(--accent) 78%,#000);display:flex;align-items:center;justify-content:center;font:var(--fw-bold) 15px/1 var(--font-body);">{{ step.number }}</div>
+                  <div contentEditable="{{ editing }}" suppressContentEditableWarning="{{ true }}" data-scope="step" data-field="heading" data-id="{{ step.id }}" data-ph="Step title" onBlur="{{ commitField }}" onKeyDown="{{ onFieldKey }}" onPaste="{{ onPaste }}" style="flex:1;min-width:0;font:var(--fw-semibold) 18px/27px var(--font-body);letter-spacing:-0.01em;color:var(--fg-primary);border:1px solid var(--field-border);background:var(--field-bg);border-radius:8px;padding:3px 9px;margin-top:1px;outline:none;min-height:27px;" style-focus="border-color:var(--accent);box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 16%,transparent);">{{ step.heading }}</div>
+                  <sc-if value="{{ editing }}" hint-placeholder-val="{{ true }}">
+                    <div style="flex:none;display:flex;gap:4px;">
+                      <button data-id="{{ step.id }}" data-dir="-1" onClick="{{ moveStep }}" title="Move up" style="width:30px;height:30px;display:flex;align-items:center;justify-content:center;border:1px solid var(--border-secondary);border-radius:7px;background:#fff;color:var(--fg-tertiary);cursor:pointer;" style-hover="background:var(--gray-50);border-color:var(--border-primary);">
+                        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 15l-6-6-6 6"></path></svg>
+                      </button>
+                      <button data-id="{{ step.id }}" data-dir="1" onClick="{{ moveStep }}" title="Move down" style="width:30px;height:30px;display:flex;align-items:center;justify-content:center;border:1px solid var(--border-secondary);border-radius:7px;background:#fff;color:var(--fg-tertiary);cursor:pointer;" style-hover="background:var(--gray-50);border-color:var(--border-primary);">
+                        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>
+                      </button>
+                      <button data-id="{{ step.id }}" onClick="{{ deleteStep }}" title="Delete step" style="width:30px;height:30px;display:flex;align-items:center;justify-content:center;border:1px solid var(--border-secondary);border-radius:7px;background:#fff;color:var(--error-500);cursor:pointer;" style-hover="background:var(--error-50);border-color:var(--error-300);">
+                        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"></path></svg>
+                      </button>
+                    </div>
+                  </sc-if>
+                </div>
+
+                <!-- tool -->
+                <div style="display:flex;flex-direction:column;gap:6px;padding-left:48px;">
+                  <div style="font:var(--fw-semibold) 11px/1 var(--font-body);letter-spacing:0.06em;color:var(--fg-quaternary);">TOOL</div>
+                  <div contentEditable="{{ editing }}" suppressContentEditableWarning="{{ true }}" data-scope="step" data-field="tool" data-id="{{ step.id }}" data-ph="e.g. Figma" onBlur="{{ commitField }}" onKeyDown="{{ onFieldKey }}" onPaste="{{ onPaste }}" style="align-self:flex-start;display:inline-flex;align-items:center;background:color-mix(in srgb,var(--accent) 9%,#fff);color:color-mix(in srgb,var(--accent) 80%,#000);border:1px solid color-mix(in srgb,var(--accent) 22%,#fff);border-radius:999px;padding:4px 13px;font:var(--fw-semibold) 13px/18px var(--font-body);outline:none;min-width:54px;" style-focus="border-color:var(--accent);box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 16%,transparent);">{{ step.tool }}</div>
+                </div>
+
+                <!-- command -->
+                <div style="display:flex;flex-direction:column;gap:6px;padding-left:48px;">
+                  <div style="font:var(--fw-semibold) 11px/1 var(--font-body);letter-spacing:0.06em;color:var(--fg-quaternary);">COMMAND / INSTRUCTION</div>
+                  <div contentEditable="{{ editing }}" suppressContentEditableWarning="{{ true }}" data-scope="step" data-field="command" data-id="{{ step.id }}" data-ph="Describe exactly what to do…" onBlur="{{ commitField }}" onPaste="{{ onPaste }}" style="font:var(--fw-regular) 13.5px/22px var(--font-mono);color:var(--fg-secondary);background:var(--gray-50);border:1px solid var(--border-secondary);border-radius:8px;padding:11px 13px;white-space:pre-wrap;outline:none;min-height:22px;" style-focus="border-color:var(--accent);background:#fff;box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 13%,transparent);">{{ step.command }}</div>
+                </div>
+
+                <!-- image -->
+                <sc-if value="{{ step.hasImage }}" hint-placeholder-val="{{ false }}">
+                  <div style="position:relative;margin-left:48px;">
+                    <img src="{{ step.image }}" alt="reference" style="display:block;width:100%;height:auto;border-radius:10px;border:1px solid var(--border-secondary);">
+                    <sc-if value="{{ step.showRemove }}" hint-placeholder-val="{{ false }}">
+                      <button data-id="{{ step.id }}" onClick="{{ removeImage }}" title="Remove image" style="position:absolute;top:8px;right:8px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border:0;border-radius:7px;background:rgba(12,17,29,.72);color:#fff;cursor:pointer;backdrop-filter:blur(4px);" style-hover="background:rgba(12,17,29,.9);">
+                        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+                      </button>
+                    </sc-if>
+                    <button data-id="{{ step.id }}" onClick="{{ openLightbox }}" title="View full image" style="position:absolute;bottom:8px;right:8px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border:0;border-radius:7px;background:rgba(12,17,29,.72);color:#fff;cursor:pointer;backdrop-filter:blur(4px);" style-hover="background:rgba(12,17,29,.9);">
+                      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"></path></svg>
+                    </button>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ step.showUploader }}" hint-placeholder-val="{{ false }}">
+                  <label style="margin-left: 48px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 24px; border: 1.5px dashed var(--border-primary); border-radius: 10px; background: var(--gray-50); color: var(--fg-tertiary); font: var(--fw-medium) 13px/1 var(--font-body); cursor: pointer; width: 669px; min-height: 120px; height: 121px" style-hover="border-color:var(--accent);color:var(--accent);background:color-mix(in srgb,var(--accent) 5%,#fff);">
+                    <input type="file" accept="image/*" data-id="{{ step.id }}" onChange="{{ onImagePick }}" style="display:none;">
+                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><path d="M21 15l-5-5L5 21"></path></svg>
+                    Add reference image
+                  </label>
+                </sc-if>
+
+              </div>
+              <sc-if value="{{ editing }}" hint-placeholder-val="{{ false }}">
+                <div class="hgm-ins hgm-ins-bot">
+                  <span style="flex:1;height:2px;background:color-mix(in srgb,var(--accent) 30%,transparent);border-radius:2px;"></span>
+                  <button data-id="{{ step.id }}" data-pos="after" onClick="{{ insertStep }}" title="Insert step below" style="flex:none;width:26px;height:26px;border-radius:999px;border:0;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 8px color-mix(in srgb,var(--accent) 45%,transparent);" style-hover="filter:brightness(1.08);">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
+                  </button>
+                  <span style="flex:1;height:2px;background:color-mix(in srgb,var(--accent) 30%,transparent);border-radius:2px;"></span>
+                </div>
+              </sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ noSteps }}" hint-placeholder-val="{{ false }}">
+          <div style="text-align:center;padding:56px 24px;border:1.5px dashed var(--border-primary);border-radius:14px;background:#fff;">
+            <div style="font:var(--fw-semibold) 17px/24px var(--font-body);color:var(--fg-primary);margin-bottom:6px;">No steps in this stage yet</div>
+            <div style="font:var(--fw-regular) 14px/20px var(--font-body);color:var(--fg-tertiary);">Unlock editing and add the first step of this workflow.</div>
+          </div>
+        </sc-if>
+
+        <!-- add step -->
+        <sc-if value="{{ editing }}" hint-placeholder-val="{{ true }}">
+          <button onClick="{{ addStep }}" style="margin-top:16px;width:100%;display:flex;align-items:center;justify-content:center;gap:9px;padding:13px;border:1.5px dashed var(--border-primary);border-radius:12px;background:#fff;color:var(--fg-secondary);font:var(--fw-semibold) 14px/1 var(--font-body);cursor:pointer;" style-hover="border-color:var(--accent);color:var(--accent);background:color-mix(in srgb,var(--accent) 5%,#fff);">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
+            Add step
+          </button>
+        </sc-if>
+
+      </div>
+    </sc-if>
+
+    <!-- no stages empty state -->
+    <sc-if value="{{ noStages }}" hint-placeholder-val="{{ false }}">
+      <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:40px;text-align:center;">
+        <div style="width:56px;height:56px;border-radius:14px;background:color-mix(in srgb,var(--accent) 12%,#fff);display:flex;align-items:center;justify-content:center;">
+          <svg viewBox="0 0 32 32" width="30" height="30"><path d="M16 4 L28 13 L16 28 L4 13 Z" fill="var(--accent)"></path><path d="M16 4 L28 13 L16 13 Z" fill="#fff" opacity="0.3"></path></svg>
+        </div>
+        <div style="font:var(--fw-semibold) 20px/28px var(--font-display);color:var(--fg-primary);">No stages yet</div>
+        <div style="font:var(--fw-regular) 14px/20px var(--font-body);color:var(--fg-tertiary);max-width:320px;">Add your first workflow stage from the sidebar to start building your SOP.</div>
+      </div>
+    </sc-if>
+
+  </main>
+
+  <!-- ===================== LIGHTBOX ===================== -->
+  <sc-if value="{{ showLightbox }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeLightbox }}" style="position:fixed;inset:0;z-index:50;background:rgba(12,17,29,.82);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:48px;cursor:zoom-out;">
+      <img src="{{ lightboxSrc }}" alt="full reference" style="max-width:92vw;max-height:90vh;border-radius:12px;box-shadow:var(--shadow-2xl);"/>
+      <button onClick="{{ closeLightbox }}" title="Close" style="position:absolute;top:24px;right:24px;width:40px;height:40px;display:flex;align-items:center;justify-content:center;border:0;border-radius:10px;background:rgba(255,255,255,.12);color:#fff;cursor:pointer;" style-hover="background:rgba(255,255,255,.22);">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+      </button>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:820},&quot;accentColor&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#7F56D9&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;sidebarTheme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;light&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;ink&quot;,&quot;charcoal&quot;],&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  state = { stages: [], selectedId: null, locked: true, loaded: false, lightboxSrc: '' };
+
+  // ---------- lifecycle ----------
+  componentDidMount() {
+    let data = null;
+    try { data = JSON.parse(localStorage.getItem('hgm_sop_v2')); } catch (e) {}
+    if (!data || !Array.isArray(data.stages) || !data.stages.length) data = this.seed();
+    const sel = data.selectedId && data.stages.some(s => s.id === data.selectedId)
+      ? data.selectedId : (data.stages[0] && data.stages[0].id) || null;
+    this.setState({
+      stages: data.stages,
+      selectedId: sel,
+      locked: data.locked !== undefined ? data.locked : true,
+      loaded: true
+    });
+  }
+
+  // ---------- helpers ----------
+  uid() { return 'id' + Math.random().toString(36).slice(2, 9); }
+
+  persist(stages, selectedId, locked) {
+    try { localStorage.setItem('hgm_sop_v2', JSON.stringify({ stages, selectedId, locked })); } catch (e) {}
+  }
+
+  // central mutation: deep-clones stages, runs mutator, persists, sets state
+  update = (mutator) => {
+    this.setState(prev => {
+      const stages = prev.stages.map(s => ({ ...s, steps: s.steps.map(st => ({ ...st })) }));
+      const patch = mutator(stages, prev) || {};
+      const next = {
+        stages: patch.stages !== undefined ? patch.stages : stages,
+        selectedId: patch.selectedId !== undefined ? patch.selectedId : prev.selectedId,
+        locked: patch.locked !== undefined ? patch.locked : prev.locked
+      };
+      this.persist(next.stages, next.selectedId, next.locked);
+      return next;
+    });
+  };
+
+  // ---------- handlers ----------
+  selectStage = (e) => {
+    const id = e.currentTarget.dataset.id;
+    this.setState({ selectedId: id });
+    this.persist(this.state.stages, id, this.state.locked);
+  };
+
+  toggleLock = () => this.update((stages, prev) => ({ locked: !prev.locked }));
+
+  moveStage = (e) => {
+    e.stopPropagation();
+    const id = e.currentTarget.dataset.id;
+    const dir = parseInt(e.currentTarget.dataset.dir, 10);
+    this.update((stages) => {
+      const i = stages.findIndex(s => s.id === id);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= stages.length) return;
+      const t = stages[i]; stages[i] = stages[j]; stages[j] = t;
+    });
+  };
+
+  addStage = () => this.update((stages) => {
+    const id = this.uid();
+    stages.push({ id, name: 'New Stage', steps: [] });
+    return { selectedId: id, locked: false };
+  });
+
+  deleteStage = (e) => {
+    e.stopPropagation();
+    const id = e.currentTarget.dataset.id;
+    this.update((stages, prev) => {
+      const i = stages.findIndex(s => s.id === id);
+      if (i > -1) stages.splice(i, 1);
+      let sel = prev.selectedId;
+      if (sel === id) sel = (stages[i] && stages[i].id) || (stages[i - 1] && stages[i - 1].id) || (stages[0] && stages[0].id) || null;
+      return { selectedId: sel };
+    });
+  };
+
+  addStep = () => this.update((stages, prev) => {
+    const s = stages.find(x => x.id === prev.selectedId);
+    if (s) s.steps.push({ id: this.uid(), heading: 'New step', tool: '', command: '', image: '' });
+  });
+
+  insertStep = (e) => {
+    const sid = e.currentTarget.dataset.id;
+    const pos = e.currentTarget.dataset.pos; // 'before' | 'after'
+    this.update((stages, prev) => {
+      const s = stages.find(x => x.id === prev.selectedId);
+      if (!s) return;
+      const i = s.steps.findIndex(st => st.id === sid);
+      if (i < 0) return;
+      const at = pos === 'before' ? i : i + 1;
+      s.steps.splice(at, 0, { id: this.uid(), heading: 'New step', tool: '', command: '', image: '' });
+    });
+  };
+
+  deleteStep = (e) => {
+    const sid = e.currentTarget.dataset.id;
+    this.update((stages, prev) => {
+      const s = stages.find(x => x.id === prev.selectedId);
+      if (s) s.steps = s.steps.filter(st => st.id !== sid);
+    });
+  };
+
+  moveStep = (e) => {
+    const sid = e.currentTarget.dataset.id;
+    const dir = parseInt(e.currentTarget.dataset.dir, 10);
+    this.update((stages, prev) => {
+      const s = stages.find(x => x.id === prev.selectedId);
+      if (!s) return;
+      const i = s.steps.findIndex(st => st.id === sid);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= s.steps.length) return;
+      const t = s.steps[i]; s.steps[i] = s.steps[j]; s.steps[j] = t;
+    });
+  };
+
+  commitField = (e) => {
+    const el = e.currentTarget;
+    const { scope, field, id } = el.dataset;
+    const val = (el.textContent || '').replace(/\u00a0/g, ' ').trim();
+    this.update((stages, prev) => {
+      if (scope === 'stage') {
+        const s = stages.find(x => x.id === id);
+        if (s) s.name = val || 'Untitled stage';
+      } else {
+        const s = stages.find(x => x.id === prev.selectedId);
+        const st = s && s.steps.find(x => x.id === id);
+        if (st) st[field] = val;
+      }
+    });
+  };
+
+  onFieldKey = (e) => {
+    // single-line fields: Enter commits instead of inserting a newline
+    if (e.currentTarget.dataset.field !== 'command' && e.key === 'Enter') {
+      e.preventDefault();
+      e.currentTarget.blur();
+    }
+  };
+
+  onPaste = (e) => {
+    e.preventDefault();
+    const text = (e.clipboardData || window.clipboardData).getData('text');
+    document.execCommand('insertText', false, text);
+  };
+
+  onImagePick = (e) => {
+    const id = e.currentTarget.dataset.id;
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      this.update((stages, prev) => {
+        const s = stages.find(x => x.id === prev.selectedId);
+        const st = s && s.steps.find(x => x.id === id);
+        if (st) st.image = reader.result;
+      });
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  openLightbox = (e) => {
+    e.stopPropagation();
+    const id = e.currentTarget.dataset.id;
+    const s = this.state.stages.find(x => x.id === this.state.selectedId);
+    const st = s && s.steps.find(x => x.id === id);
+    if (st && st.image) this.setState({ lightboxSrc: st.image });
+  };
+
+  closeLightbox = () => this.setState({ lightboxSrc: '' });
+
+  removeImage = (e) => {
+    e.stopPropagation();
+    const id = e.currentTarget.dataset.id;
+    this.update((stages, prev) => {
+      const s = stages.find(x => x.id === prev.selectedId);
+      const st = s && s.steps.find(x => x.id === id);
+      if (st) st.image = '';
+    });
+  };
+
+  // ---------- seed content ----------
+  seed() {
+    const S = (heading, tool, command) => ({ id: this.uid(), heading, tool, command, image: '' });
+    const stages = [
+      { id: this.uid(), name: '1. Workflow & Roles', steps: [
+        S('Owner account ownership', 'Security', 'The Website Owner registers and retains absolute ownership of the financial (Stripe), PMS (Guesty/Hostaway), and hosting (Netlify) accounts. Owner also provides DNS / domain registrar access.'),
+        S('Builder / developer duties', 'Dev Team', 'The Developer acts as builder only: assemble HTML/JS with Claude, initialize Git and push to GitHub, expose local servers for preview, and configure webhooks & build settings — inserting keys without owning the accounts.'),
+        S('Confirm the architecture', 'Notion', "You are deploying a static HTML + client-side JavaScript portal. No backend database setup is required — all credentials live in the browser's localStorage or are injected as Netlify environment variables.")
+      ]},
+      { id: this.uid(), name: '2. Install Dev Tools', steps: [
+        S('Install Visual Studio Code', 'VS Code', 'Download and install the primary code editor from code.visualstudio.com'),
+        S('Install Node.js (LTS)', 'Node.js', 'Download the LTS build from nodejs.org — required to run JavaScript packages and CLI utilities.'),
+        S('Install Git', 'Git', 'Download the version control engine from git-scm.com/downloads — this pushes files to GitHub.'),
+        S('Verify the installs', 'Terminal', `node -v\ngit --version\n\nBoth commands should return version numbers.`)
+      ]},
+      { id: this.uid(), name: '3. Folder & Workspace', steps: [
+        S('Create the project directory', 'Terminal', `mkdir -p ~/projects/taberg-falls-admin\ncd ~/projects/taberg-falls-admin`),
+        S('Open the folder in VS Code', 'VS Code', `code .\n\nIf this fails, open VS Code manually → File → Open Folder → select the taberg-falls-admin folder.`),
+        S('Open the integrated terminal', 'VS Code', 'Use the shortcut Ctrl + ` or select Terminal → New Terminal. All subsequent commands are typed into this terminal window.')
+      ]},
+      { id: this.uid(), name: '4. Local Git Setup', steps: [
+        S('Initialize Git', 'Git', `git init\n\n⚠️ Run strictly from inside the taberg-falls-admin directory so Git is not initialized in your home path.`),
+        S('Configure name & email', 'Git', `git config --global user.name "Your Name"\ngit config --global user.email "you@example.com"`),
+        S('Create a .gitignore file', 'VS Code', `Right-click the files sidebar → New File → name it exactly .gitignore, then add:\n\n.env\nnode_modules/\n.DS_Store\n*.log`)
+      ]},
+      { id: this.uid(), name: '5. Connect to GitHub', steps: [
+        S('Create a private repository', 'GitHub', 'On GitHub, create a new private repo named taberg-falls-admin. Do NOT add a README or license.'),
+        S('Stage & commit locally', 'Git', `git add .\ngit commit -m "initial dashboard commit"`),
+        S('Add remote & push', 'Git', `git remote add origin https://github.com/YOUR_GITHUB_USERNAME/taberg-falls-admin.git\ngit branch -M main\ngit push -u origin main\n\n⚠️ Replace YOUR_GITHUB_USERNAME with your actual GitHub username.`)
+      ]},
+      { id: this.uid(), name: '6. Prompting Claude', steps: [
+        S('Aesthetic styling prompt', 'Claude', `"Can you review the design styles in my index.html and update the colors to use a premium, warm stone and soft charcoal aesthetic? Use HSL curated colors, Inter font, Cormorant Garamond for serif headers, and subtle amber (#c9a96e) for active borders and buttons. Avoid harsh plain black, red, or green. Provide the complete modified HTML file."`),
+        S('Feature insertion prompt', 'Claude', `"I want to add a settings form into my index.html settings panel to save PMS and Stripe keys in the browser's localStorage. Please provide the HTML forms and the JavaScript functions to read the keys on load, save them when clicking 'Save', and clear them when clicking 'Reset'. Write the complete updated file."`)
+      ]},
+      { id: this.uid(), name: '7. Run Local Server', steps: [
+        S('Start the Python server', 'Terminal', `python3 -m http.server 8000\n\nRun inside your VS Code workspace terminal.`),
+        S('Open in the browser', 'Browser', `http://localhost:8000/index.html`)
+      ]},
+      { id: this.uid(), name: '8. Save & Push Cycles', steps: [
+        S('Check status', 'Git', `git status`),
+        S('Stage changes', 'Git', `git add .`),
+        S('Commit a checkpoint', 'Git', `git commit -m "completed settings forms and guide integration"`),
+        S('Push to the cloud', 'Git', `git push`)
+      ]},
+      { id: this.uid(), name: '9. Stripe & PMS Sync', steps: [
+        S('Obtain Stripe keys', 'Stripe', 'Stripe keys authorize checkouts. Retrieve the publishable & secret keys from dashboard.stripe.com → Developers → API Keys.'),
+        S('Obtain Guesty PMS keys', 'Guesty', 'Allows syncing calendars. Generate client credentials in Guesty → Integrations → API keys.')
+      ]},
+      { id: this.uid(), name: '10. Deploy to Netlify / Vercel', steps: [
+        S('Netlify — link the repo', 'Netlify', 'Authorize Netlify to read your GitHub repo, choose taberg-falls-admin, leave build commands blank, set publish directory to "." and click Deploy.'),
+        S('Netlify — environment variables', 'Netlify', 'Site Settings → Environment variables. Inject keys like STRIPE_SECRET_KEY and GUESTY_CLIENT_ID securely without writing them in code.'),
+        S('Vercel — import the project', 'Vercel', 'Vercel → Add New → Project → import taberg-falls-admin. Choose preset "Other" (static files), leave build settings empty, click Deploy.'),
+        S('Vercel — environment variables', 'Vercel', 'Project Settings → Environment Variables → add the Stripe/PMS keys, then re-trigger the deployment to build with the secure keys active.')
+      ]},
+      { id: this.uid(), name: '11. Supabase Setup', steps: [
+        S('Create a Supabase project', 'Supabase', 'Sign in to database.supabase.com, create a project named taberg-falls-db, choose a nearby region, and define a database password.'),
+        S('Run the SQL migration', 'Supabase SQL', `-- Create Listings Table\nCREATE TABLE public.listings (\n  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,\n  title text NOT NULL,\n  description text,\n  price_per_night numeric NOT NULL,\n  image_urls text[] DEFAULT '{}'::text[],\n  bedrooms integer,\n  bathrooms numeric,\n  max_guests integer,\n  created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL\n);\n\n-- Create Bookings Table\nCREATE TABLE public.bookings (\n  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,\n  listing_id uuid REFERENCES public.listings(id) ON DELETE CASCADE,\n  guest_name text NOT NULL,\n  guest_email text NOT NULL,\n  check_in date NOT NULL,\n  check_out date NOT NULL,\n  total_price numeric NOT NULL,\n  status text DEFAULT 'pending'::text,\n  created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL\n);\n\n-- Enable Row Level Security\nALTER TABLE public.listings ENABLE ROW LEVEL SECURITY;\nALTER TABLE public.bookings ENABLE ROW LEVEL SECURITY;\n\n-- Public Access Policies\nCREATE POLICY "Allow public read listings" ON public.listings FOR SELECT TO public USING (true);\nCREATE POLICY "Allow guests to create bookings" ON public.bookings FOR INSERT TO public WITH CHECK (true);`),
+        S('Create the storage bucket', 'Supabase', 'Storage → create a new public bucket named listing-images to hold all public property photographs.'),
+        S('Copy URL & anon key', 'Supabase', 'Project Settings → API → copy the Project URL and the anon / public key, then paste them into your Admin Dashboard integrations settings.')
+      ]},
+      { id: this.uid(), name: '12. Webhooks & Crons', steps: [
+        S('Stripe webhook signing secret', 'Stripe', 'dashboard.stripe.com → Developers → Webhooks. Add your live Netlify endpoint URL and copy the whsec_... signing secret into your Netlify env variables.'),
+        S('Configure the auto-charge cron', 'Netlify', `Inside netlify/functions/auto-charge.js, schedule the serverless function to run daily at 8:00 AM:\n\nexport const config = { schedule: "0 8 * * *" };`)
+      ]},
+      { id: this.uid(), name: '13. Handoff & Verification', steps: [
+        S('Simulate a test checkout', 'Stripe', 'Perform a mock reservation with Stripe test card 4242 4242 4242 4242 and verify it registers on the dashboard reservations tab.'),
+        S('Custom domain & DNS', 'Netlify', 'Link your custom domain (e.g. admin.tabergfalls.com) under Netlify Domain Settings, then add a CNAME at your registrar pointing to the Netlify subdomain. SSL is generated automatically.'),
+        S('Security handoff', 'Netlify', 'Demote developer accounts in the Netlify site workspace. Verify the owner is the sole owner and administrator of all production accounts.')
+      ]},
+      { id: this.uid(), name: '14. Analytics & Tracking', steps: [
+        S('Google site verification', 'Search Console', 'Add the verification meta tag (obtain from Shawal), or confirm whether domain-level DNS TXT verification is already set up at the registrar.'),
+        S('Google Analytics (GA4)', 'Google Analytics', `\x3cscript async src="https://www.googletagmanager.com/gtag/js?id=G-9RCS0HW3K2">\x3c/script>\n\x3cscript>\n  window.dataLayer = window.dataLayer || [];\n  function gtag(){dataLayer.push(arguments);}\n  gtag('js', new Date());\n  gtag('config', 'G-9RCS0HW3K2');\n\x3c/script>`),
+        S('Hotjar behavior tracking', 'Hotjar', `\x3cscript>\n  (function(h,o,t,j,a,r){\n    h.hj=h.hj||function(){(h.hj.q=h.hj.q||[]).push(arguments)};\n    h._hjSettings={hjid:6730073,hjsv:6};\n    a=o.getElementsByTagName('head')[0];\n    r=o.createElement('script');r.async=1;\n    r.src=t+h._hjSettings.hjid+j+h._hjSettings.hjsv;\n    a.appendChild(r);\n  })(window,document,'https://static.hotjar.com/c/hotjar-','.js?sv=');\n\x3c/script>`),
+        S('Facebook Pixel (Meta)', 'Meta Pixel', `\x3cscript>\n  !function(f,b,e,v,n,t,s)\n  {if(f.fbq)return;n=f.fbq=function(){n.callMethod?\n  n.callMethod.apply(n,arguments):n.queue.push(arguments)};\n  if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';\n  n.queue=[];t=b.createElement(e);t.async=!0;\n  t.src=v;s=b.getElementsByTagName(e)[0];\n  s.parentNode.insertBefore(t,s)}(window,document,'script',\n  'https://connect.facebook.net/en_US/fbevents.js');\n  fbq('init', '964214909847907');\n  fbq('track', 'PageView');\n\x3c/script>`)
+      ]}
+    ];
+    return { stages, selectedId: stages[0].id, locked: true };
+  }
+
+  // ---------- render ----------
+  renderVals() {
+    const { stages, selectedId, locked } = this.state;
+    const editing = !locked;
+
+    const accent = this.props.accentColor || '#7F56D9';
+    const fieldBorder = editing ? 'var(--border-primary)' : 'transparent';
+    const fieldBg = editing ? '#FFFFFF' : 'transparent';
+
+    // ---- sidebar theme (light by default) ----
+    const theme = this.props.sidebarTheme || 'light';
+    const isLight = theme === 'light';
+    const darkBg = theme === 'charcoal' ? '#1D2939' : '#0C111D';
+    const sb = isLight ? {
+      bg: '#FFFFFF', border: 'var(--border-secondary)', gem: 'var(--accent)',
+      title: 'var(--fg-primary)', label: '#98A2B3',
+      name: 'var(--fg-secondary)', nameActive: 'var(--fg-primary)',
+      num: '#98A2B3', numActive: 'color-mix(in srgb, var(--accent) 72%, #000)',
+      countFg: 'var(--fg-quaternary)', countFgActive: 'color-mix(in srgb, var(--accent) 75%, #000)',
+      countBg: 'var(--gray-100)', countBgActive: 'color-mix(in srgb, var(--accent) 18%, #fff)',
+      hover: 'color-mix(in srgb, var(--accent) 8%, #fff)', activeBg: 'color-mix(in srgb, var(--accent) 12%, #fff)',
+      ctrlFg: '#98A2B3', ctrlHover: 'var(--gray-100)',
+      btnBg: '#FFFFFF', btnBorder: 'var(--border-primary)', btnFg: 'var(--fg-secondary)', btnHover: 'var(--gray-50)',
+      delHover: 'var(--error-50)', delFgHover: 'var(--error-600)'
+    } : {
+      bg: darkBg, border: 'rgba(255,255,255,.07)', gem: 'color-mix(in srgb, var(--accent) 62%, #fff)',
+      title: '#FFFFFF', label: '#5A6478',
+      name: '#C6CCD8', nameActive: '#FFFFFF',
+      num: '#5A6478', numActive: 'color-mix(in srgb, var(--accent) 55%, #fff)',
+      countFg: '#8A93A6', countFgActive: '#FFFFFF',
+      countBg: 'rgba(255,255,255,.06)', countBgActive: 'color-mix(in srgb, var(--accent) 42%, transparent)',
+      hover: 'color-mix(in srgb, var(--accent) 12%, transparent)', activeBg: 'color-mix(in srgb, var(--accent) 24%, transparent)',
+      ctrlFg: '#8A93A6', ctrlHover: 'rgba(255,255,255,.08)',
+      btnBg: 'rgba(255,255,255,.04)', btnBorder: 'rgba(255,255,255,.12)', btnFg: '#E4E7EC', btnHover: 'rgba(255,255,255,.10)',
+      delHover: 'rgba(240,68,56,.16)', delFgHover: '#FDA29B'
+    };
+
+    const rootStyle = {
+      '--accent': accent,
+      '--field-border': fieldBorder,
+      '--field-bg': fieldBg,
+      '--sb-bg': sb.bg, '--sb-border': sb.border, '--sb-gem': sb.gem,
+      '--sb-title': sb.title, '--sb-label': sb.label,
+      '--sb-hover': sb.hover, '--sb-ctrl-fg': sb.ctrlFg, '--sb-ctrl-hover': sb.ctrlHover,
+      '--sb-del-hover': sb.delHover, '--sb-del-fg-hover': sb.delFgHover,
+      '--sb-btn-bg': sb.btnBg, '--sb-btn-border': sb.btnBorder, '--sb-btn-fg': sb.btnFg, '--sb-btn-hover': sb.btnHover,
+      display: 'flex', width: '100%', height: '100vh',
+      background: 'var(--gray-50)', fontFamily: 'var(--font-body)', overflow: 'hidden'
+    };
+
+    const sel = stages.find(s => s.id === selectedId) || stages[0] || null;
+
+    const stagesView = stages.map((s, i) => {
+      const active = sel && s.id === sel.id;
+      return {
+        id: s.id, name: s.name, count: s.steps.length, num: String(i + 1).padStart(2, '0'), active,
+        itemStyle: {
+          display: 'flex', alignItems: 'center', gap: '11px', padding: '9px 8px 9px 13px',
+          borderRadius: '9px', cursor: 'pointer', position: 'relative',
+          background: active ? sb.activeBg : 'transparent',
+          transition: 'background .12s'
+        },
+        barStyle: {
+          position: 'absolute', left: '0', top: '7px', bottom: '7px', width: '3px',
+          borderRadius: '0 3px 3px 0', background: 'var(--accent)', opacity: active ? 1 : 0
+        },
+        numStyle: {
+          flex: 'none', font: 'var(--fw-semibold) 11px/1 var(--font-mono)',
+          color: active ? sb.numActive : sb.num
+        },
+        nameStyle: {
+          flex: '1', minWidth: '0', font: 'var(--fw-medium) 14px/19px var(--font-body)',
+          color: active ? sb.nameActive : sb.name, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+        },
+        countStyle: {
+          flex: 'none', font: 'var(--fw-semibold) 11px/16px var(--font-body)', textAlign: 'center', minWidth: '20px',
+          color: active ? sb.countFgActive : sb.countFg,
+          background: active ? sb.countBgActive : sb.countBg,
+          borderRadius: '999px', padding: '1px 7px'
+        },
+        isFirst: i === 0, isLast: i === stages.length - 1
+      };
+    });
+
+    const steps = sel ? sel.steps : [];
+    const last = steps.length - 1;
+    const stepsView = steps.map((st, i) => ({
+      id: st.id, heading: st.heading, tool: st.tool, command: st.command, image: st.image,
+      hasImage: !!st.image, showRemove: !!st.image && editing, showUploader: !st.image && editing,
+      number: i + 1, isFirst: i === 0, isLast: i === last,
+      showInsertTop: editing && i === 0
+    }));
+
+    const selIdx = sel ? stages.findIndex(s => s.id === sel.id) : -1;
+    const stepCount = steps.length;
+
+    const lockBtnStyle = {
+      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '10px',
+      borderRadius: '9px', cursor: 'pointer', font: 'var(--fw-semibold) 13px/1 var(--font-body)',
+      border: editing ? '1px solid var(--accent)' : '1px solid ' + sb.btnBorder,
+      background: editing ? 'var(--accent)' : sb.btnBg,
+      color: editing ? '#FFFFFF' : (isLight ? 'var(--fg-tertiary)' : '#98A2B3')
+    };
+
+    const statusStyle = {
+      flex: 'none', display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '6px 12px',
+      borderRadius: '999px', font: 'var(--fw-semibold) 12px/1 var(--font-body)', whiteSpace: 'nowrap',
+      color: editing ? 'var(--fg-brand-primary)' : 'var(--fg-tertiary)',
+      background: editing ? 'color-mix(in srgb, var(--accent) 11%, #fff)' : 'var(--gray-100)',
+      border: editing ? '1px solid color-mix(in srgb, var(--accent) 25%, #fff)' : '1px solid var(--border-secondary)'
+    };
+
+    return {
+      rootStyle, editing, locked,
+      stagesView, stepsView,
+      hasStages: stages.length > 0, noStages: stages.length === 0,
+      hasSteps: stepCount > 0, noSteps: stepCount === 0 && stages.length > 0,
+      selName: sel ? sel.name : '', selId: sel ? sel.id : '',
+      selNum: selIdx >= 0 ? String(selIdx + 1).padStart(2, '0') : '—',
+      stepCountLabel: stepCount + (stepCount === 1 ? ' step' : ' steps'),
+      lockLabel: locked ? 'Editing locked' : 'Editing on',
+      statusText: editing ? 'Editing on — fields are live' : 'Locked — read only',
+      lockBtnStyle, statusStyle,
+      selectStage: this.selectStage, toggleLock: this.toggleLock,
+      addStage: this.addStage, deleteStage: this.deleteStage, moveStage: this.moveStage,
+      addStep: this.addStep, deleteStep: this.deleteStep, moveStep: this.moveStep, insertStep: this.insertStep,
+      commitField: this.commitField, onFieldKey: this.onFieldKey, onPaste: this.onPaste,
+      onImagePick: this.onImagePick, removeImage: this.removeImage,
+      openLightbox: this.openLightbox, closeLightbox: this.closeLightbox,
+      showLightbox: !!this.state.lightboxSrc, lightboxSrc: this.state.lightboxSrc
+    };
+  }
+}
+</script>
+</body>
+</html>

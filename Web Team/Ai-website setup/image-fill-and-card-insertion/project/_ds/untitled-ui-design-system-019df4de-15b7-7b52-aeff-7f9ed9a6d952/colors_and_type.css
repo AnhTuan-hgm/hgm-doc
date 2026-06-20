@@ -1,0 +1,246 @@
+/* ============================================================
+   Untitled UI — Design Tokens
+   Source: Figma "❖ Untitled UI Figma – PRO STYLES (v8.0)"
+   Color system: Tailwind CSS v4.2 palette + brand purple
+   Typography: Inter (Roboto Mono for code)
+   ============================================================ */
+
+/* Display: Libre Caslon Condensed (self-hosted) · Body: Geist · Mono: Geist Mono */
+@font-face{
+  font-family:"Libre Caslon Condensed";
+  src:url("fonts/LibreCaslonCondensed-Variable.ttf") format("truetype-variations"),
+      url("fonts/LibreCaslonCondensed-Regular.ttf") format("truetype");
+  font-weight:300 800;font-style:normal;font-display:swap;
+}
+@font-face{
+  font-family:"Libre Caslon Condensed";
+  src:url("fonts/LibreCaslonCondensed-VariableItalic.ttf") format("truetype-variations"),
+      url("fonts/LibreCaslonCondensed-Italic.ttf") format("truetype");
+  font-weight:300 800;font-style:italic;font-display:swap;
+}
+@import url("https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500;700&display=swap");
+
+:root {
+  /* ---------- BRAND ---------- */
+  --brand-25:  #FAFAFF;
+  --brand-50:  #F4F3FF;
+  --brand-100: #EBE9FE;
+  --brand-200: #D9D6FE;
+  --brand-300: #BDB4FE;
+  --brand-400: #9B8AFB;
+  --brand-500: #7A5AF8;
+  --brand-600: #6938EF;
+  --brand-700: #5925DC;
+  --brand-800: #4A1FB8;
+  --brand-900: #3E1C96;
+  --brand-950: #27115F;
+
+  /* Untitled UI uses the "Violet" palette as default brand */
+  --brand-primary: #7F56D9;     /* primary 600 — main CTA */
+  --brand-primary-hover: #6941C6;/* primary 700 */
+  --brand-primary-active: #53389E;
+  --brand-primary-fg: #6941C6;  /* link color */
+
+  /* ---------- GRAY (Neutral / "Gray light mode") ---------- */
+  --gray-25:  #FCFCFD;
+  --gray-50:  #F9FAFB;
+  --gray-100: #F2F4F7;
+  --gray-200: #EAECF0;
+  --gray-300: #D0D5DD;
+  --gray-400: #98A2B3;
+  --gray-500: #667085;
+  --gray-600: #475467;
+  --gray-700: #344054;
+  --gray-800: #1D2939;
+  --gray-900: #101828;
+  --gray-950: #0C111D;
+
+  /* ---------- SEMANTIC COLORS ---------- */
+  /* Error / red */
+  --error-25:  #FFFBFA;
+  --error-50:  #FEF3F2;
+  --error-100: #FEE4E2;
+  --error-200: #FECDCA;
+  --error-300: #FDA29B;
+  --error-500: #F04438;
+  --error-600: #D92D20;
+  --error-700: #B42318;
+
+  /* Warning / amber */
+  --warning-25:  #FFFCF5;
+  --warning-50:  #FFFAEB;
+  --warning-100: #FEF0C7;
+  --warning-300: #FEC84B;
+  --warning-500: #F79009;
+  --warning-600: #DC6803;
+  --warning-700: #B54708;
+
+  /* Success / green */
+  --success-25:  #F6FEF9;
+  --success-50:  #ECFDF3;
+  --success-100: #DCFAE6;
+  --success-300: #6CE9A6;
+  --success-500: #12B76A;
+  --success-600: #079455;
+  --success-700: #027A48;
+
+  /* Blue (info) */
+  --blue-50:  #EFF8FF;
+  --blue-100: #D1E9FF;
+  --blue-500: #2E90FA;
+  --blue-600: #1570EF;
+  --blue-700: #175CD3;
+
+  /* Pink */
+  --pink-50:  #FDF2FA;
+  --pink-100: #FCE7F6;
+  --pink-500: #EE46BC;
+  --pink-600: #DD2590;
+  --pink-700: #C11574;
+
+  /* ---------- SEMANTIC TOKENS ---------- */
+  --bg-primary:        #FFFFFF;
+  --bg-secondary:      var(--gray-50);
+  --bg-tertiary:       var(--gray-100);
+  --bg-quaternary:     var(--gray-200);
+  --bg-active:         var(--gray-50);
+  --bg-disabled:       var(--gray-100);
+  --bg-overlay:        var(--gray-950);
+  --bg-brand-primary:  var(--brand-primary);
+  --bg-brand-solid:    var(--brand-primary);
+  --bg-brand-secondary:var(--brand-50);
+  --bg-error-primary:  var(--error-600);
+  --bg-success-primary:var(--success-600);
+
+  /* Foreground / text */
+  --fg-primary:        var(--gray-900);
+  --fg-secondary:      var(--gray-700);
+  --fg-tertiary:       var(--gray-600);
+  --fg-quaternary:     var(--gray-500);
+  --fg-quinary:        var(--gray-400);
+  --fg-disabled:       var(--gray-400);
+  --fg-placeholder:    var(--gray-500);
+  --fg-brand-primary:  var(--brand-primary-fg);
+  --fg-brand-secondary:var(--brand-primary);
+  --fg-error-primary:  var(--error-600);
+  --fg-success-primary:var(--success-700);
+  --fg-warning-primary:var(--warning-600);
+  --fg-on-brand:       #FFFFFF;
+
+  /* Borders */
+  --border-primary:    var(--gray-300);
+  --border-secondary:  var(--gray-200);
+  --border-tertiary:   var(--gray-100);
+  --border-disabled:   var(--gray-200);
+  --border-brand:      var(--brand-primary);
+  --border-error:      var(--error-500);
+
+  /* ---------- TYPOGRAPHY ---------- */
+  --font-display: "Libre Caslon Condensed", "Cormorant Garamond", Georgia, serif;
+  --font-body:    "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono:    "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --fw-regular: 400;
+  --fw-medium:  500;
+  --fw-semibold:600;
+  --fw-bold:    700;
+
+  /* Display scale (-2% letter-spacing) */
+  --text-display-2xl: 72px;  --lh-display-2xl: 90px;
+  --text-display-xl:  60px;  --lh-display-xl:  72px;
+  --text-display-lg:  48px;  --lh-display-lg:  60px;
+  --text-display-md:  36px;  --lh-display-md:  44px;
+  --text-display-sm:  30px;  --lh-display-sm:  38px;
+  --text-display-xs:  24px;  --lh-display-xs:  32px;
+
+  /* Text scale */
+  --text-xl: 20px; --lh-xl: 30px;
+  --text-lg: 18px; --lh-lg: 28px;
+  --text-md: 16px; --lh-md: 24px;
+  --text-sm: 14px; --lh-sm: 20px;
+  --text-xs: 12px; --lh-xs: 18px;
+
+  --tracking-display: -0.02em;
+  --tracking-tight:   -0.01em;
+  --tracking-normal:  0;
+
+  /* ---------- SPACING (4px scale) ---------- */
+  --space-0:   0;
+  --space-0_5: 2px;
+  --space-1:   4px;
+  --space-1_5: 6px;
+  --space-2:   8px;
+  --space-3:   12px;
+  --space-4:   16px;
+  --space-5:   20px;
+  --space-6:   24px;
+  --space-8:   32px;
+  --space-10:  40px;
+  --space-12:  48px;
+  --space-16:  64px;
+  --space-20:  80px;
+  --space-24:  96px;
+  --space-32:  128px;
+
+  /* ---------- RADIUS ---------- */
+  --radius-none: 0;
+  --radius-xxs:  2px;
+  --radius-xs:   4px;
+  --radius-sm:   6px;
+  --radius-md:   8px;
+  --radius-lg:   10px;
+  --radius-xl:   12px;
+  --radius-2xl:  16px;
+  --radius-3xl:  20px;
+  --radius-4xl:  24px;
+  --radius-full: 9999px;
+
+  /* ---------- SHADOWS ---------- */
+  --shadow-xs:  0px 1px 2px 0px rgba(16,24,40,0.05);
+  --shadow-sm:  0px 1px 2px 0px rgba(16,24,40,0.06), 0px 1px 3px 0px rgba(16,24,40,0.10);
+  --shadow-md:  0px 2px 4px -2px rgba(16,24,40,0.06), 0px 4px 8px -2px rgba(16,24,40,0.10);
+  --shadow-lg:  0px 4px 6px -2px rgba(16,24,40,0.03), 0px 12px 16px -4px rgba(16,24,40,0.08);
+  --shadow-xl:  0px 8px 8px -4px rgba(16,24,40,0.03), 0px 20px 24px -4px rgba(16,24,40,0.08);
+  --shadow-2xl: 0px 24px 48px -12px rgba(16,24,40,0.18);
+  --shadow-3xl: 0px 32px 64px -12px rgba(16,24,40,0.14);
+
+  /* Skeuomorphic button shadow (used in primary buttons) */
+  --shadow-skeu-primary: 0px 1px 2px 0px rgba(16,24,40,0.05), 0px 0px 0px 1px rgba(0,0,0,0.20);
+  --shadow-focus-brand:  0px 0px 0px 4px rgba(127,86,217,0.24);
+  --shadow-focus-error:  0px 0px 0px 4px rgba(240,68,56,0.24);
+
+  /* ---------- BLURS ---------- */
+  --blur-sm: 4px;
+  --blur-md: 8px;
+  --blur-lg: 16px;
+}
+
+/* ============================================================
+   Semantic element styles
+   ============================================================ */
+html { font-family: var(--font-body); color: var(--fg-primary); -webkit-font-smoothing: antialiased; }
+body { margin: 0; background: var(--bg-primary); }
+
+h1, .h1 { font: var(--fw-semibold) var(--text-display-lg)/var(--lh-display-lg) var(--font-display); letter-spacing: var(--tracking-display); color: var(--fg-primary); margin: 0; }
+h2, .h2 { font: var(--fw-semibold) var(--text-display-md)/var(--lh-display-md) var(--font-display); letter-spacing: var(--tracking-display); color: var(--fg-primary); margin: 0; }
+h3, .h3 { font: var(--fw-semibold) var(--text-display-sm)/var(--lh-display-sm) var(--font-display); letter-spacing: var(--tracking-tight); color: var(--fg-primary); margin: 0; }
+h4, .h4 { font: var(--fw-semibold) var(--text-display-xs)/var(--lh-display-xs) var(--font-display); color: var(--fg-primary); margin: 0; }
+h5, .h5 { font: var(--fw-semibold) var(--text-xl)/var(--lh-xl) var(--font-display); color: var(--fg-primary); margin: 0; }
+h6, .h6 { font: var(--fw-semibold) var(--text-lg)/var(--lh-lg) var(--font-display); color: var(--fg-primary); margin: 0; }
+
+p, .p, .text-md { font: var(--fw-regular) var(--text-md)/var(--lh-md) var(--font-body); color: var(--fg-secondary); margin: 0; }
+.text-sm { font: var(--fw-regular) var(--text-sm)/var(--lh-sm) var(--font-body); color: var(--fg-secondary); }
+.text-xs { font: var(--fw-regular) var(--text-xs)/var(--lh-xs) var(--font-body); color: var(--fg-tertiary); }
+.text-lg { font: var(--fw-regular) var(--text-lg)/var(--lh-lg) var(--font-body); }
+.text-xl { font: var(--fw-regular) var(--text-xl)/var(--lh-xl) var(--font-body); }
+
+.label { font: var(--fw-medium) var(--text-sm)/var(--lh-sm) var(--font-body); color: var(--fg-secondary); }
+.eyebrow { font: var(--fw-semibold) var(--text-sm)/var(--lh-sm) var(--font-body); color: var(--fg-brand-primary); letter-spacing: 0; }
+
+code, .code, kbd { font: var(--fw-regular) var(--text-sm)/var(--lh-sm) var(--font-mono); color: var(--fg-primary); background: var(--gray-50); border: 1px solid var(--border-secondary); border-radius: var(--radius-sm); padding: 2px 6px; }
+pre.code { padding: 16px; border-radius: var(--radius-md); overflow: auto; }
+
+a, .link { color: var(--fg-brand-primary); text-decoration: none; font-weight: var(--fw-semibold); }
+a:hover { color: var(--brand-primary-active); }
+
+hr { border: 0; border-top: 1px solid var(--border-secondary); margin: var(--space-6) 0; }
