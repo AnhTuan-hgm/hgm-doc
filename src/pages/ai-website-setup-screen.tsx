@@ -435,7 +435,7 @@ const StepCard = ({
                 </div>
             )}
 
-            <div className="rounded-2xl border border-secondary bg-primary shadow-xs">
+            <div className="rounded-2xl border border-secondary bg-primary pb-8 shadow-xs">
                 {/* title row */}
                 <div className="flex items-start gap-3.5 p-5 pb-0">
                     <div className="flex size-[34px] shrink-0 items-center justify-center rounded-full bg-brand-100 font-bold text-[15px] text-brand-700 dark:bg-brand-950/40 dark:text-brand-300">
@@ -606,7 +606,7 @@ const StepCard = ({
 
                 {/* note */}
                 {(editing || !!step.note) && (
-                    <div className="mt-3.5 flex flex-col gap-1.5 px-5 pb-5 pl-[69px]">
+                    <div className="mt-3.5 flex flex-col gap-1.5 px-5 pl-[69px]">
                         <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-quaternary">Note</p>
                         {editing ? (
                             <textarea
@@ -624,7 +624,7 @@ const StepCard = ({
 
                 {/* image */}
                 {step.image ? (
-                    <div className="relative mx-5 mb-5 ml-[69px]">
+                    <div className="relative mx-5 ml-[69px]">
                         <ImageWithMagnifier
                                         src={step.image}
                                         editing={editing}
@@ -639,7 +639,7 @@ const StepCard = ({
                         )}
                     </div>
                 ) : editing ? (
-                    <label className="mx-5 mb-5 ml-[69px] flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-[1.5px] border-dashed border-primary bg-secondary py-8 text-[13px] font-medium text-tertiary transition duration-100 ease-linear hover:border-brand hover:bg-brand-50 hover:text-brand-700">
+                    <label className="mx-5 ml-[69px] flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-[1.5px] border-dashed border-primary bg-secondary py-8 text-[13px] font-medium text-tertiary transition duration-100 ease-linear hover:border-brand hover:bg-brand-50 hover:text-brand-700">
                         <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleImage} />
                         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                             <rect x="3" y="3" width="18" height="18" rx="2" />
