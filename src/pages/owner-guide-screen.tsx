@@ -604,18 +604,20 @@ const StepCard = ({
                 </div>
 
                 {/* note */}
-                <div className="mt-3.5 flex flex-col gap-1.5 px-5 pb-5 pl-[69px]">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-quaternary">Note</p>
-                    {editing ? (
-                        <textarea value={step.note ?? ""}
-                            onChange={(e) => onUpdate(step.id, "note", e.target.value)}
-                            placeholder="Add a note…" rows={2}
-                            className="w-full resize-y border-0 bg-transparent px-0 py-0 text-[13.5px] leading-[22px] text-secondary outline-none placeholder:text-placeholder"
-                        />
-                    ) : step.note ? (
-                        <p className="text-[13.5px] leading-[22px] text-secondary">{step.note}</p>
-                    ) : null}
-                </div>
+                {(editing || !!step.note) && (
+                    <div className="mt-3.5 flex flex-col gap-1.5 px-5 pb-5 pl-[69px]">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-quaternary">Note</p>
+                        {editing ? (
+                            <textarea value={step.note ?? ""}
+                                onChange={(e) => onUpdate(step.id, "note", e.target.value)}
+                                placeholder="Add a note…" rows={2}
+                                className="w-full resize-y border-0 bg-transparent px-0 py-0 text-[13.5px] leading-[22px] text-secondary outline-none placeholder:text-placeholder"
+                            />
+                        ) : (
+                            <p className="text-[13.5px] leading-[22px] text-secondary">{step.note}</p>
+                        )}
+                    </div>
+                )}
 
                 {/* image */}
                 {step.image ? (
