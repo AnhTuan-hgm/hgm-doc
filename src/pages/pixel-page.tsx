@@ -381,11 +381,8 @@ export const PixelPage = ({
 
                     {/* ── Footer ── */}
                     <footer className="mt-14 border-t border-secondary pt-6">
-                        <img
-                            src="/hgm logo/Logo WIth Word Mark(Style 1).svg"
-                            alt="HiddenGem Media"
-                            className="h-10 opacity-60 dark:invert"
-                        />
+                        <img src="/hgm logo/Logo ON LIGHT.svg" alt="HiddenGem Media" className="h-10 opacity-60 dark:hidden" draggable={false} />
+                        <img src="/hgm logo/LOGO ON Dark.svg" alt="HiddenGem Media" className="hidden h-10 opacity-70 dark:block" draggable={false} />
                     </footer>
                 </div>
             </article>
