@@ -207,7 +207,7 @@ const PageRow = ({
             {/* URL */}
             <td className="px-6 py-4">
                 <span className="inline-flex items-center gap-1 rounded-md bg-secondary px-2 py-1 font-mono text-xs text-tertiary">
-                    hgm-docs.netlify.app/{page.slug}
+                    docs-hgm.netlify.app/{page.slug}
                 </span>
             </td>
 

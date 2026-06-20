@@ -186,7 +186,7 @@ const GuideContent = () => (
                         Copy the page URL from the address bar and send it to the client. It will always
                         follow the format:{" "}
                         <code className="rounded bg-secondary px-1.5 py-0.5 font-mono text-xs">
-                            hgm-docs.netlify.app/client-name
+                            docs-hgm.netlify.app/client-name
                         </code>
                     </Step>
                 </ol>

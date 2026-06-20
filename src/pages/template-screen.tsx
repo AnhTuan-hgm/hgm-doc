@@ -22,7 +22,7 @@ export const TemplateScreen = () => {
     const [error, setError] = useState("");
 
     const slug = slugify(clientName);
-    const previewUrl = slug ? `hgm-docs.netlify.app/${slug}` : null;
+    const previewUrl = slug ? `docs-hgm.netlify.app/${slug}` : null;
 
     const handleGenerate = async () => {
         if (!slug) return;

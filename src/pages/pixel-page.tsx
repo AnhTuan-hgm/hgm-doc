@@ -586,7 +586,7 @@ export const PixelPage = ({
                                         <p className="text-xs text-tertiary">
                                             Page URL:{" "}
                                             <span className="font-medium text-brand-secondary">
-                                                hgm-docs.netlify.app/{slugify(newClientName)}
+                                                docs-hgm.netlify.app/{slugify(newClientName)}
                                             </span>
                                         </p>
                                     )}
