@@ -4,7 +4,7 @@ import { cx } from "@/utils/cx";
 
 /* ── Types ───────────────────────────────────────────────────────── */
 
-type Step = { id: string; heading: string; tool: string; command: string; image: string };
+type Step = { id: string; heading: string; tool: string; command: string; note?: string; image: string };
 type Stage = { id: string; name: string; steps: Step[] };
 type SOPState = { stages: Stage[]; selectedId: string | null; locked: boolean };
 
@@ -15,7 +15,7 @@ const STORAGE_KEY = "hgm_sop_v2";
 const uid = () => "id" + Math.random().toString(36).slice(2, 9);
 
 function mkStep(heading = "New step"): Step {
-    return { id: uid(), heading, tool: "", command: "", image: "" };
+    return { id: uid(), heading, tool: "", command: "", note: "", image: "" };
 }
 
 function seed(): SOPState {
@@ -157,6 +157,84 @@ const IconBtn = ({ onClick, title, danger, className, children }: {
     </button>
 );
 
+/* ── Image with magnifier ────────────────────────────────────────── */
+
+const LENS = 130; // circle diameter px
+const ZOOM = 2;
+
+const ImageWithMagnifier = ({ src }: { src: string }) => {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const imgRef = useRef<HTMLImageElement>(null);
+    const [pos, setPos] = useState({ x: 0.5, y: 0.5 });
+    const [dims, setDims] = useState({ w: 0, h: 0 });
+    const dragging = useRef(false);
+
+    const refreshDims = () => {
+        if (imgRef.current) setDims({ w: imgRef.current.offsetWidth, h: imgRef.current.offsetHeight });
+    };
+
+    useEffect(() => {
+        window.addEventListener("resize", refreshDims);
+        return () => window.removeEventListener("resize", refreshDims);
+    }, []);
+
+    const move = (clientX: number, clientY: number) => {
+        const rect = containerRef.current?.getBoundingClientRect();
+        if (!rect) return;
+        setPos({
+            x: Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)),
+            y: Math.max(0, Math.min(1, (clientY - rect.top) / rect.height)),
+        });
+    };
+
+    const lensLeft = pos.x * dims.w - LENS / 2;
+    const lensTop  = pos.y * dims.h - LENS / 2;
+    const bgX = -(pos.x * dims.w * ZOOM - LENS / 2);
+    const bgY = -(pos.y * dims.h * ZOOM - LENS / 2);
+
+    return (
+        <div
+            ref={containerRef}
+            className="relative select-none"
+            onMouseMove={(e) => { if (dragging.current) move(e.clientX, e.clientY); }}
+            onMouseUp={() => { dragging.current = false; }}
+            onMouseLeave={() => { dragging.current = false; }}
+            onTouchMove={(e) => { if (dragging.current) move(e.touches[0].clientX, e.touches[0].clientY); }}
+            onTouchEnd={() => { dragging.current = false; }}
+        >
+            <img
+                ref={imgRef}
+                src={src}
+                alt="reference"
+                className="block w-full rounded-xl border border-secondary"
+                onLoad={refreshDims}
+                draggable={false}
+            />
+            {dims.w > 0 && (
+                <div
+                    onMouseDown={(e) => { e.preventDefault(); dragging.current = true; move(e.clientX, e.clientY); }}
+                    onTouchStart={(e) => { e.preventDefault(); dragging.current = true; move(e.touches[0].clientX, e.touches[0].clientY); }}
+                    style={{
+                        position: "absolute",
+                        width: LENS,
+                        height: LENS,
+                        left: lensLeft,
+                        top: lensTop,
+                        borderRadius: "50%",
+                        border: "3px solid rgba(255,255,255,0.9)",
+                        boxShadow: "0 0 0 1.5px rgba(0,0,0,0.18), 0 4px 18px rgba(0,0,0,0.28)",
+                        backgroundImage: `url(${src})`,
+                        backgroundSize: `${dims.w * ZOOM}px ${dims.h * ZOOM}px`,
+                        backgroundPosition: `${bgX}px ${bgY}px`,
+                        backgroundRepeat: "no-repeat",
+                        cursor: "grab",
+                    }}
+                />
+            )}
+        </div>
+    );
+};
+
 /* ── Step card ───────────────────────────────────────────────────── */
 
 const StepCard = ({
@@ -246,8 +324,8 @@ const StepCard = ({
                 </div>
 
                 {/* command */}
-                <div className="mt-3.5 flex flex-col gap-1.5 px-5 pb-5 pl-[69px]">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-quaternary">Command / Instruction</p>
+                <div className="mt-3.5 flex flex-col gap-1.5 px-5 pl-[69px]">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-quaternary">Command / Prompt</p>
                     {editing ? (
                         <textarea
                             value={step.command}
@@ -263,13 +341,29 @@ const StepCard = ({
                     )}
                 </div>
 
+                {/* note */}
+                <div className="mt-3.5 flex flex-col gap-1.5 px-5 pb-5 pl-[69px]">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-quaternary">Note</p>
+                    {editing ? (
+                        <textarea
+                            value={step.note ?? ""}
+                            onChange={(e) => onUpdate(step.id, "note", e.target.value)}
+                            placeholder="Add a note…"
+                            rows={2}
+                            className="w-full resize-y border-0 bg-transparent px-0 py-0 text-[13.5px] leading-[22px] text-secondary outline-none placeholder:text-placeholder"
+                        />
+                    ) : step.note ? (
+                        <p className="text-[13.5px] leading-[22px] text-secondary">{step.note}</p>
+                    ) : null}
+                </div>
+
                 {/* image */}
                 {step.image ? (
                     <div className="relative mx-5 mb-5 ml-[69px]">
-                        <img src={step.image} alt="reference" className="block w-full rounded-xl border border-secondary" />
+                        <ImageWithMagnifier src={step.image} />
                         {editing && (
                             <button type="button" onClick={() => onUpdate(step.id, "image", "")} title="Remove image"
-                                className="absolute right-2 top-2 flex size-7 items-center justify-center rounded-[7px] bg-black/70 text-white backdrop-blur hover:bg-black/90">
+                                className="absolute right-2 top-2 z-10 flex size-7 items-center justify-center rounded-[7px] bg-black/70 text-white backdrop-blur hover:bg-black/90">
                                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
                             </button>
                         )}
