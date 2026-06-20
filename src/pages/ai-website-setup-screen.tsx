@@ -197,7 +197,7 @@ const StepCard = ({
             <div className="rounded-2xl border border-secondary bg-primary shadow-xs">
                 {/* title row */}
                 <div className="flex items-start gap-3.5 p-5 pb-0">
-                    <div className="flex size-[34px] shrink-0 items-center justify-center rounded-full bg-brand-100 font-bold text-[15px] text-brand-700">
+                    <div className="flex size-[34px] shrink-0 items-center justify-center rounded-full bg-brand-100 font-bold text-[15px] text-brand-700 dark:bg-brand-950/40 dark:text-brand-300">
                         {index + 1}
                     </div>
                     {editing ? (
@@ -235,10 +235,10 @@ const StepCard = ({
                             value={step.tool}
                             onChange={(e) => onUpdate(step.id, "tool", e.target.value)}
                             placeholder="e.g. Figma"
-                            className="w-auto self-start rounded-full border border-brand-200 bg-brand-50 px-3.5 py-1 text-[13px] font-semibold text-brand-800 outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                            className="w-auto self-start rounded-full border border-brand-200 bg-brand-50 px-3.5 py-1 text-[13px] font-semibold text-brand-800 outline-none focus:border-brand focus:ring-1 focus:ring-brand dark:border-brand-700/50 dark:bg-brand-950/30 dark:text-brand-300"
                         />
                     ) : step.tool ? (
-                        <span className="self-start rounded-full border border-brand-200 bg-brand-50 px-3.5 py-1 text-[13px] font-semibold text-brand-800">{step.tool}</span>
+                        <span className="self-start rounded-full border border-brand-200 bg-brand-50 px-3.5 py-1 text-[13px] font-semibold text-brand-800 dark:border-brand-700/50 dark:bg-brand-950/30 dark:text-brand-300">{step.tool}</span>
                     ) : (
                         <span className="text-sm text-placeholder">—</span>
                     )}
@@ -343,7 +343,9 @@ const Sidebar = ({
                             onClick={() => onSelect(s.id)}
                             className={cx(
                                 "relative flex cursor-pointer items-center gap-[11px] rounded-[9px] px-3 py-[9px] pl-[13px] transition duration-100 ease-linear",
-                                active ? "bg-brand-50" : "hover:bg-secondary",
+                                active
+                                    ? "bg-brand-50 dark:bg-brand-950/40"
+                                    : "hover:bg-secondary hover:text-primary",
                             )}
                         >
                             {/* active bar */}
@@ -354,7 +356,7 @@ const Sidebar = ({
                             {/* number */}
                             <span className={cx(
                                 "shrink-0 font-mono text-[11px] font-semibold",
-                                active ? "text-brand-700" : "text-quaternary",
+                                active ? "text-brand-600 dark:text-brand-400" : "text-quaternary",
                             )}>
                                 {String(i + 1).padStart(2, "0")}
                             </span>
@@ -369,7 +371,9 @@ const Sidebar = ({
                             {locked && (
                                 <span className={cx(
                                     "shrink-0 rounded-full px-[7px] py-[1px] text-[11px] font-semibold",
-                                    active ? "bg-brand-100 text-brand-700" : "bg-secondary text-quaternary",
+                                    active
+                                        ? "bg-brand-100 text-brand-700 dark:bg-brand-900/50 dark:text-brand-300"
+                                        : "bg-secondary text-quaternary",
                                 )}>
                                     {s.steps.length}
                                 </span>
@@ -537,7 +541,7 @@ export const AiWebsiteSetupScreen = () => {
                         <div className="mb-1.5 flex items-start gap-4">
                             <div className="flex-1 min-w-0">
                                 <div className="mb-2 flex items-center gap-2.5">
-                                    <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-brand-600">
+                                    <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-brand-600 dark:text-brand-400">
                                         Stage {String(selIdx + 1).padStart(2, "0")}
                                     </span>
                                     <span className="size-1 rounded-full bg-tertiary" />
