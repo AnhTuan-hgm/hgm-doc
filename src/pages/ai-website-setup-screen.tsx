@@ -4,7 +4,8 @@ import { cx } from "@/utils/cx";
 
 /* ── Types ───────────────────────────────────────────────────────── */
 
-type Step = { id: string; heading: string; tools: string[]; command: string; note?: string; image: string };
+type LensPos = { x: number; y: number };
+type Step = { id: string; heading: string; tools: string[]; command: string; note?: string; image: string; lensPos?: LensPos };
 type Stage = { id: string; name: string; steps: Step[] };
 type SOPState = { stages: Stage[]; selectedId: string | null; locked: boolean };
 
@@ -236,7 +237,12 @@ const CopyButton = ({ text }: { text: string }) => {
 const LENS = 72;
 const ZOOM = 1.3;
 
-const ImageWithMagnifier = ({ src, editing }: { src: string; editing: boolean }) => {
+const ImageWithMagnifier = ({ src, editing, lensPos, onLensPosChange }: {
+    src: string;
+    editing: boolean;
+    lensPos?: LensPos;
+    onLensPosChange?: (pos: LensPos) => void;
+}) => {
     const imgRef    = useRef<HTMLImageElement>(null);
     const lbImgRef  = useRef<HTMLImageElement>(null);
     const lbWrapRef = useRef<HTMLDivElement>(null);
@@ -244,15 +250,21 @@ const ImageWithMagnifier = ({ src, editing }: { src: string; editing: boolean })
     const [dims,   setDims]   = useState({ w: 0, h: 0 });
     const [lbDims, setLbDims] = useState({ w: 0, h: 0 });
     const [lightbox, setLightbox] = useState(false);
-    const [pos, setPos] = useState({ x: 0.5, y: 0.5 });
+    const [pos, setPos] = useState<LensPos>(lensPos ?? { x: 0.5, y: 0.5 });
+    const posRef = useRef(pos);
 
     const dragMode = useRef<"thumb" | "lb" | null>(null);
+
+    const applyPos = (newPos: LensPos) => {
+        setPos(newPos);
+        posRef.current = newPos;
+    };
 
     // normalize against the image element itself — perfectly consistent with offsetWidth/Height
     const computePos = (el: HTMLImageElement | null, clientX: number, clientY: number) => {
         const rect = el?.getBoundingClientRect();
         if (!rect || rect.width === 0) return;
-        setPos({
+        applyPos({
             x: Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)),
             y: Math.max(0, Math.min(1, (clientY - rect.top) / rect.height)),
         });
@@ -264,7 +276,10 @@ const ImageWithMagnifier = ({ src, editing }: { src: string; editing: boolean })
             if (dragMode.current === "thumb") computePos(imgRef.current, e.clientX, e.clientY);
             else if (dragMode.current === "lb") computePos(lbImgRef.current, e.clientX, e.clientY);
         };
-        const onUp = () => { dragMode.current = null; };
+        const onUp = () => {
+            if (dragMode.current !== null) onLensPosChange?.(posRef.current);
+            dragMode.current = null;
+        };
         window.addEventListener("mousemove", onMove);
         window.addEventListener("mouseup", onUp);
         return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
@@ -369,13 +384,14 @@ const ImageWithMagnifier = ({ src, editing }: { src: string; editing: boolean })
 /* ── Step card ───────────────────────────────────────────────────── */
 
 const StepCard = ({
-    step, index, editing, onUpdate, onUpdateTools, onDelete, onMove, onInsert,
+    step, index, editing, onUpdate, onUpdateTools, onUpdateLensPos, onDelete, onMove, onInsert,
 }: {
     step: Step;
     index: number;
     editing: boolean;
     onUpdate: (id: string, field: keyof Step, val: string) => void;
     onUpdateTools: (id: string, tools: string[]) => void;
+    onUpdateLensPos: (id: string, pos: LensPos) => void;
     onDelete: (id: string) => void;
     onMove: (id: string, dir: -1 | 1) => void;
     onInsert: (id: string, pos: "before" | "after") => void;
@@ -607,7 +623,12 @@ const StepCard = ({
                 {/* image */}
                 {step.image ? (
                     <div className="relative mx-5 mb-5 ml-[69px]">
-                        <ImageWithMagnifier src={step.image} editing={editing} />
+                        <ImageWithMagnifier
+                                        src={step.image}
+                                        editing={editing}
+                                        lensPos={step.lensPos}
+                                        onLensPosChange={(p) => onUpdateLensPos(step.id, p)}
+                                        />
                         {editing && (
                             <button type="button" onClick={() => onUpdate(step.id, "image", "")} title="Remove image"
                                 className="absolute right-2 top-2 z-10 flex size-7 items-center justify-center rounded-[7px] bg-black/70 text-white backdrop-blur hover:bg-black/90">
@@ -859,6 +880,12 @@ export const AiWebsiteSetupScreen = () => {
         if (st) st.tools = tools;
     });
 
+    const handleUpdateLensPos = (stepId: string, pos: LensPos) => update((d) => {
+        const s = d.stages.find((x) => x.id === d.selectedId);
+        const st = s?.steps.find((x) => x.id === stepId);
+        if (st) st.lensPos = pos;
+    });
+
     const handleAddStep = () => update((d) => {
         const s = d.stages.find((x) => x.id === d.selectedId);
         if (s) s.steps.push(mkStep());
@@ -952,6 +979,7 @@ export const AiWebsiteSetupScreen = () => {
                                         editing={editing}
                                         onUpdate={handleUpdateStep}
                                         onUpdateTools={handleUpdateTools}
+                                        onUpdateLensPos={handleUpdateLensPos}
                                         onDelete={handleDeleteStep}
                                         onMove={handleMoveStep}
                                         onInsert={handleInsertStep}
