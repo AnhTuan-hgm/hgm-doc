@@ -13,6 +13,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import { useTheme } from "@/providers/theme-provider";
 import { cx } from "@/utils/cx";
 import { supabase } from "@/lib/supabase";
@@ -303,26 +304,33 @@ const ImageMagnifier = ({ src, editing, lensPos, onLensPosChange, onRemove }: {
                     </button>
                 )}
             </div>
-            {lightbox && (
-                <div onClick={() => setLightbox(false)} className="fixed inset-0 z-50 flex cursor-zoom-out items-center justify-center bg-black/80 p-10 backdrop-blur-sm">
-                    <div className="relative select-none" onClick={e => e.stopPropagation()}>
-                        <img ref={lbImgRef} src={src} alt="full" className="block rounded-xl shadow-2xl"
-                            style={{ maxHeight: "90vh", maxWidth: "90vw" }}
-                            onLoad={() => { if (lbImgRef.current) setLbDims({ w: lbImgRef.current.offsetWidth, h: lbImgRef.current.offsetHeight }); }}
-                            draggable={false}
-                        />
-                        {lbDims.w > 0 && (
-                            <div style={{ ...lensStyle(lbDims.w, lbDims.h), cursor: "grab" }}
-                                onMouseDown={e => { e.preventDefault(); drag.current = "lb"; computePos(lbImgRef.current, e.clientX, e.clientY); }}
+            <AnimatePresence>
+                {lightbox && (
+                    <motion.div onClick={() => setLightbox(false)}
+                        className="fixed inset-0 z-50 flex cursor-zoom-out items-center justify-center bg-black/80 p-10 backdrop-blur-sm"
+                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                        transition={{ duration: 0.2, ease: "easeOut" }}>
+                        <motion.div className="relative select-none" onClick={e => e.stopPropagation()}
+                            initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.92, opacity: 0 }}
+                            transition={{ type: "spring", stiffness: 300, damping: 26 }}>
+                            <img ref={lbImgRef} src={src} alt="full" className="block rounded-xl shadow-2xl"
+                                style={{ maxHeight: "90vh", maxWidth: "90vw" }}
+                                onLoad={() => { if (lbImgRef.current) setLbDims({ w: lbImgRef.current.offsetWidth, h: lbImgRef.current.offsetHeight }); }}
+                                draggable={false}
                             />
-                        )}
-                    </div>
-                    <button type="button" onClick={() => setLightbox(false)}
-                        className="absolute right-6 top-6 flex size-10 items-center justify-center rounded-xl bg-white/10 text-white hover:bg-white/20">
-                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
-                    </button>
-                </div>
-            )}
+                            {lbDims.w > 0 && (
+                                <div style={{ ...lensStyle(lbDims.w, lbDims.h), cursor: "grab" }}
+                                    onMouseDown={e => { e.preventDefault(); drag.current = "lb"; computePos(lbImgRef.current, e.clientX, e.clientY); }}
+                                />
+                            )}
+                        </motion.div>
+                        <button type="button" onClick={() => setLightbox(false)}
+                            className="absolute right-6 top-6 flex size-10 items-center justify-center rounded-xl bg-white/10 text-white hover:bg-white/20">
+                            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+                        </button>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </>
     );
 };
@@ -814,8 +822,10 @@ export const OwnerGuideScreen = () => {
                 onNavigateOverview={navigateToOverview}
             />
 
-            <main ref={mainRef} className="flex-1 overflow-y-auto">
-                <div className="mx-auto max-w-[760px] px-8 py-9 pb-24">
+            <main ref={mainRef} className="flex-1 overflow-y-auto scroll-smooth">
+                <motion.div key={currentStep} className="mx-auto max-w-[760px] px-8 py-9 pb-24"
+                    initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}>
 
                     {/* breadcrumb */}
                     <div className="mb-3 flex items-center gap-2 text-[12px] font-medium text-quaternary">
@@ -1233,7 +1243,7 @@ export const OwnerGuideScreen = () => {
                             </button>
                         )}
                     </div>
-                </div>
+                </motion.div>
             </main>
 
             {/* floating lock/unlock */}
@@ -1251,19 +1261,25 @@ export const OwnerGuideScreen = () => {
             </button>
 
             {/* completion modal */}
-            {showComplete && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6 backdrop-blur-sm" onClick={() => setShowComplete(false)}>
-                    <div className="w-full max-w-sm rounded-2xl bg-primary p-8 text-center shadow-2xl" onClick={e => e.stopPropagation()}>
-                        <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-full bg-success-secondary text-4xl">🎉</div>
-                        <h2 className="mb-2 text-[22px] font-bold text-primary">Onboarding Complete!</h2>
-                        <p className="mb-6 text-[14px] leading-relaxed text-tertiary">Your Stripe, PMS calendar API, and Netlify environments are connected under your secure ownership.</p>
-                        <button type="button" onClick={() => setShowComplete(false)}
-                            className="w-full rounded-xl bg-success-solid py-3 text-[15px] font-semibold text-white transition hover:opacity-90">
-                            Done
-                        </button>
-                    </div>
-                </div>
-            )}
+            <AnimatePresence>
+                {showComplete && (
+                    <motion.div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6 backdrop-blur-sm" onClick={() => setShowComplete(false)}
+                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                        transition={{ duration: 0.2, ease: "easeOut" }}>
+                        <motion.div className="w-full max-w-sm rounded-2xl bg-primary p-8 text-center shadow-2xl" onClick={e => e.stopPropagation()}
+                            initial={{ scale: 0.9, opacity: 0, y: 12 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 8 }}
+                            transition={{ type: "spring", stiffness: 320, damping: 26 }}>
+                            <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-full bg-success-secondary text-4xl">🎉</div>
+                            <h2 className="mb-2 text-[22px] font-bold text-primary">Onboarding Complete!</h2>
+                            <p className="mb-6 text-[14px] leading-relaxed text-tertiary">Your Stripe, PMS calendar API, and Netlify environments are connected under your secure ownership.</p>
+                            <button type="button" onClick={() => setShowComplete(false)}
+                                className="w-full rounded-xl bg-success-solid py-3 text-[15px] font-semibold text-white transition hover:opacity-90">
+                                Done
+                            </button>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 };

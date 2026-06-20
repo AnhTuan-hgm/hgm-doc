@@ -12,6 +12,7 @@ import {
     XClose,
 } from "@untitledui/icons";
 import { useNavigate } from "react-router";
+import { motion } from "motion/react";
 import { Button } from "@/components/base/buttons/button";
 import { FeaturedIcon } from "@/components/foundations/featured-icon/featured-icon";
 import { Tabs } from "@/components/application/tabs/tabs";
@@ -202,7 +203,9 @@ export const PixelPage = ({
 
     return (
         <main className="min-h-dvh bg-secondary px-4 py-8 md:px-8 md:py-14">
-            <article className="mx-auto max-w-4xl overflow-hidden rounded-2xl bg-primary shadow-xl ring-1 ring-secondary md:rounded-3xl">
+            <motion.article className="mx-auto max-w-4xl overflow-hidden rounded-2xl bg-primary shadow-xl ring-1 ring-secondary md:rounded-3xl"
+                initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}>
                 <div className="px-6 py-8 md:px-14 md:py-12">
 
                     {/* ── Header ── */}
@@ -387,7 +390,7 @@ export const PixelPage = ({
                         </a>
                     </footer>
                 </div>
-            </article>
+            </motion.article>
 
             {/* ── Fixed bottom-right action buttons ── */}
             <div className="fixed bottom-5 right-5 z-40 flex flex-col items-center gap-2">

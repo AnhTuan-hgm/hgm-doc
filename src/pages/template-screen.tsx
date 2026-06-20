@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
+import { motion } from "motion/react";
 import { ArrowRight } from "@untitledui/icons";
 import { supabase } from "@/lib/supabase";
 import { cx } from "@/utils/cx";
@@ -55,7 +56,9 @@ export const TemplateScreen = () => {
 
     return (
         <main className="flex min-h-dvh flex-col items-center justify-center bg-secondary px-4 py-12">
-            <div className="w-full max-w-lg">
+            <motion.div className="w-full max-w-lg"
+                initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}>
 
                 {/* Logo */}
                 <img
@@ -165,7 +168,7 @@ export const TemplateScreen = () => {
                 <p className="mt-6 text-center text-xs text-quaternary">
                     The page will be immediately accessible at the URL above.
                 </p>
-            </div>
+            </motion.div>
         </main>
     );
 };

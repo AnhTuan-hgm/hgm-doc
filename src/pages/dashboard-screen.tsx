@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
+import { motion } from "motion/react";
 import { ArrowUpRight, MessageChatCircle, Plus, Share07, Star01, Trash01, XClose } from "@untitledui/icons";
 import { supabase, type ClientPageData } from "@/lib/supabase";
 import { cx } from "@/utils/cx";
@@ -172,9 +173,12 @@ const PageRow = ({
     const colorClass = colors[index % colors.length];
 
     return (
-        <tr
+        <motion.tr
             onClick={() => !confirmDelete && navigate(`/${page.slug}`)}
             className="group border-b border-secondary transition duration-100 ease-linear last:border-0 hover:bg-secondary"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: Math.min(index * 0.04, 0.4), ease: [0.22, 1, 0.36, 1] }}
         >
             {/* Star indicator + client info */}
             <td className="px-6 py-4">
@@ -276,7 +280,7 @@ const PageRow = ({
                     </div>
                 )}
             </td>
-        </tr>
+        </motion.tr>
     );
 };
 
@@ -345,7 +349,9 @@ const MetaPixelContent = () => {
                         <div className="size-6 animate-spin rounded-full border-2 border-brand border-t-transparent opacity-60" />
                     </div>
                 ) : pages.length === 0 ? (
-                    <div className="flex h-64 flex-col items-center justify-center gap-3 text-center">
+                    <motion.div className="flex h-64 flex-col items-center justify-center gap-3 text-center"
+                        initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.4, ease: "easeOut" }}>
                         <div className="flex size-12 items-center justify-center rounded-full bg-brand-50">
                             <Share07 className="size-5 text-fg-brand-primary" aria-hidden="true" />
                         </div>
@@ -363,7 +369,7 @@ const MetaPixelContent = () => {
                             <Plus className="size-4" aria-hidden="true" />
                             New Page
                         </button>
-                    </div>
+                    </motion.div>
                 ) : (
                     <div className="my-6 overflow-hidden rounded-xl bg-primary shadow-sm ring-1 ring-secondary">
                         <table className="w-full">

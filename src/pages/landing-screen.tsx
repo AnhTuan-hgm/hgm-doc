@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router";
+import { motion } from "motion/react";
 
 /** One stripe of the repeating equirectangular globe grid. Scrolled 2× for a seamless loop. */
 const GlobeGridStripe = () => (
@@ -129,18 +130,24 @@ export const LandingScreen = () => {
             <Globe />
 
             {/* Page content — centered over the globe */}
-            <div className="relative z-10 flex w-full flex-1 flex-col items-center justify-center gap-8 px-6 py-16 text-center">
+            <motion.div className="relative z-10 flex w-full flex-1 flex-col items-center justify-center gap-8 px-6 py-16 text-center"
+                initial="hidden"
+                animate="show"
+                variants={{ show: { transition: { staggerChildren: 0.12, delayChildren: 0.1 } } }}
+            >
                 {/* HGM logo — dark version (white text + gold icon) */}
-                <img
+                <motion.img
                     src="/hgm logo/HiddenGem Media Logo - Dark.svg"
                     alt="HiddenGem Media"
                     className="h-10 md:h-12"
                     draggable={false}
+                    variants={{ hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] } } }}
                 />
 
                 {/* Title */}
-                <h1
+                <motion.h1
                     className="font-semibold tracking-tight"
+                    variants={{ hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] } } }}
                     style={{
                         fontSize: "clamp(2rem, 5vw, 3.5rem)",
                         lineHeight: 1.15,
@@ -151,13 +158,14 @@ export const LandingScreen = () => {
                 >
                     HiddenGem&nbsp;
                     <span style={{ color: "rgba(148,163,255,0.9)" }}>Docs</span>
-                </h1>
+                </motion.h1>
 
                 {/* Back button */}
-                <button
+                <motion.button
                     type="button"
                     onClick={() => navigate(-1)}
                     className="rounded-xl px-6 py-2.5 text-sm font-medium transition duration-150 ease-linear"
+                    variants={{ hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] } } }}
                     style={{
                         background: "rgba(255,255,255,0.07)",
                         color: "rgba(255,255,255,0.7)",
@@ -173,8 +181,8 @@ export const LandingScreen = () => {
                     }}
                 >
                     ← Back
-                </button>
-            </div>
+                </motion.button>
+            </motion.div>
         </main>
     );
 };

@@ -1,5 +1,6 @@
 import { ArrowLeft } from "@untitledui/icons";
 import { useNavigate } from "react-router";
+import { motion } from "motion/react";
 import { Button } from "@/components/base/buttons/button";
 
 export function NotFound() {
@@ -8,7 +9,9 @@ export function NotFound() {
     return (
         <section className="flex min-h-screen items-start bg-primary py-16 md:items-center md:py-24">
             <div className="mx-auto max-w-container grow px-4 md:px-8">
-                <div className="flex w-full max-w-3xl flex-col gap-8 md:gap-12">
+                <motion.div className="flex w-full max-w-3xl flex-col gap-8 md:gap-12"
+                    initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}>
                     <div className="flex flex-col gap-4 md:gap-6">
                         <div className="flex flex-col gap-3">
                             <span className="text-md font-semibold text-brand-secondary">404 error</span>
@@ -25,7 +28,7 @@ export function NotFound() {
                             Take me home
                         </Button>
                     </div>
-                </div>
+                </motion.div>
             </div>
         </section>
     );
