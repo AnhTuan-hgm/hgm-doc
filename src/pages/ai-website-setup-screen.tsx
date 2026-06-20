@@ -4,7 +4,7 @@ import { cx } from "@/utils/cx";
 
 /* ── Types ───────────────────────────────────────────────────────── */
 
-type Step = { id: string; heading: string; tool: string; command: string; note?: string; image: string };
+type Step = { id: string; heading: string; tools: string[]; command: string; note?: string; image: string };
 type Stage = { id: string; name: string; steps: Step[] };
 type SOPState = { stages: Stage[]; selectedId: string | null; locked: boolean };
 
@@ -47,12 +47,9 @@ const TOOLS: ToolDef[] = [
         name: "GitHub", color: "#171717", bg: "#F5F5F5", border: "rgba(23,23,23,0.20)",
         Icon: () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 00-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0020 4.77 5.07 5.07 0 0019.91 1S18.73.65 16 2.48a13.38 13.38 0 00-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 005 4.77a5.44 5.44 0 00-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 009 18.13V22" /></svg>,
     },
-    {
-        name: "Other", color: "#525252", bg: "#F5F5F5", border: "rgba(82,82,82,0.30)",
-        Icon: () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 016.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" /></svg>,
-    },
 ];
 
+const KNOWN_TOOL_NAMES = new Set(TOOLS.map((t) => t.name));
 const findTool = (name: string) => TOOLS.find((t) => t.name === name);
 
 /* ── Helpers ─────────────────────────────────────────────────────── */
@@ -60,11 +57,11 @@ const findTool = (name: string) => TOOLS.find((t) => t.name === name);
 const uid = () => "id" + Math.random().toString(36).slice(2, 9);
 
 function mkStep(heading = "New step"): Step {
-    return { id: uid(), heading, tool: "", command: "", note: "", image: "" };
+    return { id: uid(), heading, tools: [], command: "", note: "", image: "" };
 }
 
 function seed(): SOPState {
-    const S = (heading: string, tool: string, command: string): Step => ({ id: uid(), heading, tool, command, image: "" });
+    const S = (heading: string, tool: string, command: string): Step => ({ id: uid(), heading, tools: tool ? [tool] : [], command, image: "" });
     const stages: Stage[] = [
         {
             id: uid(), name: "1. Workflow & Roles", steps: [
@@ -143,7 +140,18 @@ function load(): SOPState {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (raw) {
             const d = JSON.parse(raw) as SOPState;
-            if (Array.isArray(d.stages) && d.stages.length) return d;
+            if (Array.isArray(d.stages) && d.stages.length) {
+                // migrate old tool: string → tools: string[]
+                d.stages.forEach((stage) => {
+                    stage.steps.forEach((step: Step & { tool?: string }) => {
+                        if (!Array.isArray(step.tools)) {
+                            step.tools = step.tool ? [step.tool] : [];
+                        }
+                        delete step.tool;
+                    });
+                });
+                return d;
+            }
         }
     } catch {}
     return seed();
@@ -239,111 +247,128 @@ const CopyButton = ({ text }: { text: string }) => {
 const LENS = 72;
 const ZOOM = 1.3;
 
-const ImageWithMagnifier = ({ src }: { src: string }) => {
-    const containerRef = useRef<HTMLDivElement>(null);
-    const imgRef = useRef<HTMLImageElement>(null);
-    const [pos, setPos] = useState({ x: 0.5, y: 0.5 });
-    const [dims, setDims] = useState({ w: 0, h: 0 });
+const ImageWithMagnifier = ({ src, editing }: { src: string; editing: boolean }) => {
+    const imgRef    = useRef<HTMLImageElement>(null);
+    const lbImgRef  = useRef<HTMLImageElement>(null);
+    const lbWrapRef = useRef<HTMLDivElement>(null);
+
+    const [dims,   setDims]   = useState({ w: 0, h: 0 });
+    const [lbDims, setLbDims] = useState({ w: 0, h: 0 });
     const [lightbox, setLightbox] = useState(false);
-    const dragging = useRef(false);
-    const didDrag = useRef(false); // distinguishes click from drag
+    const [pos, setPos] = useState({ x: 0.5, y: 0.5 });
 
-    const refreshDims = () => {
-        if (imgRef.current) setDims({ w: imgRef.current.offsetWidth, h: imgRef.current.offsetHeight });
-    };
+    const dragMode = useRef<"thumb" | "lb" | null>(null);
 
-    useEffect(() => {
-        window.addEventListener("resize", refreshDims);
-        return () => window.removeEventListener("resize", refreshDims);
-    }, []);
-
-    // Close lightbox on Escape
-    useEffect(() => {
-        if (!lightbox) return;
-        const handler = (e: KeyboardEvent) => { if (e.key === "Escape") setLightbox(false); };
-        window.addEventListener("keydown", handler);
-        return () => window.removeEventListener("keydown", handler);
-    }, [lightbox]);
-
-    const move = (clientX: number, clientY: number) => {
-        const rect = containerRef.current?.getBoundingClientRect();
-        if (!rect) return;
-        didDrag.current = true;
+    // normalize against the image element itself — perfectly consistent with offsetWidth/Height
+    const computePos = (el: HTMLImageElement | null, clientX: number, clientY: number) => {
+        const rect = el?.getBoundingClientRect();
+        if (!rect || rect.width === 0) return;
         setPos({
             x: Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)),
             y: Math.max(0, Math.min(1, (clientY - rect.top) / rect.height)),
         });
     };
 
-    const lensLeft = pos.x * dims.w - LENS / 2;
-    const lensTop  = pos.y * dims.h - LENS / 2;
-    const bgX = -(pos.x * dims.w * ZOOM - LENS / 2);
-    const bgY = -(pos.y * dims.h * ZOOM - LENS / 2);
+    // window-level drag: mouse can leave the element freely
+    useEffect(() => {
+        const onMove = (e: MouseEvent) => {
+            if (dragMode.current === "thumb") computePos(imgRef.current, e.clientX, e.clientY);
+            else if (dragMode.current === "lb") computePos(lbImgRef.current, e.clientX, e.clientY);
+        };
+        const onUp = () => { dragMode.current = null; };
+        window.addEventListener("mousemove", onMove);
+        window.addEventListener("mouseup", onUp);
+        return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+    }, []);
+
+    useEffect(() => {
+        const refresh = () => { if (imgRef.current) setDims({ w: imgRef.current.offsetWidth, h: imgRef.current.offsetHeight }); };
+        window.addEventListener("resize", refresh);
+        return () => window.removeEventListener("resize", refresh);
+    }, []);
+
+    useEffect(() => {
+        if (!lightbox) return;
+        const esc = (e: KeyboardEvent) => { if (e.key === "Escape") closeLightbox(); };
+        window.addEventListener("keydown", esc);
+        return () => window.removeEventListener("keydown", esc);
+    }, [lightbox]);
+
+    // no didDrag guard — clicking the image always opens the lightbox
+    // (the lens circle has stopPropagation so clicks on it never reach the img)
+    const openLightbox  = () => setLightbox(true);
+    const closeLightbox = () => { dragMode.current = null; setLightbox(false); };
+
+    const lensStyle = (w: number, h: number): React.CSSProperties => ({
+        position: "absolute",
+        width: LENS, height: LENS,
+        left: pos.x * w - LENS / 2,
+        top:  pos.y * h - LENS / 2,
+        borderRadius: "50%",
+        border: "2.5px solid rgba(255,255,255,0.9)",
+        boxShadow: "0 0 0 1.5px rgba(0,0,0,0.18), 0 3px 12px rgba(0,0,0,0.25)",
+        backgroundImage: `url(${src})`,
+        backgroundSize: `${w * ZOOM}px ${h * ZOOM}px`,
+        backgroundPosition: `${-(pos.x * w * ZOOM - LENS / 2)}px ${-(pos.y * h * ZOOM - LENS / 2)}px`,
+        backgroundRepeat: "no-repeat",
+    });
 
     return (
         <>
+            {/* thumbnail */}
             <div
-                ref={containerRef}
                 className="relative select-none"
-                onMouseMove={(e) => { if (dragging.current) move(e.clientX, e.clientY); }}
-                onMouseUp={() => { dragging.current = false; }}
-                onMouseLeave={() => { dragging.current = false; }}
-                onTouchMove={(e) => { e.preventDefault(); if (dragging.current) move(e.touches[0].clientX, e.touches[0].clientY); }}
-                onTouchEnd={() => { dragging.current = false; }}
+                onTouchMove={(e) => { if (dragMode.current === "thumb") { e.preventDefault(); computePos(imgRef.current, e.touches[0].clientX, e.touches[0].clientY); } }}
+                onTouchEnd={() => { dragMode.current = null; }}
             >
-                {/* image — click opens lightbox unless it was a drag */}
                 <img
                     ref={imgRef}
                     src={src}
                     alt="reference"
                     className="block w-full cursor-zoom-in rounded-xl border border-secondary"
-                    onLoad={refreshDims}
+                    onLoad={() => { if (imgRef.current) setDims({ w: imgRef.current.offsetWidth, h: imgRef.current.offsetHeight }); }}
                     draggable={false}
-                    onClick={() => { if (!didDrag.current) setLightbox(true); }}
+                    onClick={openLightbox}
                 />
-                {/* magnifier circle — always draggable */}
                 {dims.w > 0 && (
                     <div
-                        onMouseDown={(e) => { e.preventDefault(); dragging.current = true; didDrag.current = false; move(e.clientX, e.clientY); }}
-                        onTouchStart={(e) => { e.preventDefault(); dragging.current = true; didDrag.current = false; move(e.touches[0].clientX, e.touches[0].clientY); }}
+                        style={{ ...lensStyle(dims.w, dims.h), cursor: editing ? "grab" : "default" }}
                         onClick={(e) => e.stopPropagation()}
-                        style={{
-                            position: "absolute",
-                            width: LENS,
-                            height: LENS,
-                            left: lensLeft,
-                            top: lensTop,
-                            borderRadius: "50%",
-                            border: "2.5px solid rgba(255,255,255,0.9)",
-                            boxShadow: "0 0 0 1.5px rgba(0,0,0,0.18), 0 3px 12px rgba(0,0,0,0.25)",
-                            backgroundImage: `url(${src})`,
-                            backgroundSize: `${dims.w * ZOOM}px ${dims.h * ZOOM}px`,
-                            backgroundPosition: `${bgX}px ${bgY}px`,
-                            backgroundRepeat: "no-repeat",
-                            cursor: "grab",
-                        }}
+                        onMouseDown={editing ? (e) => { e.preventDefault(); dragMode.current = "thumb"; computePos(imgRef.current, e.clientX, e.clientY); } : undefined}
+                        onTouchStart={editing ? (e) => { e.preventDefault(); dragMode.current = "thumb"; computePos(imgRef.current, e.touches[0].clientX, e.touches[0].clientY); } : undefined}
                     />
                 )}
             </div>
 
             {/* lightbox */}
             {lightbox && (
-                <div
-                    onClick={() => setLightbox(false)}
-                    className="fixed inset-0 z-50 flex cursor-zoom-out items-center justify-center bg-black/82 p-10 backdrop-blur-sm"
-                >
-                    <img
-                        src={src}
-                        alt="full view"
+                <div onClick={closeLightbox} className="fixed inset-0 z-50 flex cursor-zoom-out items-center justify-center bg-black/80 p-10 backdrop-blur-sm">
+                    <div
+                        ref={lbWrapRef}
+                        className="relative select-none"
                         onClick={(e) => e.stopPropagation()}
-                        className="max-h-[90vh] max-w-[90vw] rounded-xl object-contain shadow-2xl"
-                    />
-                    <button
-                        type="button"
-                        onClick={() => setLightbox(false)}
-                        title="Close"
-                        className="absolute right-6 top-6 flex size-10 items-center justify-center rounded-xl bg-white/10 text-white transition hover:bg-white/22"
+                        onTouchMove={(e) => { if (dragMode.current === "lb") computePos(lbImgRef.current, e.touches[0].clientX, e.touches[0].clientY); }}
+                        onTouchEnd={() => { dragMode.current = null; }}
                     >
+                        <img
+                            ref={lbImgRef}
+                            src={src}
+                            alt="full view"
+                            className="block rounded-xl shadow-2xl"
+                            style={{ maxHeight: "90vh", maxWidth: "90vw" }}
+                            onLoad={() => { if (lbImgRef.current) setLbDims({ w: lbImgRef.current.offsetWidth, h: lbImgRef.current.offsetHeight }); }}
+                            draggable={false}
+                        />
+                        {lbDims.w > 0 && (
+                            <div
+                                style={{ ...lensStyle(lbDims.w, lbDims.h), cursor: "grab" }}
+                                onMouseDown={(e) => { e.preventDefault(); dragMode.current = "lb"; computePos(lbImgRef.current, e.clientX, e.clientY); }}
+                                onTouchStart={(e) => { e.preventDefault(); dragMode.current = "lb"; computePos(lbImgRef.current, e.touches[0].clientX, e.touches[0].clientY); }}
+                            />
+                        )}
+                    </div>
+                    <button type="button" onClick={closeLightbox} title="Close"
+                        className="absolute right-6 top-6 flex size-10 items-center justify-center rounded-xl bg-white/10 text-white transition hover:bg-white/20">
                         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
                     </button>
                 </div>
@@ -355,17 +380,32 @@ const ImageWithMagnifier = ({ src }: { src: string }) => {
 /* ── Step card ───────────────────────────────────────────────────── */
 
 const StepCard = ({
-    step, index, editing, onUpdate, onDelete, onMove, onInsert,
+    step, index, editing, onUpdate, onUpdateTools, onDelete, onMove, onInsert,
 }: {
     step: Step;
     index: number;
     editing: boolean;
     onUpdate: (id: string, field: keyof Step, val: string) => void;
+    onUpdateTools: (id: string, tools: string[]) => void;
     onDelete: (id: string) => void;
     onMove: (id: string, dir: -1 | 1) => void;
     onInsert: (id: string, pos: "before" | "after") => void;
 }) => {
     const fileRef = useRef<HTMLInputElement>(null);
+    const customInputRef = useRef<HTMLInputElement>(null);
+    const [customDraft, setCustomDraft] = useState<string | null>(null);
+
+    // auto-focus the custom tool input when it opens
+    useEffect(() => {
+        if (customDraft === "") customInputRef.current?.focus();
+    }, [customDraft]);
+
+    const commitCustom = () => {
+        const v = (customDraft ?? "").trim();
+        if (v) onUpdateTools(step.id, [...step.tools, v]);
+        setCustomDraft(null);
+    };
+    const cancelCustom = () => setCustomDraft(null);
 
     const handleImage = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -425,14 +465,19 @@ const StepCard = ({
                 {/* tool selector */}
                 <div className="mt-3.5 px-5 pl-[69px]">
                     {editing ? (
-                        <div className="flex flex-wrap gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                            {/* predefined tool chips — multi-select */}
                             {TOOLS.map((t) => {
-                                const active = step.tool === t.name;
+                                const active = step.tools.includes(t.name);
                                 return (
                                     <button
                                         key={t.name}
                                         type="button"
-                                        onClick={() => onUpdate(step.id, "tool", active ? "" : t.name)}
+                                        onClick={() => onUpdateTools(step.id,
+                                            active
+                                                ? step.tools.filter((x) => x !== t.name)
+                                                : [...step.tools, t.name],
+                                        )}
                                         style={{
                                             color: t.color,
                                             background: active ? t.bg : "transparent",
@@ -445,21 +490,92 @@ const StepCard = ({
                                     </button>
                                 );
                             })}
+
+                            {/* custom (non-predefined) chips */}
+                            {step.tools.map((name, idx) =>
+                                KNOWN_TOOL_NAMES.has(name) ? null : (
+                                    <span
+                                        key={idx}
+                                        style={{ color: "#525252", background: "#F5F5F5", border: "1.5px solid rgba(82,82,82,0.30)" }}
+                                        className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[12px] font-semibold"
+                                    >
+                                        {name}
+                                        <button
+                                            type="button"
+                                            onClick={() => onUpdateTools(step.id, step.tools.filter((_, j) => j !== idx))}
+                                            className="ml-0.5 leading-none text-[#888] hover:text-[#333]"
+                                        >
+                                            <svg viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                                        </button>
+                                    </span>
+                                ),
+                            )}
+
+                            {/* "Other" chip (no icon) and "+" button — both add a custom entry */}
+                            {customDraft === null ? (
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={() => setCustomDraft("")}
+                                        style={{ color: "#525252", border: "1.5px dashed rgba(82,82,82,0.40)" }}
+                                        className="inline-flex items-center rounded-full bg-transparent px-3 py-1 text-[12px] font-semibold transition duration-100 ease-linear hover:opacity-70"
+                                    >
+                                        Other
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setCustomDraft("")}
+                                        style={{ color: "#525252", border: "1.5px dashed rgba(82,82,82,0.40)" }}
+                                        className="inline-flex size-[27px] items-center justify-center rounded-full bg-transparent text-[16px] font-medium leading-none transition duration-100 ease-linear hover:opacity-70"
+                                    >
+                                        +
+                                    </button>
+                                </>
+                            ) : (
+                                <div
+                                    style={{ border: "1.5px solid rgba(82,82,82,0.50)" }}
+                                    className="inline-flex items-center rounded-full px-2.5 py-0.5"
+                                >
+                                    <input
+                                        ref={customInputRef}
+                                        value={customDraft}
+                                        onChange={(e) => setCustomDraft(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === "Enter") commitCustom();
+                                            if (e.key === "Escape") cancelCustom();
+                                        }}
+                                        onBlur={commitCustom}
+                                        placeholder="Tool name…"
+                                        className="w-24 bg-transparent text-[12px] text-secondary outline-none placeholder:text-placeholder"
+                                    />
+                                </div>
+                            )}
                         </div>
-                    ) : step.tool ? (() => {
-                        const t = findTool(step.tool);
-                        return t ? (
-                            <span
-                                style={{ color: t.color, background: t.bg, border: `1.5px solid ${t.border}` }}
-                                className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-semibold"
-                            >
-                                <t.Icon />
-                                {t.name}
-                            </span>
-                        ) : (
-                            <span className="self-start rounded-full border border-secondary bg-secondary px-3 py-1 text-[12px] font-semibold text-secondary">{step.tool}</span>
-                        );
-                    })() : null}
+                    ) : step.tools.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                            {step.tools.map((name, i) => {
+                                const t = findTool(name);
+                                return t ? (
+                                    <span
+                                        key={i}
+                                        style={{ color: t.color, background: t.bg, border: `1.5px solid ${t.border}` }}
+                                        className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-semibold"
+                                    >
+                                        <t.Icon />
+                                        {t.name}
+                                    </span>
+                                ) : (
+                                    <span
+                                        key={i}
+                                        style={{ color: "#525252", background: "#F5F5F5", border: "1.5px solid rgba(82,82,82,0.30)" }}
+                                        className="inline-flex items-center rounded-full px-3 py-1 text-[12px] font-semibold"
+                                    >
+                                        {name}
+                                    </span>
+                                );
+                            })}
+                        </div>
+                    ) : null}
                 </div>
 
                 {/* command */}
@@ -502,7 +618,7 @@ const StepCard = ({
                 {/* image */}
                 {step.image ? (
                     <div className="relative mx-5 mb-5 ml-[69px]">
-                        <ImageWithMagnifier src={step.image} />
+                        <ImageWithMagnifier src={step.image} editing={editing} />
                         {editing && (
                             <button type="button" onClick={() => onUpdate(step.id, "image", "")} title="Remove image"
                                 className="absolute right-2 top-2 z-10 flex size-7 items-center justify-center rounded-[7px] bg-black/70 text-white backdrop-blur hover:bg-black/90">
@@ -685,7 +801,6 @@ const Sidebar = ({
 
 export const AiWebsiteSetupScreen = () => {
     const [state, setState] = useState<SOPState>(() => load());
-    const [lightbox, setLightbox] = useState("");
 
     const { stages, selectedId, locked } = state;
     const editing = !locked;
@@ -746,7 +861,13 @@ export const AiWebsiteSetupScreen = () => {
     const handleUpdateStep = (stepId: string, field: keyof Step, val: string) => update((d) => {
         const s = d.stages.find((x) => x.id === d.selectedId);
         const st = s?.steps.find((x) => x.id === stepId);
-        if (st) (st as Record<string, string>)[field] = val;
+        if (st) (st as Record<string, unknown>)[field as string] = val;
+    });
+
+    const handleUpdateTools = (stepId: string, tools: string[]) => update((d) => {
+        const s = d.stages.find((x) => x.id === d.selectedId);
+        const st = s?.steps.find((x) => x.id === stepId);
+        if (st) st.tools = tools;
     });
 
     const handleAddStep = () => update((d) => {
@@ -841,6 +962,7 @@ export const AiWebsiteSetupScreen = () => {
                                         index={i}
                                         editing={editing}
                                         onUpdate={handleUpdateStep}
+                                        onUpdateTools={handleUpdateTools}
                                         onDelete={handleDeleteStep}
                                         onMove={handleMoveStep}
                                         onInsert={handleInsertStep}
@@ -880,17 +1002,6 @@ export const AiWebsiteSetupScreen = () => {
                 )}
             </main>
 
-            {/* lightbox */}
-            {lightbox && (
-                <div onClick={() => setLightbox("")}
-                    className="fixed inset-0 z-50 flex cursor-zoom-out items-center justify-center bg-black/80 p-12 backdrop-blur-sm">
-                    <img src={lightbox} alt="full reference" className="max-h-[90vh] max-w-[92vw] rounded-xl shadow-2xl" />
-                    <button type="button" onClick={() => setLightbox("")} title="Close"
-                        className="absolute right-6 top-6 flex size-10 items-center justify-center rounded-xl bg-white/10 text-white hover:bg-white/20">
-                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
-                    </button>
-                </div>
-            )}
         </div>
     );
 };
