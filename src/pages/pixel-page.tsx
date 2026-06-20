@@ -380,9 +380,11 @@ export const PixelPage = ({
                     </section>
 
                     {/* ── Footer ── */}
-                    <footer className="mt-14 border-t border-secondary pt-6">
-                        <img src="/hgm logo/Logo ON LIGHT.svg" alt="HiddenGem Media" className="h-10 opacity-60 dark:hidden" draggable={false} />
-                        <img src="/hgm logo/LOGO ON Dark.svg" alt="HiddenGem Media" className="hidden h-10 opacity-70 dark:block" draggable={false} />
+                    <footer className="mt-14 flex justify-center border-t border-secondary pt-6">
+                        <a href="https://hiddengem.media/" target="_blank" rel="noopener noreferrer">
+                            <img src="/hgm logo/Logo ON LIGHT.svg" alt="HiddenGem Media" className="h-10 opacity-60 transition duration-100 ease-linear hover:opacity-90 dark:hidden" draggable={false} />
+                            <img src="/hgm logo/LOGO ON Dark.svg" alt="HiddenGem Media" className="hidden h-10 opacity-70 transition duration-100 ease-linear hover:opacity-100 dark:block" draggable={false} />
+                        </a>
                     </footer>
                 </div>
             </article>
