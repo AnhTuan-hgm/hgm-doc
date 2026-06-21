@@ -61,12 +61,8 @@ export const TemplateScreen = () => {
                 transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}>
 
                 {/* Logo */}
-                <img
-                    src="/hgm logo/Logo WIth Word Mark(Style 1).svg"
-                    alt="HiddenGem Media"
-                    className="h-8 opacity-80"
-                    draggable={false}
-                />
+                <img src="/hgm logo/Logo ON LIGHT.svg" alt="HiddenGem Media" className="h-14 opacity-80 dark:hidden" draggable={false} />
+                <img src="/hgm logo/LOGO ON Dark.svg" alt="HiddenGem Media" className="hidden h-14 opacity-80 dark:block" draggable={false} />
 
                 {/* Heading */}
                 <div className="mt-8">

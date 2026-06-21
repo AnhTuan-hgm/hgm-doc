@@ -471,7 +471,7 @@ const Sidebar = ({
             {/* header */}
             <div className="flex items-center justify-between border-b border-secondary px-5 py-4">
                 <img src={isDark ? "/hgm logo/LOGO ON Dark.svg" : "/hgm logo/Logo ON LIGHT.svg"}
-                    alt="HiddenGem Media" className="h-10" draggable={false} />
+                    alt="HiddenGem Media" className="h-14" draggable={false} />
                 <button type="button" onClick={() => setTheme(isDark ? "light" : "dark")}
                     className="flex size-9 items-center justify-center rounded-full border border-secondary bg-secondary text-secondary transition duration-100 ease-linear hover:bg-tertiary hover:text-primary">
                     {isDark

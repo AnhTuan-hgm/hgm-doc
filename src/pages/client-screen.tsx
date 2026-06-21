@@ -16,6 +16,8 @@ const LeadCaptureScreen = ({ slug }: { slug: string }) => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        setLoading(true);
+        setData(null);
         supabase
             .from("leadcapture_pages")
             .select("*")
@@ -31,6 +33,7 @@ const LeadCaptureScreen = ({ slug }: { slug: string }) => {
 
     return (
         <PopupPage
+            key={slug}
             slug={slug}
             initialClientName={data?.client_name ?? ""}
             initialClientWebsite={data?.client_website ?? ""}
@@ -65,6 +68,8 @@ const PixelScreen = ({ clientSlug }: { clientSlug?: string }) => {
             setLoading(false);
             return;
         }
+        setLoading(true);
+        setData(null);
         supabase
             .from("client_pages")
             .select("*")
@@ -80,6 +85,8 @@ const PixelScreen = ({ clientSlug }: { clientSlug?: string }) => {
 
     return (
         <PixelPage
+            key={clientSlug}
+            isTemplate={clientSlug === "metapixel"}
             initialClientName={data?.client_name ?? ""}
             initialClientWebsite={data?.client_website ?? ""}
             initialPixelCode={data?.pixel_code}

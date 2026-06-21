@@ -17,7 +17,7 @@ import "@/styles/globals.css";
 
 const GlobalThemeToggle = () => {
     const { pathname } = useLocation();
-    if (pathname === "/webteam/ai-website-setup" || pathname === "/owner-guide") return null;
+    if (pathname === "/webteam/ai-website-setup" || pathname === "/owner-guide" || pathname === "/dashboard") return null;
     return <ThemeToggle />;
 };
 

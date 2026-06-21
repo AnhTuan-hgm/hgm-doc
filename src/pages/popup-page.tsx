@@ -17,11 +17,12 @@ import {
     Plus,
     XClose,
 } from "@untitledui/icons";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { Button } from "@/components/base/buttons/button";
 import { FeaturedIcon } from "@/components/foundations/featured-icon/featured-icon";
 import { Tabs } from "@/components/application/tabs/tabs";
+import { Reveal } from "@/components/shared-assets/reveal";
 import { useClipboard } from "@/hooks/use-clipboard";
 import { cx } from "@/utils/cx";
 import { supabase } from "@/lib/supabase";
@@ -470,6 +471,7 @@ export const PopupPage = ({
     initialAfterImg2 = "",
 }: PopupPageProps) => {
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const { copied, copy } = useClipboard();
 
     const isClientPage = !!slug;
@@ -544,6 +546,23 @@ export const PopupPage = ({
         setStep(Math.max(0, Math.min(STEPS.length - 1, i)));
         if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
     };
+
+    // Auto-open the create wizard when arriving via "+ New Popup" (?create=1) on the master page.
+    useEffect(() => {
+        if (!isClientPage && searchParams.get("create") === "1") {
+            setShowCreate(true);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // Lock background scroll while a modal is open.
+    useEffect(() => {
+        const open = showCreate || showUnlock;
+        document.body.style.overflow = open ? "hidden" : "";
+        return () => {
+            document.body.style.overflow = "";
+        };
+    }, [showCreate, showUnlock]);
 
     const handleUnlock = () => {
         if (unlockPassword === PASSWORD) {
@@ -688,7 +707,7 @@ export const PopupPage = ({
                     {step === 0 && (
                     <>
                     {/* ── Section 01 — Why ── */}
-                    <section className="mt-10">
+                    <Reveal className="mt-10">
                         <SectionEyebrow number="01" />
                         <SectionHeading>Why add a popup?</SectionHeading>
                         <p className="mt-4 text-md text-tertiary">
@@ -705,14 +724,14 @@ export const PopupPage = ({
                                 already embedded in the code below — just copy and paste, no edits needed.
                             </p>
                         </div>
-                    </section>
+                    </Reveal>
                     </>
                     )}
 
                     {step === 1 && (
                     <>
                     {/* ── Section 02 — TASK 1: header code ── */}
-                    <section className="mt-10">
+                    <Reveal className="mt-10">
                         <SectionEyebrow number="02" />
                         <SectionHeading>Task 1 — Add the popup code to your header</SectionHeading>
 
@@ -795,14 +814,14 @@ export const PopupPage = ({
                                 </Tabs.Panel>
                             ))}
                         </Tabs>
-                    </section>
+                    </Reveal>
                     </>
                     )}
 
                     {step === 2 && (
                     <>
                     {/* ── Section 03 — TASK 2: 2-column promo section ── */}
-                    <section className="mt-10">
+                    <Reveal className="mt-10">
                         <SectionEyebrow number="03" />
                         <SectionHeading>Task 2 — Add a promotion section (2 columns)</SectionHeading>
                         <p className="mt-4 text-md text-tertiary">
@@ -878,10 +897,10 @@ export const PopupPage = ({
                                 onAfterChange={setAfterImg}
                             />
                         </div>
-                    </section>
+                    </Reveal>
 
                     {/* ── Support ── */}
-                    <section className="mt-16">
+                    <Reveal className="mt-16">
                         <div className="flex items-center gap-3">
                             <FeaturedIcon icon={MessageChatCircle} size="sm" color="brand" theme="dark" />
                             <span className="h-px flex-1 bg-border-secondary" />
@@ -905,7 +924,7 @@ export const PopupPage = ({
                                 securely via your client portal.
                             </p>
                         </div>
-                    </section>
+                    </Reveal>
                     </>
                     )}
 
@@ -934,13 +953,13 @@ export const PopupPage = ({
                             <img
                                 src="/hgm logo/Logo ON LIGHT.svg"
                                 alt="HiddenGem Media"
-                                className="h-10 opacity-60 transition duration-100 ease-linear hover:opacity-90 dark:hidden"
+                                className="h-14 opacity-60 transition duration-100 ease-linear hover:opacity-90 dark:hidden"
                                 draggable={false}
                             />
                             <img
                                 src="/hgm logo/LOGO ON Dark.svg"
                                 alt="HiddenGem Media"
-                                className="hidden h-10 opacity-70 transition duration-100 ease-linear hover:opacity-100 dark:block"
+                                className="hidden h-14 opacity-70 transition duration-100 ease-linear hover:opacity-100 dark:block"
                                 draggable={false}
                             />
                         </a>

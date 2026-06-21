@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 import { motion } from "motion/react";
 import { ArrowUpRight, Mail01, MessageChatCircle, Plus, Share07, Star01, Trash01, XClose } from "@untitledui/icons";
 import { supabase, type ClientPageData, type LeadCapturePageData } from "@/lib/supabase";
+import { useTheme } from "@/providers/theme-provider";
 import { cx } from "@/utils/cx";
 
 const PASSWORDS = ["ANHTUAN", "HGTEAM"];
@@ -32,12 +33,8 @@ const PasswordGate = ({ onUnlock }: { onUnlock: () => void }) => {
                     success && "scale-95 opacity-0",
                 )}
             >
-                <img
-                    src="/hgm logo/Logo WIth Word Mark(Style 1).svg"
-                    alt="HiddenGem Media"
-                    className="h-8"
-                    draggable={false}
-                />
+                <img src="/hgm logo/Logo ON LIGHT.svg" alt="HiddenGem Media" className="h-14 dark:hidden" draggable={false} />
+                <img src="/hgm logo/LOGO ON Dark.svg" alt="HiddenGem Media" className="hidden h-14 dark:block" draggable={false} />
 
                 <div className="mt-6">
                     <h1 className="text-lg font-semibold text-primary">Dashboard Access</h1>
@@ -107,16 +104,34 @@ const NAV_ITEMS = [
     { id: "popups", label: "Popups", icon: Mail01 },
 ];
 
-const Sidebar = ({ activeSection, onSelect }: { activeSection: string; onSelect: (id: string) => void }) => (
+const Sidebar = ({ activeSection, onSelect }: { activeSection: string; onSelect: (id: string) => void }) => {
+    const { theme, setTheme } = useTheme();
+    const isDark =
+        theme === "dark" ||
+        (theme === "system" && typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+
+    return (
     <aside className="flex h-dvh w-60 shrink-0 flex-col border-r border-secondary bg-primary">
-        {/* Logo */}
-        <div className="border-b border-secondary px-5 py-5">
+        {/* Logo + theme toggle */}
+        <div className="flex items-center justify-between gap-2 border-b border-secondary px-5 py-3">
             <img
-                src="/hgm logo/Logo WIth Word Mark(Style 1).svg"
+                src={isDark ? "/hgm logo/LOGO ON Dark.svg" : "/hgm logo/Logo ON LIGHT.svg"}
                 alt="HiddenGem Media"
-                className="h-7 opacity-80"
+                className="h-11"
                 draggable={false}
             />
+            <button
+                type="button"
+                onClick={() => setTheme(isDark ? "light" : "dark")}
+                title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+                className="flex size-9 shrink-0 items-center justify-center rounded-full border border-secondary bg-secondary text-secondary transition duration-100 ease-linear hover:bg-tertiary hover:text-primary"
+            >
+                {isDark ? (
+                    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" /></svg>
+                ) : (
+                    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" /></svg>
+                )}
+            </button>
         </div>
 
         {/* Nav */}
@@ -133,7 +148,7 @@ const Sidebar = ({ activeSection, onSelect }: { activeSection: string; onSelect:
                         className={cx(
                             "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition duration-100 ease-linear",
                             activeSection === item.id
-                                ? "bg-brand-50 text-brand-700"
+                                ? "bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300"
                                 : "text-secondary hover:bg-secondary hover:text-primary",
                         )}
                     >
@@ -156,7 +171,8 @@ const Sidebar = ({ activeSection, onSelect }: { activeSection: string; onSelect:
             </a>
         </div>
     </aside>
-);
+    );
+};
 
 /* ── Page row ─────────────────────────────────────────────────────── */
 
@@ -342,14 +358,23 @@ const MetaPixelContent = () => {
                         {loading ? "Loading…" : `${pages.length} page${pages.length !== 1 ? "s" : ""} created`}
                     </p>
                 </div>
-                <button
-                    type="button"
-                    onClick={() => navigate("/template")}
-                    className="flex items-center gap-1.5 rounded-lg bg-brand-solid px-3.5 py-2 text-sm font-semibold text-white transition duration-100 ease-linear hover:opacity-90"
-                >
-                    <Plus className="size-4" aria-hidden="true" />
-                    New Page
-                </button>
+                <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={() => navigate("/metapixel")}
+                        className="rounded-lg border border-secondary bg-primary px-3.5 py-2 text-sm font-semibold text-secondary transition duration-100 ease-linear hover:bg-secondary hover:text-primary"
+                    >
+                        View Template
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => navigate("/metapixel?create=1")}
+                        className="flex items-center gap-1.5 rounded-lg bg-brand-solid px-3.5 py-2 text-sm font-semibold text-white transition duration-100 ease-linear hover:opacity-90"
+                    >
+                        <Plus className="size-4" aria-hidden="true" />
+                        New Page
+                    </button>
+                </div>
             </header>
 
             {/* Table */}
@@ -374,7 +399,7 @@ const MetaPixelContent = () => {
                         </div>
                         <button
                             type="button"
-                            onClick={() => navigate("/template")}
+                            onClick={() => navigate("/metapixel?create=1")}
                             className="mt-1 flex items-center gap-1.5 rounded-lg bg-brand-solid px-3.5 py-2 text-sm font-semibold text-white transition duration-100 ease-linear hover:opacity-90"
                         >
                             <Plus className="size-4" aria-hidden="true" />
@@ -542,14 +567,23 @@ const PopupsContent = () => {
                         {loading ? "Loading…" : `${pages.length} popup${pages.length !== 1 ? "s" : ""} created`}
                     </p>
                 </div>
-                <button
-                    type="button"
-                    onClick={() => navigate("/popup")}
-                    className="flex items-center gap-1.5 rounded-lg bg-brand-solid px-3.5 py-2 text-sm font-semibold text-white transition duration-100 ease-linear hover:opacity-90"
-                >
-                    <Plus className="size-4" aria-hidden="true" />
-                    New Popup
-                </button>
+                <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={() => navigate("/popup")}
+                        className="rounded-lg border border-secondary bg-primary px-3.5 py-2 text-sm font-semibold text-secondary transition duration-100 ease-linear hover:bg-secondary hover:text-primary"
+                    >
+                        View Template
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => navigate("/popup?create=1")}
+                        className="flex items-center gap-1.5 rounded-lg bg-brand-solid px-3.5 py-2 text-sm font-semibold text-white transition duration-100 ease-linear hover:opacity-90"
+                    >
+                        <Plus className="size-4" aria-hidden="true" />
+                        New Popup
+                    </button>
+                </div>
             </header>
 
             <div className="flex-1 overflow-y-auto">
@@ -574,7 +608,7 @@ const PopupsContent = () => {
                             </div>
                             <button
                                 type="button"
-                                onClick={() => navigate("/popup")}
+                                onClick={() => navigate("/popup?create=1")}
                                 className="mt-1 flex items-center gap-1.5 rounded-lg bg-brand-solid px-3.5 py-2 text-sm font-semibold text-white transition duration-100 ease-linear hover:opacity-90"
                             >
                                 <Plus className="size-4" aria-hidden="true" />

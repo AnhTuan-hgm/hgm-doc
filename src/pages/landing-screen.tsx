@@ -135,11 +135,11 @@ export const LandingScreen = () => {
                 animate="show"
                 variants={{ show: { transition: { staggerChildren: 0.12, delayChildren: 0.1 } } }}
             >
-                {/* HGM logo — dark version (white text + gold icon) */}
+                {/* HGM logo — page background is always dark, so use the on-dark (light) logo */}
                 <motion.img
-                    src="/hgm logo/HiddenGem Media Logo - Dark.svg"
+                    src="/hgm logo/LOGO ON Dark.svg"
                     alt="HiddenGem Media"
-                    className="h-10 md:h-12"
+                    className="h-14"
                     draggable={false}
                     variants={{ hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] } } }}
                 />

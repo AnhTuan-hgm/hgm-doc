@@ -1,4 +1,4 @@
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import type { Key } from "react-aria-components";
 import {
     ArrowRight,
@@ -11,7 +11,7 @@ import {
     Plus,
     XClose,
 } from "@untitledui/icons";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { motion } from "motion/react";
 import { Button } from "@/components/base/buttons/button";
 import { FeaturedIcon } from "@/components/foundations/featured-icon/featured-icon";
@@ -19,6 +19,7 @@ import { Tabs } from "@/components/application/tabs/tabs";
 import { useClipboard } from "@/hooks/use-clipboard";
 import { cx } from "@/utils/cx";
 import { PIXEL_CODE as DEFAULT_PIXEL_CODE, platforms } from "@/data/platforms";
+import { Reveal } from "@/components/shared-assets/reveal";
 import { supabase } from "@/lib/supabase";
 
 const PASSWORD = "ANHTUAN";
@@ -89,14 +90,18 @@ export interface PixelPageProps {
     initialClientName?: string;
     initialClientWebsite?: string;
     initialPixelCode?: string;
+    /** Only the template page (/metapixel) shows the “+” create button. */
+    isTemplate?: boolean;
 }
 
 export const PixelPage = ({
     initialClientName = "",
     initialClientWebsite = "",
     initialPixelCode = DEFAULT_PIXEL_CODE,
+    isTemplate = false,
 }: PixelPageProps) => {
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const { copied, copy } = useClipboard();
     const [selectedPlatform, setSelectedPlatform] = useState<Key>("wordpress");
 
@@ -115,7 +120,7 @@ export const PixelPage = ({
 
     // Plus wizard
     const [showPlusModal, setShowPlusModal] = useState(false);
-    const [plusStep, setPlusStep] = useState<"password" | "client-info" | "pixel-code">("password");
+    const [plusStep, setPlusStep] = useState<"password" | "details">("password");
     const [plusPassword, setPlusPassword] = useState("");
     const [plusPasswordError, setPlusPasswordError] = useState(false);
     const [newClientName, setNewClientName] = useState("");
@@ -123,6 +128,25 @@ export const PixelPage = ({
     const [newPixelCode, setNewPixelCode] = useState("");
     const [isCreating, setIsCreating] = useState(false);
     const [createError, setCreateError] = useState("");
+
+    // Auto-open the create wizard when arriving via "+ New Page" (?create=1).
+    // The dashboard is already password-gated, so skip straight to client info.
+    useEffect(() => {
+        if (searchParams.get("create") === "1") {
+            setShowPlusModal(true);
+            setPlusStep("details");
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // Lock background scroll while a modal is open.
+    useEffect(() => {
+        const open = showPlusModal || showUnlockModal;
+        document.body.style.overflow = open ? "hidden" : "";
+        return () => {
+            document.body.style.overflow = "";
+        };
+    }, [showPlusModal, showUnlockModal]);
 
     const handleLockClick = () => {
         if (isLocked) {
@@ -159,15 +183,9 @@ export const PixelPage = ({
     const handlePlusPassword = () => {
         if (plusPassword === PASSWORD) {
             setPlusPasswordError(false);
-            setPlusStep("client-info");
+            setPlusStep("details");
         } else {
             setPlusPasswordError(true);
-        }
-    };
-
-    const handlePlusClientInfo = () => {
-        if (newClientName.trim()) {
-            setPlusStep("pixel-code");
         }
     };
 
@@ -203,7 +221,7 @@ export const PixelPage = ({
 
     return (
         <main className="min-h-dvh bg-secondary px-4 py-8 md:px-8 md:py-14">
-            <motion.article className="mx-auto max-w-4xl overflow-hidden rounded-2xl bg-primary shadow-xl ring-1 ring-secondary md:rounded-3xl"
+            <motion.article className="mx-auto max-w-4xl rounded-2xl bg-primary shadow-xl ring-1 ring-secondary md:rounded-3xl"
                 initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}>
                 <div className="px-6 py-8 md:px-14 md:py-12">
@@ -242,7 +260,7 @@ export const PixelPage = ({
                     </div>
 
                     {/* ── Section 01 — What is Meta Pixel? ── */}
-                    <section className="mt-14">
+                    <Reveal className="mt-14">
                         <SectionEyebrow number="01" />
                         <SectionHeading>What is Meta Pixel?</SectionHeading>
                         <p className="mt-4 text-md text-tertiary">
@@ -259,10 +277,10 @@ export const PixelPage = ({
                                 in Section 2.
                             </p>
                         </div>
-                    </section>
+                    </Reveal>
 
                     {/* ── Section 02 — Your Meta Pixel Code ── */}
-                    <section className="mt-14">
+                    <Reveal className="mt-14">
                         <SectionEyebrow number="02" />
                         <SectionHeading>Your Meta Pixel Code</SectionHeading>
                         <p className="mt-4 text-md text-tertiary">
@@ -303,22 +321,24 @@ export const PixelPage = ({
                                 )}
                             </div>
                         </div>
-                    </section>
+                    </Reveal>
 
                     {/* ── Section 03 — Platform Instructions ── */}
-                    <section className="mt-14">
+                    <Reveal className="mt-14">
                         <SectionEyebrow number="03" />
                         <SectionHeading>How to Add the Code to Your Website</SectionHeading>
 
                         <Tabs selectedKey={selectedPlatform} onSelectionChange={setSelectedPlatform} className="mt-6 gap-0">
                             <p className="text-sm font-semibold text-primary">Step 1: Choose your website platform</p>
-                            <Tabs.List type="button-border" size="md" className="mt-3 flex-wrap">
-                                {platforms.map((platform) => (
-                                    <Tabs.Item key={platform.id} id={platform.id} icon={platform.icon}>
-                                        {platform.name}
-                                    </Tabs.Item>
-                                ))}
-                            </Tabs.List>
+                            <div className="sticky top-0 z-30 -mx-6 mt-3 border-b border-secondary bg-primary px-6 py-3 md:-mx-14 md:px-14">
+                                <Tabs.List type="button-border" size="md" className="flex-wrap">
+                                    {platforms.map((platform) => (
+                                        <Tabs.Item key={platform.id} id={platform.id} icon={platform.icon}>
+                                            {platform.name}
+                                        </Tabs.Item>
+                                    ))}
+                                </Tabs.List>
+                            </div>
 
                             <p className="mt-7 text-sm font-semibold text-primary">Step 2: Follow this instruction</p>
 
@@ -353,10 +373,10 @@ export const PixelPage = ({
                                 </Tabs.Panel>
                             ))}
                         </Tabs>
-                    </section>
+                    </Reveal>
 
                     {/* ── Still need support? ── */}
-                    <section className="mt-16">
+                    <Reveal className="mt-16">
                         <div className="flex items-center gap-3">
                             <FeaturedIcon icon={MessageChatCircle} size="sm" color="brand" theme="dark" />
                             <span className="h-px flex-1 bg-border-secondary" />
@@ -375,18 +395,14 @@ export const PixelPage = ({
                                     Contact HiddenGem Team
                                 </Button>
                             </div>
-                            <p className="mx-auto mt-5 max-w-md text-xs text-quaternary">
-                                We're happy to install the pixel for you if you prefer — just send us your login credentials
-                                securely via your client portal.
-                            </p>
                         </div>
-                    </section>
+                    </Reveal>
 
                     {/* ── Footer ── */}
                     <footer className="mt-14 flex justify-center border-t border-secondary pt-6">
                         <a href="https://hiddengem.media/" target="_blank" rel="noopener noreferrer">
-                            <img src="/hgm logo/Logo ON LIGHT.svg" alt="HiddenGem Media" className="h-10 opacity-60 transition duration-100 ease-linear hover:opacity-90 dark:hidden" draggable={false} />
-                            <img src="/hgm logo/LOGO ON Dark.svg" alt="HiddenGem Media" className="hidden h-10 opacity-70 transition duration-100 ease-linear hover:opacity-100 dark:block" draggable={false} />
+                            <img src="/hgm logo/Logo ON LIGHT.svg" alt="HiddenGem Media" className="h-14 opacity-60 transition duration-100 ease-linear hover:opacity-90 dark:hidden" draggable={false} />
+                            <img src="/hgm logo/LOGO ON Dark.svg" alt="HiddenGem Media" className="hidden h-14 opacity-70 transition duration-100 ease-linear hover:opacity-100 dark:block" draggable={false} />
                         </a>
                     </footer>
                 </div>
@@ -394,15 +410,17 @@ export const PixelPage = ({
 
             {/* ── Fixed bottom-right action buttons ── */}
             <div className="fixed bottom-5 right-5 z-40 flex flex-col items-center gap-2">
-                {/* Plus — create new client page */}
-                <button
-                    type="button"
-                    onClick={handlePlusClick}
-                    title="Create new client page"
-                    className="flex size-10 items-center justify-center rounded-full bg-primary shadow-lg ring-1 ring-secondary text-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-secondary"
-                >
-                    <Plus className="size-4" aria-hidden="true" />
-                </button>
+                {/* Plus — only on the template page (/metapixel) */}
+                {isTemplate && (
+                    <button
+                        type="button"
+                        onClick={handlePlusClick}
+                        title="Create new client page"
+                        className="flex size-10 items-center justify-center rounded-full bg-primary shadow-lg ring-1 ring-secondary text-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-secondary"
+                    >
+                        <Plus className="size-4" aria-hidden="true" />
+                    </button>
+                )}
 
                 {/* Lock / Unlock */}
                 <button
@@ -540,13 +558,13 @@ export const PixelPage = ({
                             </>
                         )}
 
-                        {/* Step 2 — Client Info */}
-                        {plusStep === "client-info" && (
+                        {/* Step 2 — Client details + pixel code (combined) */}
+                        {plusStep === "details" && (
                             <>
                                 <div className="flex items-start justify-between">
                                     <div>
-                                        <h3 className="text-md font-semibold text-primary">Client Details</h3>
-                                        <p className="mt-1 text-sm text-tertiary">Enter the client's name and website URL.</p>
+                                        <h3 className="text-md font-semibold text-primary">Create Client Page</h3>
+                                        <p className="mt-1 text-sm text-tertiary">Enter the client details and Meta Pixel code.</p>
                                     </div>
                                     <button
                                         type="button"
@@ -567,7 +585,6 @@ export const PixelPage = ({
                                             placeholder="e.g. Acme Corp"
                                             value={newClientName}
                                             onChange={(e) => setNewClientName(e.target.value)}
-                                            onKeyDown={(e) => e.key === "Enter" && handlePlusClientInfo()}
                                             autoFocus
                                             className="w-full rounded-lg border border-secondary px-3 py-2 text-sm text-primary placeholder:text-placeholder outline-none transition duration-100 ease-linear focus:border-brand focus:ring-1 focus:ring-brand"
                                         />
@@ -581,8 +598,18 @@ export const PixelPage = ({
                                             placeholder="e.g. acmecorp.com"
                                             value={newClientWebsite}
                                             onChange={(e) => setNewClientWebsite(e.target.value)}
-                                            onKeyDown={(e) => e.key === "Enter" && handlePlusClientInfo()}
                                             className="w-full rounded-lg border border-secondary px-3 py-2 text-sm text-primary placeholder:text-placeholder outline-none transition duration-100 ease-linear focus:border-brand focus:ring-1 focus:ring-brand"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="mb-1.5 block text-sm font-medium text-secondary">Meta Pixel Code</label>
+                                        <textarea
+                                            value={newPixelCode}
+                                            onChange={(e) => setNewPixelCode(e.target.value)}
+                                            rows={7}
+                                            placeholder="Please enter Meta Pixel code"
+                                            spellCheck={false}
+                                            className="w-full resize-none rounded-lg border border-secondary px-3 py-2 font-mono text-xs text-primary placeholder:text-placeholder outline-none transition duration-100 ease-linear focus:border-brand focus:ring-1 focus:ring-brand"
                                         />
                                     </div>
                                     {newClientName.trim() && (
@@ -593,76 +620,19 @@ export const PixelPage = ({
                                             </span>
                                         </p>
                                     )}
+                                    {createError && <p className="text-xs text-error-primary">{createError}</p>}
                                 </div>
 
                                 <div className="mt-4 flex gap-3">
-                                    <Button color="secondary" size="sm" className="flex-1" onClick={() => setShowPlusModal(false)}>
+                                    <Button color="secondary" size="sm" className="flex-1" onClick={() => setShowPlusModal(false)} isDisabled={isCreating}>
                                         Cancel
                                     </Button>
                                     <Button
                                         color="primary"
                                         size="sm"
                                         className="flex-1"
-                                        onClick={handlePlusClientInfo}
-                                        isDisabled={!newClientName.trim()}
-                                    >
-                                        Next
-                                    </Button>
-                                </div>
-                            </>
-                        )}
-
-                        {/* Step 3 — Pixel Code */}
-                        {plusStep === "pixel-code" && (
-                            <>
-                                <div className="flex items-start justify-between">
-                                    <div>
-                                        <h3 className="text-md font-semibold text-primary">Meta Pixel Code</h3>
-                                        <p className="mt-1 text-sm text-tertiary">
-                                            Paste the Meta Pixel code for {newClientName}.
-                                        </p>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowPlusModal(false)}
-                                        className="flex size-8 items-center justify-center rounded-lg text-tertiary hover:bg-secondary"
-                                    >
-                                        <XClose className="size-4" />
-                                    </button>
-                                </div>
-
-                                <div className="mt-4">
-                                    <label className="mb-1.5 block text-sm font-medium text-secondary">Pixel Code</label>
-                                    <textarea
-                                        value={newPixelCode}
-                                        onChange={(e) => setNewPixelCode(e.target.value)}
-                                        rows={9}
-                                        placeholder="Please enter Meta Pixel code"
-                                        autoFocus
-                                        spellCheck={false}
-                                        className="w-full resize-none rounded-lg border border-secondary px-3 py-2 font-mono text-xs text-primary placeholder:text-placeholder outline-none transition duration-100 ease-linear focus:border-brand focus:ring-1 focus:ring-brand"
-                                    />
-                                </div>
-
-                                {createError && (
-                                    <p className="mt-2 text-xs text-error-primary">{createError}</p>
-                                )}
-
-                                <div className="mt-4 flex gap-3">
-                                    <Button
-                                        color="secondary"
-                                        size="sm"
-                                        className="flex-1"
-                                        onClick={() => setPlusStep("client-info")}
-                                        isDisabled={isCreating}
-                                    >
-                                        Back
-                                    </Button>
-                                    <Button
-                                        color="primary"
-                                        size="sm"
-                                        className="flex-1"
                                         onClick={handleCreatePage}
+                                        isDisabled={!newClientName.trim()}
                                         isLoading={isCreating}
                                         showTextWhileLoading
                                     >
