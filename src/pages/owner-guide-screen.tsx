@@ -44,6 +44,7 @@ type Notes = Record<string, string>;
 interface OwnerData { credentials: Creds; checklist: Checklist; notes: Notes }
 
 const CONTENT_KEY = "hgm_owner_content_v2";
+const GUIDE_CONTENT_SLUG = "owner-guide-content";
 const SESSION_KEY = "hgm_owner_session";
 
 const uid = () => Math.random().toString(36).slice(2, 9);
@@ -606,6 +607,8 @@ export const OwnerGuideScreen = () => {
 
     const editing = !locked;
 
+    const contentHydrated = useRef(false);
+
     useEffect(() => {
         dbLoad(sessionId).then(data => {
             setOwnerData(data);
@@ -614,6 +617,34 @@ export const OwnerGuideScreen = () => {
             setLoading(false);
         });
     }, [sessionId]);
+
+    // Shared guide content lives in Supabase so every client sees the team's edits.
+    useEffect(() => {
+        supabase
+            .from("sop_pages")
+            .select("data")
+            .eq("slug", GUIDE_CONTENT_SLUG)
+            .maybeSingle()
+            .then(({ data, error }) => {
+                if (!error && Array.isArray(data?.data) && data.data.length) {
+                    setSteps(data.data as StepData[]);
+                    saveContent(data.data as StepData[]);
+                }
+                contentHydrated.current = true;
+            });
+    }, []);
+
+    // Debounced publish of guide content to Supabase after edits.
+    useEffect(() => {
+        if (!contentHydrated.current) return;
+        const t = setTimeout(() => {
+            supabase
+                .from("sop_pages")
+                .upsert({ slug: GUIDE_CONTENT_SLUG, data: steps, updated_at: new Date().toISOString() }, { onConflict: "slug" })
+                .then(({ error }) => { if (error) console.error("[owner-guide content save]", error); });
+        }, 800);
+        return () => clearTimeout(t);
+    }, [steps]);
 
     useEffect(() => { localStorage.setItem("hgm_owner_locked", String(locked)); }, [locked]);
 

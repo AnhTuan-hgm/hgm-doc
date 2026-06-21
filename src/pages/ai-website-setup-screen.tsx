@@ -2,7 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { IconRail } from "@/components/application/icon-rail";
 import { useTheme } from "@/providers/theme-provider";
+import { supabase } from "@/lib/supabase";
 import { cx } from "@/utils/cx";
+
+const SOP_SLUG = "ai-website-setup";
 
 /* ── Types ───────────────────────────────────────────────────────── */
 
@@ -800,7 +803,30 @@ const Sidebar = ({
 export const AiWebsiteSetupScreen = () => {
     const [state, setState] = useState<SOPState>(() => load());
     const [saved, setSaved] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [saveError, setSaveError] = useState("");
     const mainRef = useRef<HTMLElement>(null);
+
+    // Supabase is the shared source of truth; override the local cache on mount.
+    useEffect(() => {
+        supabase
+            .from("sop_pages")
+            .select("data")
+            .eq("slug", SOP_SLUG)
+            .maybeSingle()
+            .then(({ data, error }) => {
+                if (error || !data?.data) return;
+                const loaded = data.data as SOPState;
+                if (!Array.isArray(loaded.stages)) return;
+                loaded.stages.forEach((stage) => {
+                    stage.steps.forEach((step: Step & { tool?: string }) => {
+                        if (!Array.isArray(step.tools)) step.tools = step.tool ? [step.tool] : [];
+                        delete step.tool;
+                    });
+                });
+                setState(loaded);
+            });
+    }, []);
 
     const { stages, selectedId, locked } = state;
     const editing = !locked;
@@ -832,8 +858,20 @@ export const AiWebsiteSetupScreen = () => {
     };
     const handleToggleLock = () => update((d) => { d.locked = !d.locked; });
 
-    const handleSave = () => {
-        save(state);
+    const handleSave = async () => {
+        setSaving(true);
+        setSaveError("");
+        save(state); // best-effort local cache
+        const { error } = await supabase
+            .from("sop_pages")
+            .upsert({ slug: SOP_SLUG, data: state, updated_at: new Date().toISOString() }, { onConflict: "slug" });
+        setSaving(false);
+        if (error) {
+            console.error("[sop save] Supabase error:", error);
+            setSaveError(error.message);
+            setTimeout(() => setSaveError(""), 5000);
+            return;
+        }
         setSaved(true);
         setTimeout(() => setSaved(false), 1800);
     };
@@ -1061,29 +1099,39 @@ export const AiWebsiteSetupScreen = () => {
                             <button
                                 type="button"
                                 onClick={handleSave}
+                                disabled={saving}
                                 title="Save"
                                 className={cx(
-                                    "flex size-11 items-center justify-center rounded-full shadow-lg ring-1 transition duration-100 ease-linear",
-                                    saved
-                                        ? "bg-success-solid text-white ring-success-solid"
-                                        : "bg-brand-600 text-white ring-brand-600 hover:bg-brand-700",
+                                    "flex size-11 items-center justify-center rounded-full shadow-lg ring-1 transition duration-100 ease-linear disabled:opacity-80",
+                                    saveError
+                                        ? "bg-error-solid text-white ring-error-solid"
+                                        : saved
+                                          ? "bg-success-solid text-white ring-success-solid"
+                                          : "bg-brand-600 text-white ring-brand-600 hover:bg-brand-700",
                                 )}
                             >
-                                {saved ? (
+                                {saving ? (
+                                    <span className="size-[18px] animate-spin rounded-full border-2 border-white border-t-transparent" />
+                                ) : saveError ? (
+                                    <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 8v5M12 16h.01" /><circle cx="12" cy="12" r="9" /></svg>
+                                ) : saved ? (
                                     <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
                                 ) : (
                                     <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" /><path d="M17 21v-8H7v8M7 3v5h8" /></svg>
                                 )}
                             </button>
                             <AnimatePresence>
-                                {saved && (
+                                {(saved || saveError) && (
                                     <motion.span
                                         initial={{ opacity: 0, x: 6 }}
                                         animate={{ opacity: 1, x: 0 }}
                                         exit={{ opacity: 0, x: 6 }}
-                                        className="absolute right-full top-1/2 mr-2.5 -translate-y-1/2 whitespace-nowrap rounded-lg bg-success-solid px-2.5 py-1 text-[12px] font-semibold text-white shadow-md"
+                                        className={cx(
+                                            "absolute right-full top-1/2 mr-2.5 -translate-y-1/2 max-w-[220px] truncate rounded-lg px-2.5 py-1 text-[12px] font-semibold text-white shadow-md",
+                                            saveError ? "bg-error-solid" : "bg-success-solid",
+                                        )}
                                     >
-                                        Saved!
+                                        {saveError ? `Save failed: ${saveError}` : "Saved!"}
                                     </motion.span>
                                 )}
                             </AnimatePresence>
