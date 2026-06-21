@@ -479,6 +479,7 @@ export const PopupPage = ({
     const [step, setStep] = useState(0);
     const [selectedPlatform, setSelectedPlatform] = useState<Key>("wordpress");
     const [isLocked, setIsLocked] = useState(true);
+    const [showComplete, setShowComplete] = useState(false);
     const [showUnlock, setShowUnlock] = useState(false);
     const [unlockPassword, setUnlockPassword] = useState("");
     const [unlockError, setUnlockError] = useState(false);
@@ -824,7 +825,23 @@ export const PopupPage = ({
                     <Reveal className="mt-10">
                         <SectionEyebrow number="03" />
                         <SectionHeading>Task 2 — Add a promotion section (2 columns)</SectionHeading>
-                        <p className="mt-4 text-md text-tertiary">
+
+                        {/* Before / after result */}
+                        <h3 className="mt-4 text-lg font-semibold text-primary">Before &amp; after</h3>
+                        <p className="mt-2 text-sm text-tertiary">
+                            Drag the handle to see how your homepage looks once the promotion section is added.
+                        </p>
+                        <div className="mt-4">
+                            <BeforeAfterSlider
+                                before={beforeImg}
+                                after={afterImg}
+                                editable={!isLocked}
+                                onBeforeChange={setBeforeImg}
+                                onAfterChange={setAfterImg}
+                            />
+                        </div>
+
+                        <p className="mt-6 text-md text-tertiary">
                             On your homepage, create a <span className="font-semibold text-secondary">2-column section</span>.
                             The left column holds your promotion text; the right column holds the sign-up form. This always-on
                             form is your best long-term lead capture.
@@ -883,20 +900,6 @@ export const PopupPage = ({
                             </div>
                         </div>
 
-                        {/* Before / after result */}
-                        <h3 className="mt-10 text-lg font-semibold text-primary">Before &amp; after</h3>
-                        <p className="mt-2 text-sm text-tertiary">
-                            Drag the handle to see how your homepage looks once the promotion section is added.
-                        </p>
-                        <div className="mt-4">
-                            <BeforeAfterSlider
-                                before={beforeImg}
-                                after={afterImg}
-                                editable={!isLocked}
-                                onBeforeChange={setBeforeImg}
-                                onAfterChange={setAfterImg}
-                            />
-                        </div>
                     </Reveal>
 
                     {/* ── Support ── */}
@@ -941,8 +944,8 @@ export const PopupPage = ({
                                 Next
                             </Button>
                         ) : (
-                            <Button color="primary" size="lg" iconTrailing={ArrowRight} onClick={() => goStep(0)}>
-                                Back to start
+                            <Button color="primary" size="lg" iconTrailing={Check} onClick={() => setShowComplete(true)}>
+                                Complete
                             </Button>
                         )}
                     </div>
@@ -992,6 +995,48 @@ export const PopupPage = ({
                     {isLocked ? <Lock01 className="size-4" aria-hidden="true" /> : <LockUnlocked01 className="size-4" aria-hidden="true" />}
                 </button>
             </div>
+
+            {/* ── Completion modal ── */}
+            <AnimatePresence>
+                {showComplete && (
+                    <motion.div
+                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-8"
+                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}
+                    >
+                        <motion.div
+                            className="w-full max-w-md rounded-2xl bg-primary p-7 text-center shadow-2xl ring-1 ring-secondary"
+                            initial={{ opacity: 0, scale: 0.9, y: 14 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 8 }}
+                            transition={{ type: "spring", stiffness: 320, damping: 26 }}
+                        >
+                            <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-success-secondary">
+                                <Check className="size-7 text-success-primary" />
+                            </div>
+                            <h3 className="text-lg font-bold text-primary">Both tasks complete! 🎉</h3>
+                            <p className="mx-auto mt-2 max-w-sm text-sm text-tertiary">
+                                You've added the popup and the inline promotion form. Let the HiddenGem Team know so we can verify
+                                everything is live on your site.
+                            </p>
+
+                            <a
+                                href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(`Popup & Inline Form Completed | ${clientName.trim() || "Client"}`)}&body=${encodeURIComponent(
+                                    `Hi HiddenGem Team,\n\nWe've completed both tasks — added the popup and the inline promotion form to our website${clientWebsite.trim() ? `: ${clientWebsite.trim()}` : "."}\n\nPlease verify everything is live.\n\nThanks!`,
+                                )}`}
+                                className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-brand-solid px-5 py-3 text-[15px] font-semibold text-white transition hover:opacity-90"
+                            >
+                                <MessageChatCircle className="size-5" aria-hidden="true" />
+                                Notify HiddenGem Team
+                            </a>
+                            <button
+                                type="button"
+                                onClick={() => setShowComplete(false)}
+                                className="mt-3 w-full rounded-xl border border-secondary px-5 py-2.5 text-sm font-semibold text-secondary transition hover:bg-secondary"
+                            >
+                                Close
+                            </button>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* ── Unlock modal ── */}
             <AnimatePresence>

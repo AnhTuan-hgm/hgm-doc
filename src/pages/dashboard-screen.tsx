@@ -227,7 +227,7 @@ const Sidebar = ({
     return (
     <aside className="flex h-dvh w-60 shrink-0 flex-col border-r border-secondary bg-primary">
         {/* Department header */}
-        <div className="border-b border-secondary px-5 py-4">
+        <div className="flex h-[73px] shrink-0 items-center border-b border-secondary px-5">
             <h2 className="text-md font-semibold text-primary">{department.header}</h2>
         </div>
 
@@ -502,7 +502,7 @@ const MetaPixelContent = () => {
     return (
         <div className="flex h-dvh flex-1 flex-col overflow-hidden bg-secondary">
             {/* Top bar */}
-            <header className="flex shrink-0 items-center justify-between border-b border-secondary bg-primary px-6 py-4">
+            <header className="flex h-[73px] shrink-0 items-center justify-between border-b border-secondary bg-primary px-6">
                 <div>
                     <h1 className="text-md font-semibold text-primary">Meta Pixel Pages</h1>
                     <p className="text-sm text-tertiary">
@@ -711,7 +711,7 @@ const PopupsContent = () => {
 
     return (
         <div className="flex h-dvh flex-1 flex-col overflow-hidden bg-secondary">
-            <header className="flex shrink-0 items-center justify-between border-b border-secondary bg-primary px-6 py-4">
+            <header className="flex h-[73px] shrink-0 items-center justify-between border-b border-secondary bg-primary px-6">
                 <div>
                     <h1 className="text-md font-semibold text-primary">Popup Pages</h1>
                     <p className="text-sm text-tertiary">
@@ -1055,7 +1055,7 @@ const OverviewContent = ({ department, tab, editing }: { department: Department;
 
     return (
         <div className="flex h-dvh flex-1 flex-col overflow-hidden bg-secondary">
-            <header className="flex shrink-0 items-center justify-between border-b border-secondary bg-primary px-6 py-4">
+            <header className="flex h-[73px] shrink-0 items-center justify-between border-b border-secondary bg-primary px-6">
                 <div>
                     <h1 className="text-md font-semibold text-primary">Overview</h1>
                     <p className="text-sm text-tertiary">

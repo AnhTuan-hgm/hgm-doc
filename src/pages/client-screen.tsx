@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router";
 import { PixelPage } from "./pixel-page";
 import { PopupPage } from "./popup-page";
+import { NotFound } from "./not-found";
 import { supabase, type ClientPageData, type LeadCapturePageData } from "@/lib/supabase";
 
 const Spinner = () => (
@@ -14,10 +15,12 @@ const Spinner = () => (
 const LeadCaptureScreen = ({ slug }: { slug: string }) => {
     const [data, setData] = useState<LeadCapturePageData | null>(null);
     const [loading, setLoading] = useState(true);
+    const [notFound, setNotFound] = useState(false);
 
     useEffect(() => {
         setLoading(true);
         setData(null);
+        setNotFound(false);
         supabase
             .from("leadcapture_pages")
             .select("*")
@@ -25,11 +28,13 @@ const LeadCaptureScreen = ({ slug }: { slug: string }) => {
             .single()
             .then(({ data: row, error }) => {
                 if (!error && row) setData(row as LeadCapturePageData);
+                else setNotFound(true);
                 setLoading(false);
             });
     }, [slug]);
 
     if (loading) return <Spinner />;
+    if (notFound) return <NotFound />;
 
     return (
         <PopupPage
@@ -62,14 +67,24 @@ export const ClientScreen = () => {
 const PixelScreen = ({ clientSlug }: { clientSlug?: string }) => {
     const [data, setData] = useState<ClientPageData | null>(null);
     const [loading, setLoading] = useState(true);
+    const [notFound, setNotFound] = useState(false);
+
+    // "metapixel" is the template/create route and is always valid even without a saved row.
+    const isTemplate = clientSlug === "metapixel";
 
     useEffect(() => {
         if (!clientSlug) {
+            setNotFound(true);
+            setLoading(false);
+            return;
+        }
+        if (isTemplate) {
             setLoading(false);
             return;
         }
         setLoading(true);
         setData(null);
+        setNotFound(false);
         supabase
             .from("client_pages")
             .select("*")
@@ -77,17 +92,19 @@ const PixelScreen = ({ clientSlug }: { clientSlug?: string }) => {
             .single()
             .then(({ data: row, error }) => {
                 if (!error && row) setData(row as ClientPageData);
+                else setNotFound(true);
                 setLoading(false);
             });
-    }, [clientSlug]);
+    }, [clientSlug, isTemplate]);
 
     if (loading) return <Spinner />;
+    if (notFound) return <NotFound />;
 
     return (
         <PixelPage
             key={clientSlug}
             slug={clientSlug}
-            isTemplate={clientSlug === "metapixel"}
+            isTemplate={isTemplate}
             initialClientName={data?.client_name ?? ""}
             initialClientWebsite={data?.client_website ?? ""}
             initialPixelCode={data?.pixel_code}

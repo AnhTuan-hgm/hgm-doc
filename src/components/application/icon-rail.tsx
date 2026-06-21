@@ -35,15 +35,16 @@ export const IconRail = ({
     };
 
     return (
-        <aside className="flex h-dvh w-[88px] shrink-0 flex-col items-center border-r border-secondary bg-secondary py-4">
-            {/* Favicon */}
-            <img
-                src={isDark ? "/hgm logo/Favicon ON Dark.svg" : "/hgm logo/Favicon ON LIGHT.svg"}
-                alt="HiddenGem"
-                className="size-9"
-                draggable={false}
-            />
-            <span className="mt-4 h-px w-8 bg-border-secondary" />
+        <aside className="flex h-dvh w-[88px] shrink-0 flex-col items-center border-r border-secondary bg-secondary pb-4">
+            {/* Favicon — same header height as the side menu + main content headers */}
+            <div className="flex h-[73px] w-full shrink-0 items-center justify-center border-b border-secondary">
+                <img
+                    src={isDark ? "/hgm logo/Favicon ON Dark.svg" : "/hgm logo/Favicon ON LIGHT.svg"}
+                    alt="HiddenGem"
+                    className="size-9"
+                    draggable={false}
+                />
+            </div>
 
             {/* Departments */}
             <div className="mt-4 flex flex-1 flex-col items-center gap-1">

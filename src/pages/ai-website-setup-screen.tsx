@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { IconRail } from "@/components/application/icon-rail";
-import { useTheme } from "@/providers/theme-provider";
 import { supabase } from "@/lib/supabase";
 import { cx } from "@/utils/cx";
 
@@ -692,21 +691,11 @@ const Sidebar = ({
     onDeleteStage: (id: string) => void;
     onMoveStage: (id: string, dir: -1 | 1) => void;
 }) => {
-    const { theme } = useTheme();
-    const isDark =
-        theme === "dark" ||
-        (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-
     return (
     <aside className="flex h-dvh w-[300px] shrink-0 flex-col border-r border-secondary bg-primary">
         {/* header */}
-        <div className="flex items-center border-b border-secondary px-5 py-4">
-            <img
-                src={isDark ? "/hgm logo/LOGO ON Dark.svg" : "/hgm logo/Logo ON LIGHT.svg"}
-                alt="HiddenGem Media"
-                className="h-14"
-                draggable={false}
-            />
+        <div className="flex h-[73px] shrink-0 items-center border-b border-secondary px-5">
+            <h2 className="text-md font-semibold text-primary">Web Team</h2>
         </div>
 
         {/* stage list */}
