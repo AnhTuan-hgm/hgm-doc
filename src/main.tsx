@@ -8,6 +8,7 @@ import { DashboardScreen } from "@/pages/dashboard-screen";
 import { AiWebsiteSetupScreen } from "@/pages/ai-website-setup-screen";
 import { OwnerGuideScreen } from "@/pages/owner-guide-screen";
 import { PopupPage } from "@/pages/popup-page";
+import { RequestsScreen } from "@/pages/requests-screen";
 import { ClientScreen } from "@/pages/client-screen";
 import { ThemeToggle } from "@/components/base/theme-toggle/theme-toggle";
 import { NotFound } from "@/pages/not-found";
@@ -35,6 +36,7 @@ createRoot(document.getElementById("root")!).render(
                         <Route path="/webteam/ai-website-setup" element={<AiWebsiteSetupScreen />} />
                         <Route path="/owner-guide" element={<OwnerGuideScreen />} />
                         <Route path="/popup" element={<PopupPage />} />
+                        <Route path="/requests" element={<RequestsScreen />} />
                         <Route path="/:clientSlug" element={<ClientScreen />} />
                         <Route path="*" element={<NotFound />} />
                     </Routes>

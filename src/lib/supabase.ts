@@ -40,6 +40,17 @@ export interface OverviewTab {
     created_at?: string;
 }
 
+export interface DocsRequest {
+    id: string;
+    requester: string;
+    title: string;
+    request_for: string; // clients | webteam | am | ma
+    priority: string; // low | medium | high | urgent
+    details?: string;
+    status?: string; // open | done
+    created_at?: string;
+}
+
 export interface LeadCapturePageData {
     slug: string;
     client_name: string;
