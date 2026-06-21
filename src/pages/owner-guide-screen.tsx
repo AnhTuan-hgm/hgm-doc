@@ -22,16 +22,16 @@ import { supabase } from "@/lib/supabase";
 
 type LensPos = { x: number; y: number };
 type PMSTab = "guesty" | "hostaway" | "lodgify" | "hostfully" | "smoobu" | "ical";
-type HostTab = "netlify" | "vercel";
-type SaveStatus = "idle" | "saving" | "saved" | "error";
+type SaveStatus = "idle" | "saving" | "saved" | "error" | "empty";
 type CredSection = "none" | "stripe" | "pms" | "hosting" | "supabase" | "domain" | "overview";
 
 interface StepImage { id: string; src: string; lensPos?: LensPos }
+interface Instruction { text: string; image?: string; lensPos?: LensPos }
 
 interface StepData {
     title: string;
     description: string;
-    instructions: string[];
+    instructions: Instruction[];
     benefits?: string[];
     checklistLabels: [string, string][];
     images: StepImage[];
@@ -42,6 +42,21 @@ type Creds = Record<string, string>;
 type Checklist = Record<string, boolean>;
 type Notes = Record<string, string>;
 interface OwnerData { credentials: Creds; checklist: Checklist; notes: Notes }
+
+/** Credential sections that have a fillable form. */
+const CRED_FORM_SECTIONS = ["pms", "hosting", "supabase", "stripe", "domain"];
+const SECTION_PREFIXES: Record<string, string[]> = {
+    stripe: ["stripe_"],
+    pms: ["guesty_", "hostaway_", "lodgify_", "hostfully_", "smoobu_", "ical_"],
+    hosting: ["netlify_", "vercel_"],
+    supabase: ["supabase_"],
+    domain: ["domain_"],
+};
+function sectionFilledIn(credentials: Creds, sec: string): boolean {
+    return Object.entries(credentials).some(
+        ([k, v]) => v && v.trim() !== "" && (SECTION_PREFIXES[sec] ?? []).some(p => k.startsWith(p)),
+    );
+}
 
 const CONTENT_KEY = "hgm_owner_content_v2";
 const GUIDE_CONTENT_SLUG = "owner-guide-content";
@@ -60,8 +75,19 @@ function getOrCreateSession(): string {
 
 // ── Seed content ──────────────────────────────────────────────────
 
+/** Convert legacy string instructions (and missing arrays) into the {text, image} shape. */
+function normalizeSteps(steps: StepData[]): StepData[] {
+    return steps.map((s) => ({
+        ...s,
+        images: s.images ?? [],
+        instructions: ((s.instructions ?? []) as (string | Instruction)[]).map((ins) =>
+            typeof ins === "string" ? { text: ins } : { text: ins.text ?? "", image: ins.image, lensPos: ins.lensPos },
+        ),
+    }));
+}
+
 function seedContent(): StepData[] {
-    return [
+    return normalizeSteps([
         {
             title: "Welcome & Roles",
             credSection: "none",
@@ -169,7 +195,7 @@ function seedContent(): StepData[] {
             checklistLabels: [],
             images: [],
         },
-    ];
+    ] as unknown as StepData[]);
 }
 
 function loadContent(): StepData[] {
@@ -177,7 +203,7 @@ function loadContent(): StepData[] {
         const raw = localStorage.getItem(CONTENT_KEY);
         if (raw) {
             const d = JSON.parse(raw) as StepData[];
-            if (Array.isArray(d) && d.length) return d;
+            if (Array.isArray(d) && d.length) return normalizeSteps(d);
         }
     } catch {}
     return seedContent();
@@ -385,6 +411,7 @@ const SaveActions = ({ status, label, onSave, onClear }: {
             Clear
         </button>
         {status === "error" && <span className="text-[13px] text-error-primary">Save failed — check connection</span>}
+        {status === "empty" && <span className="text-[13px] text-warning-primary">Fill in the form before saving</span>}
     </div>
 );
 
@@ -435,11 +462,12 @@ const CRED_SECTION_LABEL: Record<CredSection, string> = {
 };
 
 const Sidebar = ({
-    steps, checklist, currentStep, editing,
+    steps, credentials, visited, currentStep, editing,
     onSelect, onMoveStep, onDeleteStep, onAddStep, onNavigateOverview,
 }: {
     steps: StepData[];
-    checklist: Checklist;
+    credentials: Creds;
+    visited: Set<number>;
     currentStep: number;
     editing: boolean;
     onSelect: (i: number) => void;
@@ -453,13 +481,18 @@ const Sidebar = ({
     const [sessionCopied, setSessionCopied] = useState(false);
     const sessionId = getOrCreateSession();
 
-    const totalItems = steps.reduce((a, s) => a + s.checklistLabels.length, 0);
-    const checkedItems = Object.values(checklist).filter(Boolean).length;
-    const progress = totalItems === 0 ? 0 : Math.round((checkedItems / totalItems) * 100);
+    // Progress = filled credential forms out of total forms.
+    const formSteps = steps.filter(s => CRED_FORM_SECTIONS.includes(s.credSection));
+    const filledForms = formSteps.filter(s => sectionFilledIn(credentials, s.credSection)).length;
+    const progress = formSteps.length === 0 ? 0 : Math.round((filledForms / formSteps.length) * 100);
 
-    const isComplete = (i: number) =>
-        steps[i].checklistLabels.length > 0 &&
-        steps[i].checklistLabels.every((_, j) => checklist[`${i}_${j}`]);
+    // A step's status once it's been visited (clicked past via Next).
+    const stepStatus = (i: number): "done" | "missing" | "todo" => {
+        if (!visited.has(i)) return "todo";
+        const sec = steps[i].credSection;
+        if (CRED_FORM_SECTIONS.includes(sec) && !sectionFilledIn(credentials, sec)) return "missing";
+        return "done";
+    };
 
     const overviewIdx = steps.findIndex(s => s.credSection === "overview");
 
@@ -487,14 +520,22 @@ const Sidebar = ({
             </div>
 
             {/* step list */}
-            <div className="flex-1 overflow-y-auto px-3 py-3">
+            <motion.div
+                className="flex-1 overflow-y-auto px-3 py-3"
+                initial="hidden"
+                animate="show"
+                variants={{ show: { transition: { staggerChildren: 0.05 } } }}
+            >
                 {steps.map((s, i) => {
                     const active = i === currentStep;
-                    const complete = isComplete(i);
+                    const status = stepStatus(i);
                     const isOverview = s.credSection === "overview";
+                    const hasLabel = s.credSection !== "none" && s.credSection !== "overview" && !!CRED_SECTION_LABEL[s.credSection];
                     return (
-                        <div key={i} className={cx(
-                            "group relative flex items-center gap-2 rounded-[9px] px-2 py-2 pl-[11px] transition duration-100 ease-linear",
+                        <motion.div key={i}
+                            variants={{ hidden: { opacity: 0, x: -10 }, show: { opacity: 1, x: 0, transition: { duration: 0.3, ease: [0.22, 1, 0.36, 1] } } }}
+                            className={cx(
+                            "group relative flex items-center gap-2 rounded-[9px] px-2 py-2 pl-[11px] transition-colors duration-100 ease-linear",
                             active ? "bg-brand-50 dark:bg-brand-950/40" : "hover:bg-secondary",
                         )}>
                             <span className={cx(
@@ -508,22 +549,23 @@ const Sidebar = ({
                                 <span className={cx(
                                     "flex size-[26px] shrink-0 items-center justify-center rounded-full text-[11px] font-bold transition",
                                     isOverview ? (active ? "bg-brand-600 text-white" : "bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300") :
-                                    complete ? "bg-success-solid text-white" :
+                                    status === "done" ? "bg-success-solid text-white" :
+                                    status === "missing" ? "bg-error-solid text-white" :
                                     active ? "bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300" : "bg-secondary text-quaternary",
                                 )}>
                                     {isOverview
                                         ? <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" /></svg>
-                                        : complete
+                                        : status === "done"
                                             ? <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6L9 17l-5-5" /></svg>
                                             : i + 1
                                     }
                                 </span>
                                 <div className="flex-1 min-w-0">
                                     <p className={cx("truncate text-[13px] font-semibold", active ? "text-primary" : "text-secondary")}>
-                                        {s.title}
+                                        {hasLabel ? CRED_SECTION_LABEL[s.credSection] : s.title}
                                     </p>
-                                    {s.credSection !== "none" && s.credSection !== "overview" && (
-                                        <p className="text-[10.5px] text-quaternary">{CRED_SECTION_LABEL[s.credSection]}</p>
+                                    {hasLabel && (
+                                        <p className="truncate text-[10.5px] text-quaternary">{s.title}</p>
                                     )}
                                 </div>
                             </button>
@@ -545,7 +587,7 @@ const Sidebar = ({
                                     </button>
                                 </div>
                             )}
-                        </div>
+                        </motion.div>
                     );
                 })}
 
@@ -566,7 +608,7 @@ const Sidebar = ({
                         View Client Overview
                     </button>
                 )}
-            </div>
+            </motion.div>
 
             {/* session id */}
             <div className="border-t border-secondary px-4 py-3.5">
@@ -599,8 +641,8 @@ export const OwnerGuideScreen = () => {
     });
     const [loading, setLoading] = useState(true);
     const [currentStep, setCurrentStep] = useState(0);
+    const [visited, setVisited] = useState<Set<number>>(new Set());
     const [pmsTab, setPmsTab] = useState<PMSTab>("guesty");
-    const [hostTab, setHostTab] = useState<HostTab>("netlify");
     const [saveStatus, setSaveStatus] = useState<Record<string, SaveStatus>>({});
     const [overviewSaveStatus, setOverviewSaveStatus] = useState<SaveStatus>("idle");
     const [showComplete, setShowComplete] = useState(false);
@@ -613,7 +655,6 @@ export const OwnerGuideScreen = () => {
         dbLoad(sessionId).then(data => {
             setOwnerData(data);
             if (data.credentials.pms_platform) setPmsTab(data.credentials.pms_platform as PMSTab);
-            if (data.credentials.hosting_tab) setHostTab(data.credentials.hosting_tab as HostTab);
             setLoading(false);
         });
     }, [sessionId]);
@@ -627,8 +668,9 @@ export const OwnerGuideScreen = () => {
             .maybeSingle()
             .then(({ data, error }) => {
                 if (!error && Array.isArray(data?.data) && data.data.length) {
-                    setSteps(data.data as StepData[]);
-                    saveContent(data.data as StepData[]);
+                    const norm = normalizeSteps(data.data as StepData[]);
+                    setSteps(norm);
+                    saveContent(norm);
                 }
                 contentHydrated.current = true;
             });
@@ -666,28 +708,32 @@ export const OwnerGuideScreen = () => {
 
     const updateInstruction = (si: number, ii: number, val: string) => {
         setSteps(prev => {
-            const next = prev.map((s, i) => i !== si ? s : { ...s, instructions: s.instructions.map((ins, j) => j === ii ? val : ins) });
+            const next = prev.map((s, i) => i !== si ? s : { ...s, instructions: s.instructions.map((ins, j) => j === ii ? { ...ins, text: val } : ins) });
             saveContent(next);
             return next;
         });
+    };
+
+    const patchInstruction = (si: number, ii: number, patch: Partial<Instruction>) => {
+        setSteps(prev => {
+            const next = prev.map((s, i) => i !== si ? s : { ...s, instructions: s.instructions.map((ins, j) => j === ii ? { ...ins, ...patch } : ins) });
+            saveContent(next);
+            return next;
+        });
+    };
+
+    const handleInstructionImage = (si: number, ii: number, e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => patchInstruction(si, ii, { image: reader.result as string });
+        reader.readAsDataURL(file);
+        e.target.value = "";
     };
 
     const updateBenefit = (si: number, bi: number, val: string) => {
         setSteps(prev => {
             const next = prev.map((s, i) => i !== si || !s.benefits ? s : { ...s, benefits: s.benefits.map((b, j) => j === bi ? val : b) });
-            saveContent(next);
-            return next;
-        });
-    };
-
-    const updateChecklistLabel = (si: number, ci: number, part: 0 | 1, val: string) => {
-        setSteps(prev => {
-            const next = prev.map((s, i) => i !== si ? s : {
-                ...s,
-                checklistLabels: s.checklistLabels.map((cl, j) =>
-                    j !== ci ? cl : (part === 0 ? [val, cl[1]] : [cl[0], val]) as [string, string]
-                ),
-            });
             saveContent(next);
             return next;
         });
@@ -722,7 +768,7 @@ export const OwnerGuideScreen = () => {
         const newStep: StepData = {
             title: "New Step",
             description: "Describe what this step involves.",
-            instructions: ["First instruction"],
+            instructions: [{ text: "First instruction" }],
             checklistLabels: [["Complete this step", "Criteria for completion"]],
             images: [],
             credSection: "none",
@@ -780,12 +826,31 @@ export const OwnerGuideScreen = () => {
     const cred = (k: string) => ownerData.credentials[k] ?? "";
     const setCred = (k: string, v: string) => setOwnerData(prev => ({ ...prev, credentials: { ...prev.credentials, [k]: v } }));
 
+    const StatusBadge = ({ sec }: { sec: string }) => {
+        const filled = sectionFilledIn(ownerData.credentials, sec);
+        return (
+            <span className={cx(
+                "inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold",
+                filled ? "bg-success-secondary text-success-primary" : "bg-secondary text-quaternary",
+            )}>
+                <span className={cx("size-1.5 rounded-full", filled ? "bg-success-solid" : "bg-quaternary")} />
+                {filled ? "Filled" : "Empty"}
+            </span>
+        );
+    };
+
     const signalStatus = (key: string, ok: boolean) => {
         setSaveStatus(s => ({ ...s, [key]: ok ? "saved" : "error" }));
         setTimeout(() => setSaveStatus(s => ({ ...s, [key]: "idle" })), ok ? 3000 : 5000);
     };
 
     const doSave = async (key: string) => {
+        // Nothing entered → don't pretend it saved.
+        if (!sectionFilledIn(ownerData.credentials, key)) {
+            setSaveStatus(s => ({ ...s, [key]: "empty" }));
+            setTimeout(() => setSaveStatus(s => ({ ...s, [key]: "idle" })), 3000);
+            return;
+        }
         setSaveStatus(s => ({ ...s, [key]: "saving" }));
         const ok = await dbSave(sessionId, ownerData);
         signalStatus(key, ok);
@@ -797,25 +862,6 @@ export const OwnerGuideScreen = () => {
         const next: OwnerData = { ...ownerData, credentials: cleared };
         setOwnerData(next);
         await dbSave(sessionId, next);
-    };
-
-    // ── Checklist ────────────────────────────────────────────────
-
-    const toggleCheck = async (si: number, ci: number) => {
-        const key = `${si}_${ci}`;
-        const next: OwnerData = { ...ownerData, checklist: { ...ownerData.checklist, [key]: !ownerData.checklist[key] } };
-        setOwnerData(next);
-        await dbSave(sessionId, next);
-        const allDone = steps.every((s, i) => s.checklistLabels.every((_, j) => next.checklist[`${i}_${j}`]));
-        if (allDone) setShowComplete(true);
-    };
-
-    // ── Notes ────────────────────────────────────────────────────
-
-    const saveNote = async (si: number) => {
-        setSaveStatus(s => ({ ...s, [`note_${si}`]: "saving" }));
-        const ok = await dbSave(sessionId, ownerData);
-        signalStatus(`note_${si}`, ok);
     };
 
     // ── Overview save & lock ─────────────────────────────────────
@@ -833,13 +879,13 @@ export const OwnerGuideScreen = () => {
     };
 
     const step = steps[currentStep] ?? steps[0];
-    const totalItems = steps.reduce((a, s) => a + s.checklistLabels.length, 0);
-    const checkedItems = Object.values(ownerData.checklist).filter(Boolean).length;
+    const formSteps = steps.filter(s => CRED_FORM_SECTIONS.includes(s.credSection));
+    const filledForms = formSteps.filter(s => sectionFilledIn(ownerData.credentials, s.credSection)).length;
 
     return (
         <div className="flex h-dvh overflow-hidden bg-secondary">
             <Sidebar
-                steps={steps} checklist={ownerData.checklist}
+                steps={steps} credentials={ownerData.credentials} visited={visited}
                 currentStep={currentStep} editing={editing}
                 onSelect={navigate} onMoveStep={moveStep}
                 onDeleteStep={deleteStep} onAddStep={addStep}
@@ -855,7 +901,7 @@ export const OwnerGuideScreen = () => {
                     <div className="mb-3 flex items-center gap-2 text-[12px] font-medium text-quaternary">
                         <span>Step {currentStep + 1} of {steps.length}</span>
                         <span>·</span>
-                        <span>{checkedItems} of {totalItems} tasks complete</span>
+                        <span>{filledForms} of {formSteps.length} forms filled</span>
                     </div>
 
                     {/* title */}
@@ -987,23 +1033,44 @@ export const OwnerGuideScreen = () => {
                                     <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-quaternary">Step-by-Step Instructions</h2>
                                     <div className="flex flex-col gap-3">
                                         {step.instructions.map((ins, i) => (
-                                            <div key={i} className="flex items-start gap-3.5 rounded-xl border border-secondary bg-primary px-4 py-3.5">
-                                                <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-brand-100 text-[12px] font-bold text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">
-                                                    {i + 1}
-                                                </span>
-                                                {editing ? (
-                                                    <textarea value={ins}
-                                                        onChange={e => updateInstruction(currentStep, i, e.target.value)}
-                                                        rows={2} className="flex-1 resize-y bg-transparent text-[14px] leading-relaxed text-secondary outline-none"
-                                                    />
-                                                ) : (
-                                                    <p className="flex-1 text-[14px] leading-relaxed text-secondary">{ins}</p>
-                                                )}
+                                            <div key={i} className="rounded-xl border border-secondary bg-primary px-4 py-3.5">
+                                                <div className="flex items-start gap-3.5">
+                                                    <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-brand-100 text-[12px] font-bold text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">
+                                                        {i + 1}
+                                                    </span>
+                                                    {editing ? (
+                                                        <textarea value={ins.text}
+                                                            onChange={e => updateInstruction(currentStep, i, e.target.value)}
+                                                            rows={2} className="flex-1 resize-y bg-transparent text-[14px] leading-relaxed text-secondary outline-none"
+                                                        />
+                                                    ) : (
+                                                        <p className="flex-1 text-[14px] leading-relaxed text-secondary">{ins.text}</p>
+                                                    )}
+                                                </div>
+
+                                                {/* Per-instruction reference image with magnify circle */}
+                                                {ins.image ? (
+                                                    <div className="mt-3 pl-[38px]">
+                                                        <ImageMagnifier
+                                                            src={ins.image}
+                                                            editing={editing}
+                                                            lensPos={ins.lensPos}
+                                                            onLensPosChange={p => patchInstruction(currentStep, i, { lensPos: p })}
+                                                            onRemove={() => patchInstruction(currentStep, i, { image: undefined, lensPos: undefined })}
+                                                        />
+                                                    </div>
+                                                ) : editing ? (
+                                                    <label className="mt-3 ml-[38px] flex w-fit cursor-pointer items-center gap-2 rounded-lg border border-dashed border-primary px-3 py-1.5 text-[12px] font-medium text-tertiary transition hover:border-brand hover:text-brand-700">
+                                                        <input type="file" accept="image/*" className="hidden" onChange={e => handleInstructionImage(currentStep, i, e)} />
+                                                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></svg>
+                                                        Add image
+                                                    </label>
+                                                ) : null}
                                             </div>
                                         ))}
                                         {editing && (
                                             <button type="button"
-                                                onClick={() => updateField(currentStep, "instructions", [...step.instructions, "New instruction"])}
+                                                onClick={() => updateField(currentStep, "instructions", [...step.instructions, { text: "New instruction" }])}
                                                 className="flex items-center gap-2 rounded-xl border border-dashed border-primary py-2.5 text-[13px] font-medium text-tertiary transition hover:border-brand hover:text-brand-700">
                                                 <span className="flex-1 text-center">+ Add instruction</span>
                                             </button>
@@ -1042,7 +1109,10 @@ export const OwnerGuideScreen = () => {
                                     {/* PMS */}
                                     {step.credSection === "pms" && (
                                         <section className="mb-6 rounded-2xl border border-secondary bg-primary p-6">
-                                            <h2 className="mb-4 text-[15px] font-bold text-primary">Select your PMS platform:</h2>
+                                            <div className="mb-4 flex items-center justify-between gap-3">
+                                                <h2 className="text-[15px] font-bold text-primary">Select your PMS platform:</h2>
+                                                <StatusBadge sec="pms" />
+                                            </div>
                                             <div className="mb-5 flex flex-wrap gap-2">
                                                 {PMS_TABS.map(t => (
                                                     <button key={t.id} type="button"
@@ -1115,42 +1185,26 @@ export const OwnerGuideScreen = () => {
                                     {/* Hosting (Netlify/Vercel) */}
                                     {step.credSection === "hosting" && (
                                         <section className="mb-6 rounded-2xl border border-secondary bg-primary p-6">
-                                            <h2 className="mb-4 text-[15px] font-bold text-primary">Paste your hosting credentials:</h2>
-                                            <div className="mb-5 flex gap-2">
-                                                {(["netlify", "vercel"] as HostTab[]).map(t => (
-                                                    <button key={t} type="button"
-                                                        onClick={() => { setHostTab(t); setCred("hosting_tab", t); }}
-                                                        className={cx(
-                                                            "rounded-full border px-4 py-1.5 text-[13px] font-semibold capitalize transition duration-100 ease-linear",
-                                                            hostTab === t ? "border-brand-600 bg-brand-50 text-brand-700 dark:bg-brand-950/40 dark:text-brand-300" : "border-secondary text-secondary hover:border-primary hover:text-primary",
-                                                        )}>
-                                                        {t.charAt(0).toUpperCase() + t.slice(1)}
-                                                    </button>
-                                                ))}
+                                            <div className="mb-4 flex items-center justify-between gap-3">
+                                                <h2 className="text-[15px] font-bold text-primary">Paste your hosting credentials:</h2>
+                                                <StatusBadge sec="hosting" />
                                             </div>
-                                            {hostTab === "netlify" && (
-                                                <div className="flex flex-col gap-4">
-                                                    <CredField label="Netlify Site Domain (e.g. site.netlify.app)" placeholder="your-site.netlify.app" value={cred("netlify_domain")} onChange={v => setCred("netlify_domain", v)} />
-                                                    <CredField label="Netlify Site ID" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" value={cred("netlify_site_id")} onChange={v => setCred("netlify_site_id", v)} />
-                                                    <SecretField label="Netlify Build Hook URL" placeholder="https://api.netlify.com/build_hooks/..." value={cred("netlify_build_hook")} onChange={v => setCred("netlify_build_hook", v)} />
-                                                    <SaveActions status={saveStatus["hosting"] ?? "idle"} label="Netlify Info" onSave={() => doSave("hosting")} onClear={() => doClear("hosting", ["netlify_domain", "netlify_site_id", "netlify_build_hook"])} />
-                                                </div>
-                                            )}
-                                            {hostTab === "vercel" && (
-                                                <div className="flex flex-col gap-4">
-                                                    <CredField label="Vercel Project Domain (e.g. project.vercel.app)" placeholder="your-project.vercel.app" value={cred("vercel_domain")} onChange={v => setCred("vercel_domain", v)} />
-                                                    <CredField label="Vercel Project ID" placeholder="prj_..." value={cred("vercel_project_id")} onChange={v => setCred("vercel_project_id", v)} />
-                                                    <SecretField label="Vercel Deploy Hook URL" placeholder="https://api.vercel.com/v1/integrations/deploy/..." value={cred("vercel_deploy_hook")} onChange={v => setCred("vercel_deploy_hook", v)} />
-                                                    <SaveActions status={saveStatus["hosting"] ?? "idle"} label="Vercel Info" onSave={() => doSave("hosting")} onClear={() => doClear("hosting", ["vercel_domain", "vercel_project_id", "vercel_deploy_hook"])} />
-                                                </div>
-                                            )}
+                                            <div className="flex flex-col gap-4">
+                                                <CredField label="Netlify Site Domain (e.g. site.netlify.app)" placeholder="your-site.netlify.app" value={cred("netlify_domain")} onChange={v => setCred("netlify_domain", v)} />
+                                                <CredField label="Netlify Site ID" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" value={cred("netlify_site_id")} onChange={v => setCred("netlify_site_id", v)} />
+                                                <SecretField label="Netlify Build Hook URL" placeholder="https://api.netlify.com/build_hooks/..." value={cred("netlify_build_hook")} onChange={v => setCred("netlify_build_hook", v)} />
+                                                <SaveActions status={saveStatus["hosting"] ?? "idle"} label="Netlify Info" onSave={() => doSave("hosting")} onClear={() => doClear("hosting", ["netlify_domain", "netlify_site_id", "netlify_build_hook"])} />
+                                            </div>
                                         </section>
                                     )}
 
                                     {/* Supabase */}
                                     {step.credSection === "supabase" && (
                                         <section className="mb-6 rounded-2xl border border-secondary bg-primary p-6">
-                                            <h2 className="mb-4 text-[15px] font-bold text-primary">Copy & Paste Credentials Below:</h2>
+                                            <div className="mb-4 flex items-center justify-between gap-3">
+                                                <h2 className="text-[15px] font-bold text-primary">Copy & Paste Credentials Below:</h2>
+                                                <StatusBadge sec="supabase" />
+                                            </div>
                                             <div className="flex flex-col gap-4">
                                                 <CredField label="Supabase Project URL" placeholder="https://xxxxxxxxxxxx.supabase.co" value={cred("supabase_project_url")} onChange={v => setCred("supabase_project_url", v)} />
                                                 <SecretField label="Supabase Anon API Key" placeholder="eyJhbGciOiJIUzI1NiIs..." value={cred("supabase_anon_key")} onChange={v => setCred("supabase_anon_key", v)} />
@@ -1162,7 +1216,10 @@ export const OwnerGuideScreen = () => {
                                     {/* Stripe */}
                                     {step.credSection === "stripe" && (
                                         <section className="mb-6 rounded-2xl border border-secondary bg-primary p-6">
-                                            <h2 className="mb-4 text-[15px] font-bold text-primary">Paste your Stripe Credentials here:</h2>
+                                            <div className="mb-4 flex items-center justify-between gap-3">
+                                                <h2 className="text-[15px] font-bold text-primary">Paste your Stripe Credentials here:</h2>
+                                                <StatusBadge sec="stripe" />
+                                            </div>
                                             <div className="flex flex-col gap-4">
                                                 <CredField label="Account ID (e.g. acct_1Msz...)" placeholder="acct_1Msz..." value={cred("stripe_account_id")} onChange={v => setCred("stripe_account_id", v)} />
                                                 <CredField label="Publishable Key (pk_live_...)" placeholder="pk_live_..." value={cred("stripe_publishable_key")} onChange={v => setCred("stripe_publishable_key", v)} />
@@ -1176,7 +1233,10 @@ export const OwnerGuideScreen = () => {
                                     {/* Domain */}
                                     {step.credSection === "domain" && (
                                         <section className="mb-6 rounded-2xl border border-secondary bg-primary p-6">
-                                            <h2 className="mb-4 text-[15px] font-bold text-primary">Save your domain details:</h2>
+                                            <div className="mb-4 flex items-center justify-between gap-3">
+                                                <h2 className="text-[15px] font-bold text-primary">Save your domain details:</h2>
+                                                <StatusBadge sec="domain" />
+                                            </div>
                                             <div className="flex flex-col gap-4">
                                                 <CredField label="Custom Domain (e.g. yourcabin.com)" placeholder="yourcabin.com" value={cred("domain_custom")} onChange={v => setCred("domain_custom", v)} />
                                                 <CredField label="Domain Registrar (e.g. GoDaddy, Namecheap)" placeholder="GoDaddy" value={cred("domain_registrar")} onChange={v => setCred("domain_registrar", v)} />
@@ -1188,62 +1248,6 @@ export const OwnerGuideScreen = () => {
                                 </>
                             )}
 
-                            {/* checklist */}
-                            {step.checklistLabels.length > 0 && (
-                                <section className="mb-6 rounded-2xl border border-secondary bg-primary p-6">
-                                    <h2 className="mb-4 text-[12px] font-semibold uppercase tracking-[0.1em] text-quaternary">Required Actions</h2>
-                                    <div className="flex flex-col gap-4">
-                                        {step.checklistLabels.map(([main, sub], j) => {
-                                            const checked = !!ownerData.checklist[`${currentStep}_${j}`];
-                                            return (
-                                                <div key={j} className={cx("flex items-start gap-3.5 rounded-xl border p-4 transition duration-100", checked ? "border-success-primary/30 bg-success-primary/5" : "border-secondary")}>
-                                                    <button type="button" onClick={() => toggleCheck(currentStep, j)}
-                                                        className={cx("mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border-2 transition duration-100 ease-linear", checked ? "border-success-solid bg-success-solid" : "border-secondary hover:border-brand")}>
-                                                        {checked && <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5" /></svg>}
-                                                    </button>
-                                                    <div className="flex-1 min-w-0">
-                                                        {editing ? (
-                                                            <input type="text" value={main}
-                                                                onChange={e => updateChecklistLabel(currentStep, j, 0, e.target.value)}
-                                                                className={cx("mb-0.5 w-full bg-transparent text-[14px] font-semibold outline-none border-b border-transparent focus:border-brand", checked ? "line-through text-tertiary" : "text-primary")}
-                                                            />
-                                                        ) : (
-                                                            <p className={cx("mb-0.5 text-[14px] font-semibold", checked ? "line-through text-tertiary" : "text-primary")}>{main}</p>
-                                                        )}
-                                                        {editing ? (
-                                                            <input type="text" value={sub}
-                                                                onChange={e => updateChecklistLabel(currentStep, j, 1, e.target.value)}
-                                                                className="w-full bg-transparent text-[13px] text-tertiary outline-none border-b border-transparent focus:border-brand"
-                                                            />
-                                                        ) : (
-                                                            <p className="text-[13px] text-tertiary">{sub}</p>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </section>
-                            )}
-
-                            {/* notes */}
-                            <section className="mb-8 rounded-2xl border border-secondary bg-primary p-6">
-                                <h2 className="mb-1 text-[12px] font-semibold uppercase tracking-[0.1em] text-quaternary">Notes for this step</h2>
-                                <p className="mb-3 text-[13px] text-tertiary">Write notes, questions, or configurations. Saved to your onboarding record.</p>
-                                <textarea
-                                    value={ownerData.notes[String(currentStep)] ?? ""}
-                                    onChange={e => setOwnerData(prev => ({ ...prev, notes: { ...prev.notes, [String(currentStep)]: e.target.value } }))}
-                                    rows={3} placeholder="Your notes here…"
-                                    className="w-full resize-y rounded-xl border border-secondary bg-secondary px-3.5 py-3 text-[14px] leading-relaxed text-secondary outline-none transition duration-100 ease-linear focus:border-brand focus:bg-primary focus:ring-1 focus:ring-brand placeholder:text-placeholder"
-                                />
-                                <div className="mt-3 flex items-center gap-3">
-                                    <button type="button" onClick={() => saveNote(currentStep)}
-                                        className="rounded-xl bg-primary-solid px-4 py-2 text-[13px] font-semibold text-white transition hover:opacity-90">
-                                        {saveStatus[`note_${currentStep}`] === "saving" ? "Saving…" : saveStatus[`note_${currentStep}`] === "saved" ? "✓ Saved!" : "Save Note"}
-                                    </button>
-                                    {saveStatus[`note_${currentStep}`] === "error" && <span className="text-[13px] text-error-primary">Save failed</span>}
-                                </div>
-                            </section>
                         </>
                     )}
 
@@ -1255,7 +1259,7 @@ export const OwnerGuideScreen = () => {
                             Back
                         </button>
                         {currentStep < steps.length - 1 ? (
-                            <button type="button" onClick={() => navigate(currentStep + 1)}
+                            <button type="button" onClick={() => { setVisited(v => new Set(v).add(currentStep)); navigate(currentStep + 1); }}
                                 className="flex items-center gap-2 rounded-xl bg-primary-solid px-5 py-2.5 text-[14px] font-semibold text-white transition hover:opacity-90">
                                 Next
                                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M5 12h14M12 5l7 7-7 7" /></svg>

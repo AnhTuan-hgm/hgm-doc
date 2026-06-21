@@ -156,7 +156,8 @@ function load(): SOPState {
                         delete step.tool;
                     });
                 });
-                return d;
+                // Lock is a per-view UI state, never restored from saved data.
+                return { ...d, locked: true };
             }
         }
     } catch {}
@@ -806,6 +807,7 @@ export const AiWebsiteSetupScreen = () => {
     const [saving, setSaving] = useState(false);
     const [saveError, setSaveError] = useState("");
     const mainRef = useRef<HTMLElement>(null);
+    const hydratedRef = useRef(false);
 
     // Supabase is the shared source of truth; override the local cache on mount.
     useEffect(() => {
@@ -815,20 +817,36 @@ export const AiWebsiteSetupScreen = () => {
             .eq("slug", SOP_SLUG)
             .maybeSingle()
             .then(({ data, error }) => {
-                if (error || !data?.data) return;
-                const loaded = data.data as SOPState;
-                if (!Array.isArray(loaded.stages)) return;
-                loaded.stages.forEach((stage) => {
-                    stage.steps.forEach((step: Step & { tool?: string }) => {
-                        if (!Array.isArray(step.tools)) step.tools = step.tool ? [step.tool] : [];
-                        delete step.tool;
+                if (!error && Array.isArray((data?.data as SOPState | undefined)?.stages)) {
+                    const loaded = data!.data as SOPState;
+                    loaded.stages.forEach((stage) => {
+                        stage.steps.forEach((step: Step & { tool?: string }) => {
+                            if (!Array.isArray(step.tools)) step.tools = step.tool ? [step.tool] : [];
+                            delete step.tool;
+                        });
                     });
-                });
-                setState(loaded);
+                    // Always open locked, regardless of the saved lock flag.
+                    setState({ ...loaded, locked: true });
+                }
+                hydratedRef.current = true;
             });
     }, []);
 
     const { stages, selectedId, locked } = state;
+
+    // Auto-publish every edit (stages, steps and all step details) to Supabase, debounced,
+    // so nothing is trapped in one browser even if the user forgets to click Save.
+    useEffect(() => {
+        if (!hydratedRef.current) return;
+        const t = setTimeout(() => {
+            supabase
+                .from("sop_pages")
+                .upsert({ slug: SOP_SLUG, data: state, updated_at: new Date().toISOString() }, { onConflict: "slug" })
+                .then(({ error }) => { if (error) console.error("[sop autosave]", error); });
+        }, 1000);
+        return () => clearTimeout(t);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [state]);
     const editing = !locked;
 
     const sel = stages.find((s) => s.id === selectedId) ?? stages[0] ?? null;

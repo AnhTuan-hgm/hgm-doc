@@ -87,6 +87,8 @@ const HighlightedCode = ({ code }: { code: string }) => (
 );
 
 export interface PixelPageProps {
+    /** Page slug — when set, locking persists edits to client_pages (shared). */
+    slug?: string;
     initialClientName?: string;
     initialClientWebsite?: string;
     initialPixelCode?: string;
@@ -95,6 +97,7 @@ export interface PixelPageProps {
 }
 
 export const PixelPage = ({
+    slug,
     initialClientName = "",
     initialClientWebsite = "",
     initialPixelCode = DEFAULT_PIXEL_CODE,
@@ -148,14 +151,24 @@ export const PixelPage = ({
         };
     }, [showPlusModal, showUnlockModal]);
 
-    const handleLockClick = () => {
+    const handleLockClick = async () => {
         if (isLocked) {
             setShowUnlockModal(true);
             setUnlockPassword("");
             setUnlockError(false);
-        } else {
-            setIsLocked(true);
+            return;
         }
+        // Locking → persist edits to the shared client_pages row.
+        if (slug) {
+            const { error } = await supabase
+                .from("client_pages")
+                .upsert(
+                    { slug, client_name: clientName.trim(), client_website: clientWebsite.trim(), pixel_code: pixelCode },
+                    { onConflict: "slug" },
+                );
+            if (error) console.error("[pixel page save] Supabase error:", error);
+        }
+        setIsLocked(true);
     };
 
     const handleUnlock = () => {

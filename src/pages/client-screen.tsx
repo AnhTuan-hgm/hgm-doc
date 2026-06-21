@@ -86,6 +86,7 @@ const PixelScreen = ({ clientSlug }: { clientSlug?: string }) => {
     return (
         <PixelPage
             key={clientSlug}
+            slug={clientSlug}
             isTemplate={clientSlug === "metapixel"}
             initialClientName={data?.client_name ?? ""}
             initialClientWebsite={data?.client_website ?? ""}
