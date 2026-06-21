@@ -21,6 +21,25 @@ export interface ClientPageData {
     starred?: boolean;
 }
 
+export interface OverviewCard {
+    id: string;
+    department: string;
+    tab?: string;
+    title: string;
+    description: string;
+    link: string;
+    cover_url?: string;
+    starred?: boolean;
+    created_at?: string;
+}
+
+export interface OverviewTab {
+    id: string;
+    department: string;
+    label: string;
+    created_at?: string;
+}
+
 export interface LeadCapturePageData {
     slug: string;
     client_name: string;

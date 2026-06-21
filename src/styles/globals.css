@@ -32,6 +32,11 @@ html {
     scroll-behavior: smooth;
 }
 
+/* Smooth scrolling on every scroll container (nested overflow areas), not just the page root. */
+:where(*) {
+    scroll-behavior: smooth;
+}
+
 html,
 body {
     font-family: var(--font-body);

@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { IconRail } from "@/components/application/icon-rail";
 import { useTheme } from "@/providers/theme-provider";
 import { cx } from "@/utils/cx";
 
@@ -345,14 +347,18 @@ const ImageWithMagnifier = ({ src, editing, lensPos, onLensPosChange }: {
             </div>
 
             {/* lightbox */}
+            <AnimatePresence>
             {lightbox && (
-                <div onClick={closeLightbox} className="fixed inset-0 z-50 flex cursor-zoom-out items-center justify-center bg-black/80 p-10 backdrop-blur-sm">
-                    <div
+                <motion.div onClick={closeLightbox} className="fixed inset-0 z-50 flex cursor-zoom-out items-center justify-center bg-black/80 p-10 backdrop-blur-sm"
+                    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2, ease: "easeOut" }}>
+                    <motion.div
                         ref={lbWrapRef}
                         className="relative select-none"
                         onClick={(e) => e.stopPropagation()}
                         onTouchMove={(e) => { if (dragMode.current === "lb") computePos(lbImgRef.current, e.touches[0].clientX, e.touches[0].clientY); }}
                         onTouchEnd={() => { dragMode.current = null; }}
+                        initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.92, opacity: 0 }}
+                        transition={{ type: "spring", stiffness: 300, damping: 26 }}
                     >
                         <img
                             ref={lbImgRef}
@@ -370,13 +376,14 @@ const ImageWithMagnifier = ({ src, editing, lensPos, onLensPosChange }: {
                                 onTouchStart={(e) => { e.preventDefault(); dragMode.current = "lb"; computePos(lbImgRef.current, e.touches[0].clientX, e.touches[0].clientY); }}
                             />
                         )}
-                    </div>
+                    </motion.div>
                     <button type="button" onClick={closeLightbox} title="Close"
                         className="absolute right-6 top-6 flex size-10 items-center justify-center rounded-xl bg-white/10 text-white transition hover:bg-white/20">
                         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
                     </button>
-                </div>
+                </motion.div>
             )}
+            </AnimatePresence>
         </>
     );
 };
@@ -670,19 +677,18 @@ const StepCard = ({
 
 const Sidebar = ({
     stages, selectedId, locked, editing,
-    onSelect, onToggleLock, onAddStage, onDeleteStage, onMoveStage,
+    onSelect, onAddStage, onDeleteStage, onMoveStage,
 }: {
     stages: Stage[];
     selectedId: string | null;
     locked: boolean;
     editing: boolean;
     onSelect: (id: string) => void;
-    onToggleLock: () => void;
     onAddStage: () => void;
     onDeleteStage: (id: string) => void;
     onMoveStage: (id: string, dir: -1 | 1) => void;
 }) => {
-    const { theme, setTheme } = useTheme();
+    const { theme } = useTheme();
     const isDark =
         theme === "dark" ||
         (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
@@ -690,43 +696,33 @@ const Sidebar = ({
     return (
     <aside className="flex h-dvh w-[300px] shrink-0 flex-col border-r border-secondary bg-primary">
         {/* header */}
-        <div className="flex items-center justify-between border-b border-secondary px-5 py-4">
+        <div className="flex items-center border-b border-secondary px-5 py-4">
             <img
                 src={isDark ? "/hgm logo/LOGO ON Dark.svg" : "/hgm logo/Logo ON LIGHT.svg"}
                 alt="HiddenGem Media"
                 className="h-14"
                 draggable={false}
             />
-            <button
-                type="button"
-                onClick={() => setTheme(isDark ? "light" : "dark")}
-                title={isDark ? "Switch to light mode" : "Switch to dark mode"}
-                className="flex size-9 shrink-0 items-center justify-center rounded-full border border-secondary bg-secondary text-secondary transition duration-100 ease-linear hover:bg-tertiary hover:text-primary"
-            >
-                {isDark ? (
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                        <circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
-                    </svg>
-                ) : (
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-                    </svg>
-                )}
-            </button>
         </div>
 
         {/* stage list */}
         <div className="flex-1 overflow-y-auto px-3 py-3.5">
             <p className="mb-3 px-2 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-quaternary">Workflow</p>
-            <div className="flex flex-col gap-[3px]">
+            <motion.div
+                className="flex flex-col gap-[3px]"
+                initial="hidden"
+                animate="show"
+                variants={{ show: { transition: { staggerChildren: 0.05 } } }}
+            >
                 {stages.map((s, i) => {
                     const active = s.id === selectedId;
                     return (
-                        <div
+                        <motion.div
                             key={s.id}
+                            variants={{ hidden: { opacity: 0, x: -10 }, show: { opacity: 1, x: 0, transition: { duration: 0.3, ease: [0.22, 1, 0.36, 1] } } }}
                             onClick={() => onSelect(s.id)}
                             className={cx(
-                                "relative flex cursor-pointer items-center gap-[11px] rounded-[9px] px-3 py-[9px] pl-[13px] transition duration-100 ease-linear",
+                                "relative flex cursor-pointer items-center gap-[11px] rounded-[9px] px-3 py-[9px] pl-[13px] transition-colors duration-100 ease-linear",
                                 active
                                     ? "bg-brand-50 dark:bg-brand-950/40"
                                     : "hover:bg-secondary hover:text-primary",
@@ -779,32 +775,22 @@ const Sidebar = ({
                                     </button>
                                 </div>
                             )}
-                        </div>
+                        </motion.div>
                     );
                 })}
-            </div>
+            </motion.div>
         </div>
 
         {/* footer */}
-        <div className="flex flex-col gap-2 border-t border-secondary p-3.5">
-            {editing && (
+        {editing && (
+            <div className="flex flex-col gap-2 border-t border-secondary p-3.5">
                 <button type="button" onClick={onAddStage}
                     className="flex items-center justify-center gap-2 rounded-[9px] border border-primary bg-primary px-2.5 py-2.5 text-[13px] font-semibold text-secondary transition duration-100 ease-linear hover:bg-secondary">
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
                     Add stage
                 </button>
-            )}
-            <button type="button" onClick={onToggleLock}
-                className={cx(
-                    "flex items-center justify-center gap-2 rounded-[9px] px-2.5 py-2.5 text-[13px] font-semibold transition duration-100 ease-linear",
-                    editing
-                        ? "border border-brand-600 bg-brand-600 text-white"
-                        : "border border-primary bg-primary text-tertiary hover:bg-secondary",
-                )}>
-                <LockIcon open={editing} />
-                {locked ? "Editing locked" : "Editing on"}
-            </button>
-        </div>
+            </div>
+        )}
     </aside>
     );
 };
@@ -813,6 +799,8 @@ const Sidebar = ({
 
 export const AiWebsiteSetupScreen = () => {
     const [state, setState] = useState<SOPState>(() => load());
+    const [saved, setSaved] = useState(false);
+    const mainRef = useRef<HTMLElement>(null);
 
     const { stages, selectedId, locked } = state;
     const editing = !locked;
@@ -838,8 +826,17 @@ export const AiWebsiteSetupScreen = () => {
     }, []);
 
     /* ── Stage handlers ── */
-    const handleSelect = (id: string) => update((d) => { d.selectedId = id; });
+    const handleSelect = (id: string) => {
+        update((d) => { d.selectedId = id; });
+        mainRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+    };
     const handleToggleLock = () => update((d) => { d.locked = !d.locked; });
+
+    const handleSave = () => {
+        save(state);
+        setSaved(true);
+        setTimeout(() => setSaved(false), 1800);
+    };
 
     const handleAddStage = () => update((d) => {
         const id = uid();
@@ -918,21 +915,29 @@ export const AiWebsiteSetupScreen = () => {
 
     return (
         <div className="flex h-dvh overflow-hidden bg-secondary">
+            <IconRail activeDept="website" />
             <Sidebar
                 stages={stages}
                 selectedId={selectedId}
                 locked={locked}
                 editing={editing}
                 onSelect={handleSelect}
-                onToggleLock={handleToggleLock}
                 onAddStage={handleAddStage}
                 onDeleteStage={handleDeleteStage}
                 onMoveStage={handleMoveStage}
             />
 
-            <main className="flex-1 overflow-y-auto">
+            <main ref={mainRef} className="flex-1 overflow-y-auto">
+                <AnimatePresence mode="wait">
                 {sel ? (
-                    <div className="mx-auto max-w-[840px] px-10 py-9 pb-20">
+                    <motion.div
+                        key={sel.id}
+                        className="mx-auto max-w-[840px] px-10 py-9 pb-20"
+                        initial={{ opacity: 0, y: 12 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -8 }}
+                        transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                    >
                         {/* stage header */}
                         <div className="mb-1.5 flex items-start gap-4">
                             <div className="flex-1 min-w-0">
@@ -946,15 +951,18 @@ export const AiWebsiteSetupScreen = () => {
                                     </span>
                                 </div>
                                 {editing ? (
-                                    <input
-                                        type="text"
-                                        value={sel.name}
-                                        onChange={(e) => handleUpdateStageName(e.target.value)}
-                                        className="w-full rounded-xl border border-secondary bg-transparent px-2.5 py-1 text-[34px] font-semibold leading-10 tracking-[-0.02em] text-primary outline-none focus:border-brand focus:ring-1 focus:ring-brand -ml-2.5"
-                                    />
+                                    <div className="-ml-2.5 flex items-center gap-2">
+                                        <span className="shrink-0 px-2.5 py-1 text-[34px] font-semibold leading-10 tracking-[-0.02em] text-primary">{selIdx + 1}.</span>
+                                        <input
+                                            type="text"
+                                            value={sel.name}
+                                            onChange={(e) => handleUpdateStageName(e.target.value)}
+                                            className="w-full rounded-xl border border-secondary bg-transparent px-2.5 py-1 text-[34px] font-semibold leading-10 tracking-[-0.02em] text-primary outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                                        />
+                                    </div>
                                 ) : (
                                     <h1 className="text-[34px] font-semibold leading-10 tracking-[-0.02em] text-primary">
-                                        {sel.name}
+                                        {selIdx + 1}. {sel.name}
                                     </h1>
                                 )}
                             </div>
@@ -972,22 +980,31 @@ export const AiWebsiteSetupScreen = () => {
 
                         {/* steps */}
                         {sel.steps.length > 0 ? (
-                            <div className={cx("flex flex-col", editing ? "gap-9" : "gap-4")}>
+                            <motion.div
+                                className={cx("flex flex-col", editing ? "gap-9" : "gap-4")}
+                                initial="hidden"
+                                animate="show"
+                                variants={{ show: { transition: { staggerChildren: 0.06, delayChildren: 0.05 } } }}
+                            >
                                 {sel.steps.map((step, i) => (
-                                    <StepCard
+                                    <motion.div
                                         key={step.id}
-                                        step={step}
-                                        index={i}
-                                        editing={editing}
-                                        onUpdate={handleUpdateStep}
-                                        onUpdateTools={handleUpdateTools}
-                                        onUpdateLensPos={handleUpdateLensPos}
-                                        onDelete={handleDeleteStep}
-                                        onMove={handleMoveStep}
-                                        onInsert={handleInsertStep}
-                                    />
+                                        variants={{ hidden: { opacity: 0, y: 18 }, show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] } } }}
+                                    >
+                                        <StepCard
+                                            step={step}
+                                            index={i}
+                                            editing={editing}
+                                            onUpdate={handleUpdateStep}
+                                            onUpdateTools={handleUpdateTools}
+                                            onUpdateLensPos={handleUpdateLensPos}
+                                            onDelete={handleDeleteStep}
+                                            onMove={handleMoveStep}
+                                            onInsert={handleInsertStep}
+                                        />
+                                    </motion.div>
                                 ))}
-                            </div>
+                            </motion.div>
                         ) : (
                             <div className="rounded-2xl border-[1.5px] border-dashed border-primary bg-primary p-14 text-center">
                                 <p className="text-[17px] font-semibold text-primary">No steps in this stage yet</p>
@@ -1002,9 +1019,16 @@ export const AiWebsiteSetupScreen = () => {
                                 Add step
                             </button>
                         )}
-                    </div>
+                    </motion.div>
                 ) : (
-                    <div className="flex h-full flex-col items-center justify-center gap-3.5 p-10 text-center">
+                    <motion.div
+                        key="empty"
+                        className="flex h-full flex-col items-center justify-center gap-3.5 p-10 text-center"
+                        initial={{ opacity: 0, y: 12 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -8 }}
+                        transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                    >
                         <div className="flex size-14 items-center justify-center rounded-2xl bg-brand-50 dark:bg-brand-950/30">
                             <svg viewBox="0 0 32 32" width="30" height="30">
                                 <path d="M16 2 L30 13 L16 30 L2 13 Z" fill="#7F56D9" />
@@ -1017,9 +1041,71 @@ export const AiWebsiteSetupScreen = () => {
                                 Add your first workflow stage from the sidebar to start building your SOP.
                             </p>
                         </div>
-                    </div>
+                    </motion.div>
                 )}
+                </AnimatePresence>
             </main>
+
+            {/* Fixed bottom-right controls */}
+            <div className="fixed bottom-5 right-5 z-40 flex flex-col items-center gap-2.5">
+                {/* Save — editing only */}
+                <AnimatePresence>
+                    {editing && (
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.8, y: 6 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.8, y: 6 }}
+                            transition={{ type: "spring", stiffness: 320, damping: 24 }}
+                            className="relative"
+                        >
+                            <button
+                                type="button"
+                                onClick={handleSave}
+                                title="Save"
+                                className={cx(
+                                    "flex size-11 items-center justify-center rounded-full shadow-lg ring-1 transition duration-100 ease-linear",
+                                    saved
+                                        ? "bg-success-solid text-white ring-success-solid"
+                                        : "bg-brand-600 text-white ring-brand-600 hover:bg-brand-700",
+                                )}
+                            >
+                                {saved ? (
+                                    <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+                                ) : (
+                                    <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" /><path d="M17 21v-8H7v8M7 3v5h8" /></svg>
+                                )}
+                            </button>
+                            <AnimatePresence>
+                                {saved && (
+                                    <motion.span
+                                        initial={{ opacity: 0, x: 6 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        exit={{ opacity: 0, x: 6 }}
+                                        className="absolute right-full top-1/2 mr-2.5 -translate-y-1/2 whitespace-nowrap rounded-lg bg-success-solid px-2.5 py-1 text-[12px] font-semibold text-white shadow-md"
+                                    >
+                                        Saved!
+                                    </motion.span>
+                                )}
+                            </AnimatePresence>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
+                {/* Lock / unlock */}
+                <button
+                    type="button"
+                    onClick={handleToggleLock}
+                    title={editing ? "Lock editing" : "Unlock editing"}
+                    className={cx(
+                        "flex size-11 items-center justify-center rounded-full shadow-lg ring-1 transition duration-100 ease-linear",
+                        editing
+                            ? "bg-brand-600 ring-brand-600 text-white hover:bg-brand-700"
+                            : "bg-primary ring-secondary text-quaternary hover:bg-secondary hover:text-secondary",
+                    )}
+                >
+                    <LockIcon open={editing} />
+                </button>
+            </div>
 
         </div>
     );
