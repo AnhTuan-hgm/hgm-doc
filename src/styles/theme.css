@@ -121,18 +121,30 @@
     --color-alpha-white: rgb(255 255 255);
     --color-alpha-black: rgb(0 0 0);
 
-    --color-brand-25: rgb(245 250 255);
-    --color-brand-50: rgb(239 248 255);
-    --color-brand-100: rgb(209 233 255);
-    --color-brand-200: rgb(178 221 255);
-    --color-brand-300: rgb(132 202 255);
-    --color-brand-400: rgb(83 177 253);
-    --color-brand-500: rgb(46 144 250);
-    --color-brand-600: rgb(21 112 239);
-    --color-brand-700: rgb(23 92 211);
-    --color-brand-800: rgb(24 73 169);
-    --color-brand-900: rgb(25 65 133);
-    --color-brand-950: rgb(16 42 86);
+    /* Brand: Primary blue */
+    --color-brand-25: rgb(252 253 255);
+    --color-brand-50: rgb(247 249 255);
+    --color-brand-100: rgb(232 239 255);
+    --color-brand-200: rgb(208 223 255);
+    --color-brand-300: rgb(174 200 255);
+    --color-brand-400: rgb(123 166 255);
+    --color-brand-500: rgb(68 124 255); /* core brand */
+    --color-brand-600: rgb(42 98 222); /* primary interactive */
+    --color-brand-700: rgb(18 73 181); /* hover / deep */
+    --color-brand-800: rgb(2 53 138);
+    --color-brand-900: rgb(0 33 93);
+    --color-brand-950: rgb(0 19 59);
+
+    /* Accent: Gold — "the gem" (HiddenGem Stays design system) */
+    --color-gold-25: rgb(253 249 236);
+    --color-gold-50: rgb(250 241 210);
+    --color-gold-100: rgb(243 225 163);
+    --color-gold-200: rgb(236 202 110);
+    --color-gold-300: rgb(214 169 74); /* soft gold */
+    --color-gold-400: rgb(182 138 53);
+    --color-gold-500: rgb(146 112 31);
+    --color-gold-600: rgb(110 84 20);
+    --color-gold-700: rgb(74 56 11);
 
     /* LIGHT MODE VARIABLES */
 

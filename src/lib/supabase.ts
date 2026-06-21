@@ -20,3 +20,18 @@ export interface ClientPageData {
     pixel_code: string;
     starred?: boolean;
 }
+
+export interface LeadCapturePageData {
+    slug: string;
+    client_name: string;
+    client_website: string;
+    popup_code: string;
+    inline_form_code: string;
+    promo_header: string;
+    promo_desc: string;
+    before_img_1?: string;
+    after_img_1?: string;
+    before_img_2?: string;
+    after_img_2?: string;
+    created_at?: string;
+}
