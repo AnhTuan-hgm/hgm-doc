@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { IconRail } from "@/components/application/icon-rail";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowUpRight, Briefcase01, Code02, Image01, Inbox01, LayoutAlt01, Lock01, LockUnlocked01, Mail01, Plus, Send01, Share07, Star01, Trash01, Users01, XClose } from "@untitledui/icons";
-import { supabase, type ClientPageData, type LeadCapturePageData, type OverviewCard, type OverviewTab } from "@/lib/supabase";
+import { ArrowUpRight, BookOpen01, Briefcase01, Code02, Image01, Inbox01, LayoutAlt01, Lock01, LockUnlocked01, Mail01, Plus, SearchSm, Send01, Share07, Star01, Trash01, Users01, XClose } from "@untitledui/icons";
+import { supabase, type ClientPageData, type LeadCapturePageData, type OverviewCard, type OwnerGuideMeta, type OverviewTab } from "@/lib/supabase";
 import { DocsRequestModal } from "@/components/application/docs-request-modal";
 import { useTheme } from "@/providers/theme-provider";
 import { cx } from "@/utils/cx";
@@ -125,6 +125,7 @@ const DEPARTMENTS: Department[] = [
         tabs: [
             { id: "meta-pixel", label: "Meta Pixel", icon: Share07 },
             { id: "popups", label: "Popups", icon: Mail01 },
+            { id: "owner-guides", label: "Owner Guides", icon: BookOpen01 },
         ],
     },
     {
@@ -598,6 +599,182 @@ const MetaPixelContent = () => {
                         </table>
                     </div>
                 )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+/* ── Owner Guides content ─────────────────────────────────────────── */
+
+const formatGuideDate = (iso?: string) => {
+    if (!iso) return "—";
+    return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+};
+
+const EyeToggle = ({ off }: { off: boolean }) =>
+    off
+        ? <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19M1 1l22 22" /></svg>
+        : <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>;
+
+const OwnerGuideCard = ({ guide, index, onOpen, onDelete }: {
+    guide: OwnerGuideMeta; index: number; onOpen: (slug: string) => void; onDelete: (slug: string) => void;
+}) => {
+    const [showPw, setShowPw] = useState(false);
+    const [confirmDelete, setConfirmDelete] = useState(false);
+    return (
+        <motion.div
+            initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1], delay: index * 0.03 }}
+            className="group flex flex-col rounded-xl bg-primary p-4 shadow-sm ring-1 ring-secondary transition duration-100 ease-linear hover:ring-brand"
+        >
+            <div className="flex items-start gap-3">
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-fg-brand-primary dark:bg-brand-950/40">
+                    <BookOpen01 className="size-[18px]" aria-hidden="true" />
+                </span>
+                <div className="min-w-0 flex-1">
+                    <h3 className="truncate text-sm font-semibold text-primary">{guide.client_name}</h3>
+                    <p className="truncate text-xs text-tertiary">/owner-guide/{guide.slug}</p>
+                </div>
+            </div>
+
+            <div className="mt-3 flex items-center gap-2 text-xs text-tertiary">
+                <span>Created {formatGuideDate(guide.created_at)}</span>
+                {guide.share_password ? (
+                    <span className="inline-flex items-center gap-1 rounded-md bg-secondary px-1.5 py-0.5 font-mono text-[11px] text-tertiary">
+                        {showPw ? guide.share_password : "••••"}
+                        <button type="button" onClick={() => setShowPw(s => !s)} title={showPw ? "Hide" : "Show password"}
+                            className="flex size-5 items-center justify-center rounded text-quaternary hover:text-primary">
+                            <EyeToggle off={!showPw} />
+                        </button>
+                    </span>
+                ) : (
+                    <span className="rounded-md bg-secondary px-1.5 py-0.5 text-[11px] text-quaternary">No password</span>
+                )}
+            </div>
+
+            <div className="mt-4 flex items-center gap-2">
+                <button type="button" onClick={() => onOpen(guide.slug)}
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-brand-solid px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90">
+                    Open <ArrowUpRight className="size-3.5" />
+                </button>
+                {confirmDelete ? (
+                    <>
+                        <button type="button" onClick={() => onDelete(guide.slug)}
+                            className="rounded-lg bg-error-solid px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-error-solid_hover">Delete</button>
+                        <button type="button" onClick={() => setConfirmDelete(false)}
+                            className="rounded-lg border border-secondary px-2.5 py-1.5 text-xs font-medium text-secondary transition hover:bg-secondary">Cancel</button>
+                    </>
+                ) : (
+                    <button type="button" onClick={() => setConfirmDelete(true)} title="Delete guide"
+                        className="flex size-8 items-center justify-center rounded-lg text-quaternary transition hover:bg-secondary hover:text-error-primary">
+                        <Trash01 className="size-4" />
+                    </button>
+                )}
+            </div>
+        </motion.div>
+    );
+};
+
+const OwnerGuidesContent = () => {
+    const navigate = useNavigate();
+    const [guides, setGuides] = useState<OwnerGuideMeta[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [query, setQuery] = useState("");
+
+    useEffect(() => {
+        supabase
+            .from("owner_guides")
+            .select("*")
+            .order("created_at", { ascending: false })
+            .then(({ data, error }) => {
+                if (!error && data) setGuides(data as OwnerGuideMeta[]);
+                setLoading(false);
+            });
+    }, []);
+
+    const openGuide = (slug: string) => {
+        try { sessionStorage.setItem(`og_unlock_${slug}`, "1"); } catch { /* ignore */ }
+        navigate(`/owner-guide/${slug}`);
+    };
+
+    const deleteGuide = async (slug: string) => {
+        setGuides(prev => prev.filter(g => g.slug !== slug));
+        await supabase.from("owner_guides").delete().eq("slug", slug);
+    };
+
+    const filtered = guides.filter(g => {
+        const q = query.trim().toLowerCase();
+        if (!q) return true;
+        return g.client_name.toLowerCase().includes(q) || g.slug.toLowerCase().includes(q);
+    });
+
+    return (
+        <div className="flex h-dvh flex-1 flex-col overflow-hidden bg-secondary">
+            <header className="flex h-[73px] shrink-0 items-center justify-between border-b border-secondary bg-primary px-6">
+                <div>
+                    <h1 className="text-md font-semibold text-primary">Owner Guides</h1>
+                    <p className="text-sm text-tertiary">
+                        {loading ? "Loading…" : `${guides.length} guide${guides.length !== 1 ? "s" : ""} created`}
+                    </p>
+                </div>
+                <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => navigate("/owner-guide")}
+                        className="rounded-lg border border-secondary bg-primary px-3.5 py-2 text-sm font-semibold text-secondary transition duration-100 ease-linear hover:bg-secondary hover:text-primary">
+                        View Template
+                    </button>
+                    <button type="button" onClick={() => navigate("/owner-guide?create=1")}
+                        className="flex items-center gap-1.5 rounded-lg bg-brand-solid px-3.5 py-2 text-sm font-semibold text-white transition duration-100 ease-linear hover:opacity-90">
+                        <Plus className="size-4" aria-hidden="true" />
+                        New Guide
+                    </button>
+                </div>
+            </header>
+
+            <div className="flex-1 overflow-y-auto">
+                <div className="mx-auto w-full max-w-[900px] px-6">
+                    {/* Category search */}
+                    <div className="relative mt-6">
+                        <SearchSm className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-quaternary" aria-hidden="true" />
+                        <input
+                            type="text"
+                            value={query}
+                            onChange={e => setQuery(e.target.value)}
+                            placeholder="Search owner guides by client name…"
+                            className="w-full rounded-lg border border-secondary bg-primary py-2.5 pl-10 pr-3 text-sm text-primary placeholder:text-placeholder outline-none transition duration-100 ease-linear focus:border-brand focus:ring-1 focus:ring-brand"
+                        />
+                    </div>
+
+                    {loading ? (
+                        <div className="flex h-48 items-center justify-center">
+                            <div className="size-6 animate-spin rounded-full border-2 border-brand border-t-transparent opacity-60" />
+                        </div>
+                    ) : guides.length === 0 ? (
+                        <motion.div className="flex h-64 flex-col items-center justify-center gap-3 text-center"
+                            initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease: "easeOut" }}>
+                            <div className="flex size-12 items-center justify-center rounded-full bg-brand-50">
+                                <BookOpen01 className="size-5 text-fg-brand-primary" aria-hidden="true" />
+                            </div>
+                            <div>
+                                <p className="text-sm font-medium text-primary">No owner guides yet</p>
+                                <p className="mt-0.5 text-sm text-tertiary">Create one from the template to share with a client.</p>
+                            </div>
+                            <button type="button" onClick={() => navigate("/owner-guide?create=1")}
+                                className="mt-1 flex items-center gap-1.5 rounded-lg bg-brand-solid px-3.5 py-2 text-sm font-semibold text-white transition duration-100 ease-linear hover:opacity-90">
+                                <Plus className="size-4" aria-hidden="true" /> New Guide
+                            </button>
+                        </motion.div>
+                    ) : filtered.length === 0 ? (
+                        <div className="py-16 text-center">
+                            <p className="text-sm font-medium text-secondary">No guides match “{query}”</p>
+                        </div>
+                    ) : (
+                        <div className="my-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            {filtered.map((g, i) => (
+                                <OwnerGuideCard key={g.slug} guide={g} index={i} onOpen={openGuide} onDelete={deleteGuide} />
+                            ))}
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
@@ -1208,7 +1385,9 @@ const DashboardLayout = () => {
             {dept.kind === "docs"
                 ? activeSection === "popups"
                     ? <PopupsContent />
-                    : <MetaPixelContent />
+                    : activeSection === "owner-guides"
+                        ? <OwnerGuidesContent />
+                        : <MetaPixelContent />
                 : <OverviewContent key={dept.id + ":" + activeSection} department={dept} tab={activeSection} editing={editing} />}
         </div>
     );

@@ -13,10 +13,11 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { useTheme } from "@/providers/theme-provider";
 import { cx } from "@/utils/cx";
-import { supabase } from "@/lib/supabase";
+import { supabase, type OwnerGuideMeta } from "@/lib/supabase";
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -478,8 +479,6 @@ const Sidebar = ({
 }) => {
     const { theme } = useTheme();
     const isDark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-    const [sessionCopied, setSessionCopied] = useState(false);
-    const sessionId = getOrCreateSession();
 
     // Progress = filled credential forms out of total forms.
     const formSteps = steps.filter(s => CRED_FORM_SECTIONS.includes(s.credSection));
@@ -495,10 +494,6 @@ const Sidebar = ({
     };
 
     const overviewIdx = steps.findIndex(s => s.credSection === "overview");
-
-    const copySession = () => {
-        navigator.clipboard.writeText(sessionId).then(() => { setSessionCopied(true); setTimeout(() => setSessionCopied(false), 2000); });
-    };
 
     return (
         <aside className="flex h-dvh w-[280px] shrink-0 flex-col border-r border-secondary bg-primary">
@@ -609,34 +604,128 @@ const Sidebar = ({
                     </button>
                 )}
             </motion.div>
-
-            {/* session id */}
-            <div className="border-t border-secondary px-4 py-3.5">
-                <p className="mb-1 text-[10.5px] font-semibold uppercase tracking-[0.1em] text-quaternary">Session ID</p>
-                <div className="flex items-center gap-2 rounded-lg border border-secondary bg-secondary px-2.5 py-2">
-                    <code className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[10px] text-tertiary">{sessionId}</code>
-                    <button type="button" onClick={copySession}
-                        className={cx("shrink-0 rounded-md px-2 py-0.5 text-[10px] font-semibold transition", sessionCopied ? "text-success-primary" : "text-brand-600 hover:bg-brand-50")}>
-                        {sessionCopied ? "Copied!" : "Copy"}
-                    </button>
-                </div>
-                <p className="mt-1.5 text-[10.5px] text-quaternary">Share this ID with your developer to retrieve your saved credentials.</p>
-            </div>
         </aside>
     );
 };
 
+// ── Create-guide popup ────────────────────────────────────────────
+
+const CreateGuideModal = ({ open, onClose, onCreated }: {
+    open: boolean; onClose: () => void; onCreated: (slug: string) => void;
+}) => {
+    const [clientName, setClientName] = useState("");
+    const [password, setPassword] = useState("");
+    const [showPw, setShowPw] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState("");
+
+    const slugify = (s: string) =>
+        s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+
+    const reset = () => { setClientName(""); setPassword(""); setShowPw(false); setError(""); };
+
+    const submit = async () => {
+        const name = clientName.trim();
+        if (!name || saving) { if (!name) setError("Enter a client name."); return; }
+        setSaving(true); setError("");
+        const base = slugify(name) || "client";
+        const slug = `${base}-${uid()}`;
+        const { error: dbError } = await supabase.from("owner_guides").insert({
+            slug, client_name: name, share_password: password.trim() || null,
+        });
+        if (dbError) {
+            console.error("[owner_guides insert]", dbError);
+            setError("Could not create: " + dbError.message);
+            setSaving(false);
+            return;
+        }
+        // Unlock the new guide for the creator so the share-password gate is skipped.
+        try { sessionStorage.setItem(`og_unlock_${slug}`, "1"); } catch {}
+        setSaving(false);
+        reset();
+        onCreated(slug);
+    };
+
+    return (
+        <AnimatePresence>
+            {open && (
+                <motion.div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-4 py-8"
+                    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}
+                    onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
+                    <motion.div className="w-full max-w-md rounded-2xl bg-primary p-6 shadow-2xl ring-1 ring-secondary"
+                        initial={{ opacity: 0, scale: 0.94, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96, y: 10 }}
+                        transition={{ type: "spring", stiffness: 300, damping: 26 }}>
+                        <h3 className="text-md font-semibold text-primary">Create owner guide for a client</h3>
+                        <p className="mt-1 text-sm text-tertiary">A private copy is created from this template. Share the link and password with your client.</p>
+
+                        <div className="mt-4 flex flex-col gap-4">
+                            <div>
+                                <label className="mb-1.5 block text-sm font-medium text-secondary">Client name <span className="text-error-primary">*</span></label>
+                                <input type="text" value={clientName} onChange={e => setClientName(e.target.value)} placeholder="e.g. Sunset Villas" autoFocus
+                                    className="w-full rounded-lg border border-secondary px-3 py-2 text-sm text-primary placeholder:text-placeholder outline-none transition focus:border-brand focus:ring-1 focus:ring-brand" />
+                            </div>
+                            <div>
+                                <label className="mb-1.5 block text-sm font-medium text-secondary">Share password <span className="font-normal text-quaternary">(client enters this to view)</span></label>
+                                <div className="relative">
+                                    <input type={showPw ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} placeholder="Set a password to share"
+                                        className="w-full rounded-lg border border-secondary py-2 pl-3 pr-11 text-sm text-primary placeholder:text-placeholder outline-none transition focus:border-brand focus:ring-1 focus:ring-brand" />
+                                    <button type="button" onClick={() => setShowPw(s => !s)} title={showPw ? "Hide" : "Show"}
+                                        className="absolute right-2 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-tertiary hover:bg-secondary hover:text-primary">
+                                        <EyeIcon off={!showPw} />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {error && <p className="mt-3 text-xs text-error-primary">{error}</p>}
+
+                        <div className="mt-5 flex gap-3">
+                            <button type="button" onClick={onClose} disabled={saving} className="flex-1 rounded-lg border border-secondary px-4 py-2 text-sm font-semibold text-secondary transition hover:bg-secondary disabled:opacity-50">Cancel</button>
+                            <button type="button" onClick={submit} disabled={saving} className="flex-1 rounded-lg bg-brand-solid px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-40">
+                                {saving ? "Creating…" : "Create guide"}
+                            </button>
+                        </div>
+                    </motion.div>
+                </motion.div>
+            )}
+        </AnimatePresence>
+    );
+};
+
+// Eye / eye-off icon (reused for password visibility toggles).
+const EyeIcon = ({ off }: { off?: boolean }) =>
+    off
+        ? <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19M1 1l22 22" /></svg>
+        : <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>;
+
 // ── Main screen ───────────────────────────────────────────────────
 
 export const OwnerGuideScreen = () => {
+    const { slug } = useParams<{ slug: string }>();
+    const navigateTo = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
+    const isTemplate = !slug;
+    // Credentials are keyed by the guide slug for client guides, or the local
+    // session for the template preview.
+    const [sessionId] = useState(() => slug ?? getOrCreateSession());
+
     const mainRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    const lockKey = `hgm_owner_locked_${sessionId}`;
     const [steps, setSteps] = useState<StepData[]>(loadContent);
     const [ownerData, setOwnerData] = useState<OwnerData>(emptyOwner);
-    const [sessionId] = useState(getOrCreateSession);
+    const [meta, setMeta] = useState<OwnerGuideMeta | null>(null);
+    const [createOpen, setCreateOpen] = useState(false);
+    const [showSharePw, setShowSharePw] = useState(false);
+    const [shareCopied, setShareCopied] = useState(false);
+    // Share-password gate: locked out until the client enters the password
+    // (the team bypasses via sessionStorage when opening from the dashboard).
+    const [gateOpen, setGateOpen] = useState(false);
+    const [gateInput, setGateInput] = useState("");
+    const [gateError, setGateError] = useState(false);
     const [locked, setLocked] = useState(() => {
-        const s = localStorage.getItem("hgm_owner_locked");
+        const s = localStorage.getItem(lockKey);
         return s !== null ? s === "true" : true;
     });
     const [loading, setLoading] = useState(true);
@@ -658,6 +747,45 @@ export const OwnerGuideScreen = () => {
             setLoading(false);
         });
     }, [sessionId]);
+
+    // Load the guide's client name + share password, and apply the gate.
+    useEffect(() => {
+        if (!slug) { setMeta(null); setGateOpen(false); return; }
+        supabase
+            .from("owner_guides")
+            .select("*")
+            .eq("slug", slug)
+            .maybeSingle()
+            .then(({ data }) => {
+                const row = (data as OwnerGuideMeta | null) ?? null;
+                setMeta(row);
+                const unlocked = (() => { try { return sessionStorage.getItem(`og_unlock_${slug}`) === "1"; } catch { return false; } })();
+                if (row?.share_password && !unlocked) setGateOpen(true);
+            });
+    }, [slug]);
+
+    // Auto-open the create modal when arriving via /owner-guide?create=1.
+    useEffect(() => {
+        if (isTemplate && searchParams.get("create") === "1") {
+            setCreateOpen(true);
+            searchParams.delete("create");
+            setSearchParams(searchParams, { replace: true });
+        }
+    }, [isTemplate, searchParams, setSearchParams]);
+
+    const submitGate = () => {
+        if (gateInput === (meta?.share_password ?? "")) {
+            try { sessionStorage.setItem(`og_unlock_${slug}`, "1"); } catch {}
+            setGateOpen(false); setGateError(false); setGateInput("");
+        } else {
+            setGateError(true);
+        }
+    };
+
+    const copyShareLink = () => {
+        const url = `${window.location.origin}/owner-guide/${slug}`;
+        navigator.clipboard.writeText(url).then(() => { setShareCopied(true); setTimeout(() => setShareCopied(false), 2000); });
+    };
 
     // Shared guide content lives in Supabase so every client sees the team's edits.
     useEffect(() => {
@@ -688,7 +816,7 @@ export const OwnerGuideScreen = () => {
         return () => clearTimeout(t);
     }, [steps]);
 
-    useEffect(() => { localStorage.setItem("hgm_owner_locked", String(locked)); }, [locked]);
+    useEffect(() => { localStorage.setItem(lockKey, String(locked)); }, [locked, lockKey]);
 
     const navigate = (i: number) => {
         const clamped = Math.max(0, Math.min(steps.length - 1, i));
@@ -893,6 +1021,53 @@ export const OwnerGuideScreen = () => {
             />
 
             <main ref={mainRef} className="flex-1 overflow-y-auto scroll-smooth">
+                {/* Template banner — prompts the team to spin up a client copy. */}
+                {isTemplate && (
+                    <div className="border-b border-brand/40 bg-brand-50 px-8 py-3.5 dark:bg-brand-950/30">
+                        <div className="mx-auto flex max-w-[760px] flex-wrap items-center justify-between gap-3">
+                            <div className="flex items-center gap-2.5">
+                                <span className="inline-flex items-center rounded-full bg-brand-600 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white">Template</span>
+                                <p className="text-[13px] font-medium text-brand-800 dark:text-brand-200">
+                                    This is the master template. Create a private copy to share with a client.
+                                </p>
+                            </div>
+                            <button type="button" onClick={() => setCreateOpen(true)}
+                                className="flex shrink-0 items-center gap-1.5 rounded-lg bg-brand-solid px-3.5 py-2 text-[13px] font-semibold text-white transition hover:opacity-90">
+                                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+                                Create owner guide for the client
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* Client guide header — name, shareable link, share password. */}
+                {!isTemplate && meta && (
+                    <div className="border-b border-secondary bg-primary px-8 py-3.5">
+                        <div className="mx-auto flex max-w-[760px] flex-wrap items-center justify-between gap-3">
+                            <div className="min-w-0">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-quaternary">Owner guide for</p>
+                                <p className="truncate text-[15px] font-bold text-primary">{meta.client_name}</p>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                                {meta.share_password && (
+                                    <div className="flex items-center gap-1.5 rounded-lg border border-secondary bg-secondary px-2.5 py-1.5">
+                                        <span className="text-[11px] font-semibold uppercase tracking-wide text-quaternary">Password</span>
+                                        <code className="text-[12px] text-primary">{showSharePw ? meta.share_password : "••••••"}</code>
+                                        <button type="button" onClick={() => setShowSharePw(s => !s)} title={showSharePw ? "Hide" : "Show"}
+                                            className="flex size-6 items-center justify-center rounded-md text-tertiary hover:bg-primary hover:text-primary">
+                                            <EyeIcon off={!showSharePw} />
+                                        </button>
+                                    </div>
+                                )}
+                                <button type="button" onClick={copyShareLink}
+                                    className="flex items-center gap-1.5 rounded-lg border border-secondary bg-primary px-3 py-1.5 text-[12px] font-semibold text-secondary transition hover:bg-secondary hover:text-primary">
+                                    {shareCopied ? "Link copied!" : "Copy share link"}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 <motion.div key={currentStep} className="mx-auto max-w-[760px] px-8 py-9 pb-24"
                     initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}>
@@ -978,7 +1153,7 @@ export const OwnerGuideScreen = () => {
                                         ) : (
                                             <>
                                                 <p className="mb-1 text-[16px] font-bold text-primary">Ready to submit?</p>
-                                                <p className="mb-4 text-[13px] text-tertiary">Click Save to lock your submission. Values will be partially hidden and your developer will be able to retrieve them using your Session ID.</p>
+                                                <p className="mb-4 text-[13px] text-tertiary">Click Save to lock your submission. Values will be partially hidden and your developer will be able to retrieve them securely.</p>
                                                 <button type="button" onClick={handleOverviewSave}
                                                     disabled={overviewSaveStatus === "saving"}
                                                     className="rounded-xl bg-primary-solid px-8 py-3 text-[15px] font-semibold text-white transition hover:opacity-90 disabled:opacity-50">
@@ -1303,6 +1478,40 @@ export const OwnerGuideScreen = () => {
                             <button type="button" onClick={() => setShowComplete(false)}
                                 className="w-full rounded-xl bg-success-solid py-3 text-[15px] font-semibold text-white transition hover:opacity-90">
                                 Done
+                            </button>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* create-guide popup */}
+            <CreateGuideModal open={createOpen} onClose={() => setCreateOpen(false)} onCreated={(s) => { setCreateOpen(false); navigateTo(`/owner-guide/${s}`); }} />
+
+            {/* share-password gate */}
+            <AnimatePresence>
+                {gateOpen && (
+                    <motion.div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm"
+                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}>
+                        <motion.div className="w-full max-w-sm rounded-2xl bg-primary p-7 text-center shadow-2xl ring-1 ring-secondary"
+                            initial={{ opacity: 0, scale: 0.94, y: 14 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96 }}
+                            transition={{ type: "spring", stiffness: 300, damping: 26 }}>
+                            <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-full bg-brand-50 text-brand-600 dark:bg-brand-950/40">
+                                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 018 0v4" /></svg>
+                            </div>
+                            <h2 className="text-[18px] font-bold text-primary">{meta?.client_name ?? "Owner guide"}</h2>
+                            <p className="mt-1 text-[13px] text-tertiary">Enter the password your team shared with you to view this guide.</p>
+                            <input type="password" value={gateInput} autoFocus
+                                onChange={e => { setGateInput(e.target.value); setGateError(false); }}
+                                onKeyDown={e => { if (e.key === "Enter") submitGate(); }}
+                                placeholder="Password"
+                                className={cx(
+                                    "mt-4 w-full rounded-lg border px-3 py-2.5 text-sm text-primary placeholder:text-placeholder outline-none transition focus:ring-1",
+                                    gateError ? "border-error focus:border-error focus:ring-error" : "border-secondary focus:border-brand focus:ring-brand",
+                                )} />
+                            {gateError && <p className="mt-2 text-[12px] text-error-primary">Incorrect password.</p>}
+                            <button type="button" onClick={submitGate}
+                                className="mt-4 w-full rounded-lg bg-brand-solid py-2.5 text-sm font-semibold text-white transition hover:opacity-90">
+                                View guide
                             </button>
                         </motion.div>
                     </motion.div>

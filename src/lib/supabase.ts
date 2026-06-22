@@ -40,6 +40,13 @@ export interface OverviewTab {
     created_at?: string;
 }
 
+export interface OwnerGuideMeta {
+    slug: string;
+    client_name: string;
+    share_password?: string;
+    created_at?: string;
+}
+
 export interface DocsRequest {
     id: string;
     requester: string;

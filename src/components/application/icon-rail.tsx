@@ -1,7 +1,8 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
-import { Briefcase01, Code02, Users01 } from "@untitledui/icons";
+import { Briefcase01, Code02, SearchSm, Users01 } from "@untitledui/icons";
 import { useTheme } from "@/providers/theme-provider";
+import { SearchModal } from "@/components/application/search-modal";
 import { cx } from "@/utils/cx";
 
 /** Department rail shown on every internal HiddenGem team page (not on client-facing pages). */
@@ -25,9 +26,24 @@ export const IconRail = ({
 }) => {
     const navigate = useNavigate();
     const { theme } = useTheme();
+    const [searchOpen, setSearchOpen] = useState(false);
     const isDark =
         theme === "dark" ||
         (theme === "system" && typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+
+    // Global shortcut: Shift + F opens search (ignored while typing in a field).
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            const el = document.activeElement as HTMLElement | null;
+            const typing = !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+            if (e.shiftKey && (e.key === "F" || e.key === "f") && !typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
+                e.preventDefault();
+                setSearchOpen(true);
+            }
+        };
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, []);
 
     const handle = (id: string) => {
         if (onSelectDept) onSelectDept(id);
@@ -35,6 +51,7 @@ export const IconRail = ({
     };
 
     return (
+        <>
         <aside className="flex h-dvh w-[88px] shrink-0 flex-col items-center border-r border-secondary bg-secondary pb-4">
             {/* Favicon — same header height as the side menu + main content headers */}
             <div className="flex h-[73px] w-full shrink-0 items-center justify-center border-b border-secondary">
@@ -45,6 +62,21 @@ export const IconRail = ({
                     draggable={false}
                 />
             </div>
+
+            {/* Search — sits above the departments with a distinct elevated chip. */}
+            <button
+                type="button"
+                onClick={() => setSearchOpen(true)}
+                title="Search (Shift + F)"
+                className="group mt-4 flex w-full flex-col items-center gap-1 px-1"
+            >
+                <span className="flex size-11 items-center justify-center rounded-xl bg-primary text-fg-secondary shadow-xs ring-1 ring-secondary transition duration-100 ease-linear group-hover:bg-brand-50 group-hover:text-brand-700 group-hover:ring-brand dark:group-hover:bg-brand-950/50 dark:group-hover:text-brand-300">
+                    <SearchSm className="size-5" aria-hidden="true" />
+                </span>
+                <span className="text-[11px] font-semibold text-tertiary">Search</span>
+            </button>
+
+            <span className="mt-4 h-px w-8 bg-border-secondary" />
 
             {/* Departments */}
             <div className="mt-4 flex flex-1 flex-col items-center gap-1">
@@ -76,5 +108,8 @@ export const IconRail = ({
 
             {bottom}
         </aside>
+
+        <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
+        </>
     );
 };
