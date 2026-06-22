@@ -10,6 +10,7 @@ import { OwnerGuideScreen } from "@/pages/owner-guide-screen";
 import { PopupPage } from "@/pages/popup-page";
 import { RequestsScreen } from "@/pages/requests-screen";
 import { DesignSystemScreen } from "@/pages/design-system-screen";
+import { HomeTwoScreen } from "@/pages/home-two-screen";
 import { ClientScreen } from "@/pages/client-screen";
 import { ThemeToggle } from "@/components/base/theme-toggle/theme-toggle";
 import { NotFound } from "@/pages/not-found";
@@ -19,7 +20,7 @@ import "@/styles/globals.css";
 
 const GlobalThemeToggle = () => {
     const { pathname } = useLocation();
-    if (pathname === "/dashboard" || pathname === "/designsystem") return null;
+    if (pathname === "/dashboard" || pathname === "/designsystem" || pathname === "/home2") return null;
     return <ThemeToggle />;
 };
 
@@ -40,6 +41,7 @@ createRoot(document.getElementById("root")!).render(
                         <Route path="/popup" element={<PopupPage />} />
                         <Route path="/requests" element={<RequestsScreen />} />
                         <Route path="/designsystem" element={<DesignSystemScreen />} />
+                        <Route path="/home2" element={<HomeTwoScreen />} />
                         <Route path="/:clientSlug" element={<ClientScreen />} />
                         <Route path="*" element={<NotFound />} />
                     </Routes>
