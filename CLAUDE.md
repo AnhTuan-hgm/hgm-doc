@@ -1,10 +1,18 @@
 ## Project Overview
 
-This is an **Untitled UI React** component library project built with:
+A client-facing **guide / documentation site** (Meta Pixel setup, website popups, owner guides) built on the **Untitled UI React** component system. Deployed as a static Vite SPA to Netlify (`docs-hgm.netlify.app`).
 
-- **React 19** with TypeScript
-- **Tailwind CSS v4.2** for styling
-- **React Aria Components** as the foundation for accessibility and behavior
+**Stack:**
+
+- **React 19** + **TypeScript 5.9**
+- **Vite 8** — build tool & dev server (not Next.js; SPA, no SSR)
+- **react-router 7** — client-side routing (`src/main.tsx`)
+- **Tailwind CSS v4.2** — styling via CSS-variable theme
+- **React Aria Components 1.16** — accessibility/behavior foundation
+- **Supabase** — persistence for editable page content (never localStorage-only)
+- **motion** (Framer Motion) — animation
+
+**How pages work:** Most routes are "master template" pages (e.g. `/metapixel`, `/popup`, `/owner-guide`). The team creates a private per-client copy from a template, which saves to Supabase and gets its own slug (e.g. `/{client}-metapixel`, `/{client}-leadcapture`). Routing fans out through `src/pages/client-screen.tsx`. Content is edited in-place (lock/unlock) and persisted to Supabase.
 
 ## Key Architecture Principles
 
@@ -205,8 +213,8 @@ import { Home01, Settings01, ChevronDown } from "@untitledui/icons";
 // Component props - pass as reference
 <Button iconLeading={ChevronDown}>Options</Button>
 
-// Standalone usage
-<Home01 className="size-5 text-gray-600" />
+// Standalone usage (use semantic tokens, never text-gray-*)
+<Home01 className="size-5 text-fg-quaternary" />
 
 // As JSX element - MUST include data-icon
 <Button iconLeading={<ChevronDown data-icon className="size-4" />}>Options</Button>
@@ -231,12 +239,16 @@ import { Home01, Settings01, ChevronDown } from "@untitledui/icons";
 ### PRO Icon Styles
 
 ```typescript
-import { Home01 } from "@untitledui-pro/icons";
-// Line
+// NOTE: there is NO bare root export — every style is a subpath, including line.
+import { Home01 } from "@untitledui-pro/icons/line"; // Line (default style)
 import { Home01 } from "@untitledui-pro/icons/duocolor";
 import { Home01 } from "@untitledui-pro/icons/duotone";
 import { Home01 } from "@untitledui-pro/icons/solid";
 ```
+
+PRO icons install from a private registry. Setup is already done on this machine:
+the scope→registry mapping lives in the project `.npmrc`, and the auth token is in
+your user-level `~/.npmrc` (kept out of git). Reinstall with `npm install @untitledui-pro/icons`.
 
 ## Form Handling
 
@@ -681,18 +693,6 @@ import { Button } from "@/components/base/buttons/button";
 3. **Icon Support**: Components accept icons as both components (`Icon`) or elements (`<Icon />`)
 4. **Compound Components**: Complex components use dot notation (e.g., `Select.Item`, `Select.ComboBox`)
 5. **Accessibility**: All components include proper ARIA attributes and keyboard support
-
-### Icon Usage
-
-When passing icons to components:
-
-```typescript
-// As component reference (preferred)
-<Button iconLeading={ChevronDown}>Options</Button>
-
-// As element (must include data-icon)
-<Button iconLeading={<ChevronDown data-icon className="size-4" />}>Options</Button>
-```
 
 ## COLORS
 

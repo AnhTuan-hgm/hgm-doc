@@ -15,6 +15,7 @@
         "@supabase/supabase-js": "^2.108.2",
         "@tailwindcss/typography": "^0.5.19",
         "@tailwindcss/vite": "^4.2.2",
+        "@untitledui-pro/icons": "^0.0.3",
         "@untitledui/file-icons": "^0.0.9",
         "@untitledui/icons": "^0.0.22",
         "embla-carousel-react": "^8.6.0",

@@ -15,6 +15,7 @@ import {
     LockUnlocked01,
     MessageChatCircle,
     Plus,
+    SearchSm,
     XClose,
 } from "@untitledui/icons";
 import { useNavigate, useSearchParams } from "react-router";
@@ -23,6 +24,7 @@ import { Button } from "@/components/base/buttons/button";
 import { FeaturedIcon } from "@/components/foundations/featured-icon/featured-icon";
 import { Tabs } from "@/components/application/tabs/tabs";
 import { Reveal } from "@/components/shared-assets/reveal";
+import { ImageLightbox } from "@/components/shared-assets/image-lightbox";
 import { useClipboard } from "@/hooks/use-clipboard";
 import { cx } from "@/utils/cx";
 import { supabase } from "@/lib/supabase";
@@ -363,6 +365,7 @@ const BeforeAfterSlider = ({
     const containerRef = useRef<HTMLDivElement>(null);
     const dragging = useRef(false);
     const [pos, setPos] = useState(50);
+    const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
     const setFromClientX = (clientX: number) => {
         const r = containerRef.current?.getBoundingClientRect();
@@ -422,7 +425,31 @@ const BeforeAfterSlider = ({
                         </svg>
                     </button>
                 </div>
+
+                {/* View-full-size buttons (same interaction as the Meta Pixel page) */}
+                {before && (
+                    <button
+                        type="button"
+                        onClick={() => setLightboxSrc(before)}
+                        aria-label="View Before image full size"
+                        className="absolute bottom-3 left-3 z-20 flex items-center gap-1 rounded-md bg-black/55 px-2 py-1 text-xs font-medium text-white backdrop-blur-sm transition duration-100 ease-linear hover:bg-black/75"
+                    >
+                        <SearchSm className="size-3.5" aria-hidden="true" /> View
+                    </button>
+                )}
+                {after && (
+                    <button
+                        type="button"
+                        onClick={() => setLightboxSrc(after)}
+                        aria-label="View After image full size"
+                        className="absolute bottom-3 right-3 z-20 flex items-center gap-1 rounded-md bg-black/55 px-2 py-1 text-xs font-medium text-white backdrop-blur-sm transition duration-100 ease-linear hover:bg-black/75"
+                    >
+                        <SearchSm className="size-3.5" aria-hidden="true" /> View
+                    </button>
+                )}
             </div>
+
+            <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} alt="Homepage screenshot — full view" />
 
             {editable && (
                 <div className="mt-3 flex flex-wrap gap-3">
@@ -478,6 +505,7 @@ export const PopupPage = ({
 
     const [step, setStep] = useState(0);
     const [selectedPlatform, setSelectedPlatform] = useState<Key>("wordpress");
+    const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
     const [isLocked, setIsLocked] = useState(true);
     const [showComplete, setShowComplete] = useState(false);
     const [showUnlock, setShowUnlock] = useState(false);
@@ -632,6 +660,26 @@ export const PopupPage = ({
             >
                 <div className="px-6 py-8 md:px-14 md:py-12">
 
+                    {/* ── Template banner — prompts the team to spin up a client copy. ── */}
+                    {!isClientPage && (
+                        <div className="mb-8 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-brand/40 bg-brand-50 px-4 py-3 dark:bg-brand-950/30">
+                            <div className="flex items-center gap-2.5">
+                                <span className="inline-flex items-center rounded-full bg-brand-600 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white">Template</span>
+                                <p className="text-[13px] font-medium text-brand-800 dark:text-brand-200">
+                                    This is the master template. Create a private copy to share with a client.
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={openCreate}
+                                className="flex shrink-0 items-center gap-1.5 rounded-lg bg-brand-solid px-3.5 py-2 text-[13px] font-semibold text-white transition hover:opacity-90"
+                            >
+                                <Plus className="size-4" aria-hidden="true" />
+                                Create lead-capture page for the client
+                            </button>
+                        </div>
+                    )}
+
                     {/* ── Header: client name + website ── */}
                     <header className="flex items-center justify-between gap-4">
                         <input
@@ -672,7 +720,7 @@ export const PopupPage = ({
                                 onClick={() => goStep(i)}
                                 className={cx(
                                     "flex flex-1 items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition duration-100 ease-linear",
-                                    i === step ? "border-brand bg-brand-50" : "border-secondary hover:bg-secondary",
+                                    i === step ? "border-brand bg-brand-primary_alt" : "border-secondary hover:bg-secondary",
                                 )}
                             >
                                 <span
@@ -802,14 +850,22 @@ export const PopupPage = ({
                                             ))}
                                         </ol>
                                         {platform.image && (
-                                            <div className="mt-5 overflow-hidden rounded-lg ring-1 ring-secondary">
+                                            <button
+                                                type="button"
+                                                onClick={() => setLightboxSrc(platform.image!)}
+                                                title="Click to view full size"
+                                                className="group relative mt-5 block w-full cursor-zoom-in overflow-hidden rounded-lg ring-1 ring-secondary transition duration-100 ease-linear hover:ring-brand"
+                                            >
                                                 <img
                                                     src={platform.image}
                                                     alt={`${platform.name} custom code setup screenshot`}
                                                     className="w-full object-contain"
                                                     loading="lazy"
                                                 />
-                                            </div>
+                                                <span className="pointer-events-none absolute right-2.5 top-2.5 flex items-center gap-1 rounded-md bg-black/55 px-2 py-1 text-xs font-medium text-white opacity-0 backdrop-blur-sm transition duration-100 ease-linear group-hover:opacity-100">
+                                                    <SearchSm className="size-3.5" aria-hidden="true" /> View
+                                                </span>
+                                            </button>
                                         )}
                                     </div>
                                 </Tabs.Panel>
@@ -1197,6 +1253,9 @@ export const PopupPage = ({
                     </motion.div>
                 )}
             </AnimatePresence>
+
+            {/* Platform screenshot lightbox */}
+            <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} alt="Setup screenshot — full view" />
         </main>
     );
 };

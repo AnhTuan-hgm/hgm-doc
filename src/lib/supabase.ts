@@ -10,7 +10,9 @@ if (import.meta.env.DEV && (!supabaseUrl || !supabaseAnonKey)) {
 }
 
 export const supabase = createClient(supabaseUrl ?? "", supabaseAnonKey ?? "", {
-    auth: { persistSession: false },
+    // persistSession + detectSessionInUrl are required for the dashboard Google OAuth
+    // gate so the session survives the redirect back from Google.
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
 });
 
 export interface ClientPageData {

@@ -9,10 +9,28 @@ import { useTheme } from "@/providers/theme-provider";
 import { cx } from "@/utils/cx";
 
 const PASSWORDS = ["ANHTUAN", "HGTEAM"];
+const ALLOWED_DOMAIN = "hiddengem.media";
 
-/* ── Password gate ────────────────────────────────────────────────── */
+/* Google "G" mark (official multicolor). */
+const GoogleIcon = ({ className }: { className?: string }) => (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1Z" />
+        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.99.66-2.26 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23Z" />
+        <path fill="#FBBC05" d="M5.84 14.1a6.6 6.6 0 0 1 0-4.2V7.06H2.18a11 11 0 0 0 0 9.88l3.66-2.84Z" />
+        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1A11 11 0 0 0 2.18 7.06l3.66 2.84C6.71 7.3 9.14 5.38 12 5.38Z" />
+    </svg>
+);
 
-const PasswordGate = ({ onUnlock }: { onUnlock: () => void }) => {
+/* ── Login gate — Google (@hiddengem.media) OR team password ──────── */
+
+interface PasswordGateProps {
+    onUnlock: () => void;
+    onGoogle: () => void;
+    googleError?: string;
+    googleLoading?: boolean;
+}
+
+const PasswordGate = ({ onUnlock, onGoogle, googleError, googleLoading }: PasswordGateProps) => {
     const [value, setValue] = useState("");
     const [error, setError] = useState(false);
     const [success, setSuccess] = useState(false);
@@ -40,15 +58,41 @@ const PasswordGate = ({ onUnlock }: { onUnlock: () => void }) => {
 
                 <div className="mt-6">
                     <h1 className="text-lg font-semibold text-primary">Dashboard Access</h1>
-                    <p className="mt-1 text-sm text-tertiary">Enter the team password to continue.</p>
+                    <p className="mt-1 text-sm text-tertiary">
+                        Sign in with your <span className="font-medium text-secondary">@{ALLOWED_DOMAIN}</span> Google account, or enter the team password.
+                    </p>
                 </div>
 
-                <div className="mt-5">
+                {/* Option 1 — Google sign-in (domain-restricted) */}
+                <button
+                    type="button"
+                    onClick={onGoogle}
+                    disabled={googleLoading}
+                    className="mt-5 flex w-full items-center justify-center gap-2.5 rounded-lg border border-secondary bg-primary px-4 py-2.5 text-sm font-semibold text-secondary transition duration-100 ease-linear hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                    <GoogleIcon className="size-5" />
+                    {googleLoading ? "Redirecting…" : "Continue with Google"}
+                </button>
+                {googleError && (
+                    <p className="mt-1.5 flex items-center gap-1.5 text-xs text-error-primary">
+                        <XClose className="size-3.5 shrink-0" />
+                        {googleError}
+                    </p>
+                )}
+
+                {/* Divider */}
+                <div className="my-5 flex items-center gap-3">
+                    <span className="h-px flex-1 bg-border-secondary" />
+                    <span className="text-xs font-medium uppercase tracking-wide text-quaternary">or</span>
+                    <span className="h-px flex-1 bg-border-secondary" />
+                </div>
+
+                {/* Option 2 — Team master password */}
+                <div>
                     <input
                         type="password"
-                        placeholder="Password"
+                        placeholder="Team password"
                         value={value}
-                        autoFocus
                         onChange={(e) => { setValue(e.target.value); setError(false); }}
                         onKeyDown={(e) => e.key === "Enter" && attempt()}
                         className={cx(
@@ -71,7 +115,7 @@ const PasswordGate = ({ onUnlock }: { onUnlock: () => void }) => {
                     onClick={attempt}
                     className="mt-4 w-full rounded-lg bg-brand-solid px-4 py-2.5 text-sm font-semibold text-white transition duration-100 ease-linear hover:opacity-90"
                 >
-                    {success ? "Unlocking…" : "Unlock"}
+                    {success ? "Unlocking…" : "Unlock with password"}
                 </button>
             </div>
         </main>
@@ -1399,11 +1443,56 @@ export const DashboardScreen = () => {
     const [unlocked, setUnlocked] = useState(
         () => sessionStorage.getItem("hgm_dashboard_unlocked") === "1",
     );
+    const [googleError, setGoogleError] = useState("");
+    const [googleLoading, setGoogleLoading] = useState(false);
 
     const handleUnlock = () => {
         sessionStorage.setItem("hgm_dashboard_unlocked", "1");
         setUnlocked(true);
     };
 
-    return unlocked ? <DashboardLayout /> : <PasswordGate onUnlock={handleUnlock} />;
+    // On load (incl. return from Google OAuth): if there's a session, only let
+    // @hiddengem.media accounts in — otherwise sign out and show an error.
+    useEffect(() => {
+        if (sessionStorage.getItem("hgm_dashboard_unlocked") === "1") return;
+        supabase.auth.getSession().then(({ data }) => {
+            const email = data.session?.user?.email?.toLowerCase() ?? "";
+            if (!email) return;
+            if (email.endsWith(`@${ALLOWED_DOMAIN}`)) {
+                handleUnlock();
+            } else {
+                supabase.auth.signOut();
+                setGoogleError(`That account isn't allowed. Use an @${ALLOWED_DOMAIN} Google account.`);
+            }
+        });
+    }, []);
+
+    const handleGoogle = async () => {
+        setGoogleError("");
+        setGoogleLoading(true);
+        const { error } = await supabase.auth.signInWithOAuth({
+            provider: "google",
+            options: {
+                redirectTo: `${window.location.origin}/dashboard`,
+                // hd hints Google to prefer the workspace domain; real enforcement is the check above.
+                queryParams: { hd: ALLOWED_DOMAIN, prompt: "select_account" },
+            },
+        });
+        if (error) {
+            setGoogleError("Couldn't start Google sign-in. Try again or use the team password.");
+            setGoogleLoading(false);
+        }
+        // On success the browser redirects to Google, so no further handling here.
+    };
+
+    return unlocked ? (
+        <DashboardLayout />
+    ) : (
+        <PasswordGate
+            onUnlock={handleUnlock}
+            onGoogle={handleGoogle}
+            googleError={googleError}
+            googleLoading={googleLoading}
+        />
+    );
 };

@@ -1,16 +1,19 @@
 import { type ReactNode, useEffect, useState } from "react";
 import type { Key } from "react-aria-components";
+// Functional UI icons — Untitled UI PRO, line style (drop-in for the free set).
 import {
     ArrowRight,
     Check,
     Copy01,
-    InfoCircle,
     Lock01,
     LockUnlocked01,
     MessageChatCircle,
     Plus,
+    SearchSm,
     XClose,
-} from "@untitledui/icons";
+} from "@untitledui-pro/icons/line";
+// Decorative accent — PRO duotone (two-tone) for the info callout.
+import { InfoCircle } from "@untitledui-pro/icons/duotone";
 import { useNavigate, useSearchParams } from "react-router";
 import { motion } from "motion/react";
 import { Button } from "@/components/base/buttons/button";
@@ -20,6 +23,7 @@ import { useClipboard } from "@/hooks/use-clipboard";
 import { cx } from "@/utils/cx";
 import { PIXEL_CODE as DEFAULT_PIXEL_CODE, platforms } from "@/data/platforms";
 import { Reveal } from "@/components/shared-assets/reveal";
+import { ImageLightbox } from "@/components/shared-assets/image-lightbox";
 import { supabase } from "@/lib/supabase";
 
 const PASSWORD = "ANHTUAN";
@@ -116,6 +120,9 @@ export const PixelPage = ({
     // Lock state
     const [isLocked, setIsLocked] = useState(true);
 
+    // Image lightbox (click a screenshot to view it full-size)
+    const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+
     // Unlock modal
     const [showUnlockModal, setShowUnlockModal] = useState(false);
     const [unlockPassword, setUnlockPassword] = useState("");
@@ -203,8 +210,9 @@ export const PixelPage = ({
     };
 
     const handleCreatePage = async () => {
-        const slug = slugify(newClientName);
-        if (!slug) return;
+        const base = slugify(newClientName);
+        if (!base) return;
+        const slug = `${base}-metapixel`;
         setIsCreating(true);
         setCreateError("");
         const { error } = await supabase.from("client_pages").upsert({
@@ -238,6 +246,26 @@ export const PixelPage = ({
                 initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}>
                 <div className="px-6 py-8 md:px-14 md:py-12">
+
+                    {/* ── Template banner — prompts the team to spin up a client copy. ── */}
+                    {isTemplate && (
+                        <div className="mb-8 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-brand/40 bg-brand-50 px-4 py-3 dark:bg-brand-950/30">
+                            <div className="flex items-center gap-2.5">
+                                <span className="inline-flex items-center rounded-full bg-brand-600 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white">Template</span>
+                                <p className="text-[13px] font-medium text-brand-800 dark:text-brand-200">
+                                    This is the master template. Create a private copy to share with a client.
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={handlePlusClick}
+                                className="flex shrink-0 items-center gap-1.5 rounded-lg bg-brand-solid px-3.5 py-2 text-[13px] font-semibold text-white transition hover:opacity-90"
+                            >
+                                <Plus className="size-4" aria-hidden="true" />
+                                Create client page for the client
+                            </button>
+                        </div>
+                    )}
 
                     {/* ── Header ── */}
                     <header className="flex items-center justify-between gap-4">
@@ -373,14 +401,22 @@ export const PixelPage = ({
                                             ))}
                                         </ol>
                                         {platform.image && (
-                                            <div className="mt-5 overflow-hidden rounded-lg ring-1 ring-secondary">
+                                            <button
+                                                type="button"
+                                                onClick={() => setLightboxSrc(platform.image!)}
+                                                title="Click to view full size"
+                                                className="group relative mt-5 block w-full cursor-zoom-in overflow-hidden rounded-lg ring-1 ring-secondary transition duration-100 ease-linear hover:ring-brand"
+                                            >
                                                 <img
                                                     src={platform.image}
                                                     alt={`${platform.name} pixel setup screenshot`}
                                                     className="w-full object-contain"
                                                     loading="lazy"
                                                 />
-                                            </div>
+                                                <span className="pointer-events-none absolute right-2.5 top-2.5 flex items-center gap-1 rounded-md bg-black/55 px-2 py-1 text-xs font-medium text-white opacity-0 backdrop-blur-sm transition duration-100 ease-linear group-hover:opacity-100">
+                                                    <SearchSm className="size-3.5" aria-hidden="true" /> View
+                                                </span>
+                                            </button>
                                         )}
                                     </div>
                                 </Tabs.Panel>
@@ -629,7 +665,7 @@ export const PixelPage = ({
                                         <p className="text-xs text-tertiary">
                                             Page URL:{" "}
                                             <span className="font-medium text-brand-secondary">
-                                                docs-hgm.netlify.app/{slugify(newClientName)}
+                                                docs-hgm.netlify.app/{slugify(newClientName)}-metapixel
                                             </span>
                                         </p>
                                     )}
@@ -657,6 +693,9 @@ export const PixelPage = ({
                     </div>
                 </div>
             )}
+
+            {/* Image lightbox */}
+            <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} alt="Setup screenshot — full view" />
         </main>
     );
 };
