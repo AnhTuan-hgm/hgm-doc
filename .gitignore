@@ -26,3 +26,6 @@ dist-ssr
 
 # Netlify local state
 .netlify
+
+# Claude Code personal/local settings (shared settings.json IS committed)
+.claude/settings.local.json
