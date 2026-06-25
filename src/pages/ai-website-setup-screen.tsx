@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { IconRail } from "@/components/application/icon-rail";
+import { IconRail, RailBottom } from "@/components/application/icon-rail";
 import { supabase } from "@/lib/supabase";
 import { cx } from "@/utils/cx";
 
@@ -167,20 +167,6 @@ function save(s: SOPState) {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); } catch {}
 }
 
-
-/* ── Lock icon ───────────────────────────────────────────────────── */
-
-const LockIcon = ({ open }: { open: boolean }) => open ? (
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="5" y="11" width="14" height="10" rx="2" />
-        <path d="M8 11V7a4 4 0 0 1 7.5-1.9" />
-    </svg>
-) : (
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="5" y="11" width="14" height="10" rx="2" />
-        <path d="M8 11V7a4 4 0 0 1 8 0v4" />
-    </svg>
-);
 
 /* ── Icon buttons ────────────────────────────────────────────────── */
 
@@ -960,7 +946,7 @@ export const AiWebsiteSetupScreen = () => {
 
     return (
         <div className="flex h-dvh overflow-hidden bg-secondary">
-            <IconRail activeDept="website" />
+            <IconRail activeDept="website" bottom={<RailBottom editing={editing} onToggleEditing={handleToggleLock} />} />
             <Sidebar
                 stages={stages}
                 selectedId={selectedId}
@@ -1145,21 +1131,6 @@ export const AiWebsiteSetupScreen = () => {
                         </motion.div>
                     )}
                 </AnimatePresence>
-
-                {/* Lock / unlock */}
-                <button
-                    type="button"
-                    onClick={handleToggleLock}
-                    title={editing ? "Lock editing" : "Unlock editing"}
-                    className={cx(
-                        "flex size-11 items-center justify-center rounded-full shadow-lg ring-1 transition duration-100 ease-linear",
-                        editing
-                            ? "bg-brand-600 ring-brand-600 text-white hover:bg-brand-700"
-                            : "bg-primary ring-secondary text-quaternary hover:bg-secondary hover:text-secondary",
-                    )}
-                >
-                    <LockIcon open={editing} />
-                </button>
             </div>
 
         </div>

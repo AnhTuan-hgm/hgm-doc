@@ -408,7 +408,7 @@ const SaveActions = ({ status, label, onSave, onClear }: {
             {status === "saving" ? "Saving…" : status === "saved" ? "✓ Saved!" : `Save ${label}`}
         </button>
         <button type="button" onClick={onClear}
-            className="rounded-xl border border-red-300 px-5 py-2.5 text-[14px] font-semibold text-red-600 transition hover:bg-red-50">
+            className="rounded-xl border border-error px-5 py-2.5 text-[14px] font-semibold text-error-primary transition hover:bg-error-primary">
             Clear
         </button>
         {status === "error" && <span className="text-[13px] text-error-primary">Save failed — check connection</span>}
@@ -465,6 +465,7 @@ const CRED_SECTION_LABEL: Record<CredSection, string> = {
 const Sidebar = ({
     steps, credentials, visited, currentStep, editing,
     onSelect, onMoveStep, onDeleteStep, onAddStep, onNavigateOverview,
+    canShare, sharePassword, showSharePw, onToggleSharePw, onCopyShareLink, shareCopied,
 }: {
     steps: StepData[];
     credentials: Creds;
@@ -476,8 +477,15 @@ const Sidebar = ({
     onDeleteStep: (i: number) => void;
     onAddStep: () => void;
     onNavigateOverview: () => void;
+    /** Share controls (password + copy link) only apply to a real client guide. */
+    canShare: boolean;
+    sharePassword: string | null;
+    showSharePw: boolean;
+    onToggleSharePw: () => void;
+    onCopyShareLink: () => void;
+    shareCopied: boolean;
 }) => {
-    const { theme } = useTheme();
+    const { theme, setTheme } = useTheme();
     const isDark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
 
     // Progress = filled credential forms out of total forms.
@@ -577,7 +585,7 @@ const Sidebar = ({
                                         <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M6 9l6 6 6-6" /></svg>
                                     </button>
                                     <button type="button" title="Delete step" onClick={() => onDeleteStep(i)}
-                                        className="flex size-6 items-center justify-center rounded-md text-quaternary transition hover:bg-red-50 hover:text-red-600">
+                                        className="flex size-6 items-center justify-center rounded-md text-quaternary transition hover:bg-error-primary hover:text-error-primary">
                                         <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" /></svg>
                                     </button>
                                 </div>
@@ -604,11 +612,48 @@ const Sidebar = ({
                     </button>
                 )}
             </motion.div>
+
+            {/* bottom controls: share password, copy link, theme toggle */}
+            <div className="flex flex-col gap-2 border-t border-secondary p-3">
+                {canShare && sharePassword && (
+                    <div className="flex items-center justify-between gap-1.5 rounded-lg border border-secondary bg-secondary px-2.5 py-1.5">
+                        <span className="text-[11px] font-semibold uppercase tracking-wide text-quaternary">Password</span>
+                        <div className="flex items-center gap-1.5">
+                            <code className="text-[12px] text-primary">{showSharePw ? sharePassword : "••••••"}</code>
+                            <button type="button" onClick={onToggleSharePw} title={showSharePw ? "Hide" : "Show"}
+                                className="flex size-6 items-center justify-center rounded-md text-tertiary hover:bg-primary hover:text-primary">
+                                <EyeIcon off={!showSharePw} />
+                            </button>
+                        </div>
+                    </div>
+                )}
+                <div className="flex items-center gap-2">
+                    {canShare && (
+                        <button type="button" onClick={onCopyShareLink}
+                            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-secondary bg-primary px-3 py-2 text-[12px] font-semibold text-secondary transition hover:bg-secondary hover:text-primary">
+                            {shareCopied ? "Link copied!" : "Copy share link"}
+                        </button>
+                    )}
+                    <button type="button" onClick={() => setTheme(isDark ? "light" : "dark")}
+                        title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+                        className={cx(
+                            "flex size-9 shrink-0 items-center justify-center rounded-lg border border-secondary bg-primary text-secondary transition duration-100 ease-linear hover:bg-secondary hover:text-primary",
+                            !canShare && "ml-auto",
+                        )}>
+                        {isDark
+                            ? <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" /></svg>
+                            : <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" /></svg>}
+                    </button>
+                </div>
+            </div>
         </aside>
     );
 };
 
 // ── Create-guide popup ────────────────────────────────────────────
+
+/** Fixed product suffix appended to every owner-guide share link. */
+const LINK_SUFFIX = "aiwebsite";
 
 const CreateGuideModal = ({ open, onClose, onCreated }: {
     open: boolean; onClose: () => void; onCreated: (slug: string) => void;
@@ -629,7 +674,9 @@ const CreateGuideModal = ({ open, onClose, onCreated }: {
         if (!name || saving) { if (!name) setError("Enter a client name."); return; }
         setSaving(true); setError("");
         const base = slugify(name) || "client";
-        const slug = `${base}-${uid()}`;
+        // Link is auto-built from the client name with a fixed product suffix,
+        // e.g. "FLOHOM" → flohom-aiwebsite.
+        const slug = `${base}-${LINK_SUFFIX}`;
         const { error: dbError } = await supabase.from("owner_guides").insert({
             slug, client_name: name, share_password: password.trim() || null,
         });
@@ -663,6 +710,11 @@ const CreateGuideModal = ({ open, onClose, onCreated }: {
                                 <label className="mb-1.5 block text-sm font-medium text-secondary">Client name <span className="text-error-primary">*</span></label>
                                 <input type="text" value={clientName} onChange={e => setClientName(e.target.value)} placeholder="e.g. Sunset Villas" autoFocus
                                     className="w-full rounded-lg border border-secondary px-3 py-2 text-sm text-primary placeholder:text-placeholder outline-none transition focus:border-brand focus:ring-1 focus:ring-brand" />
+                                {clientName.trim() && (
+                                    <p className="mt-1.5 text-xs text-tertiary">
+                                        Link: <span className="font-mono text-secondary">/owner-guide/{slugify(clientName) || "client"}-{LINK_SUFFIX}</span>
+                                    </p>
+                                )}
                             </div>
                             <div>
                                 <label className="mb-1.5 block text-sm font-medium text-secondary">Share password <span className="font-normal text-quaternary">(client enters this to view)</span></label>
@@ -735,8 +787,18 @@ export const OwnerGuideScreen = () => {
     const [saveStatus, setSaveStatus] = useState<Record<string, SaveStatus>>({});
     const [overviewSaveStatus, setOverviewSaveStatus] = useState<SaveStatus>("idle");
     const [showComplete, setShowComplete] = useState(false);
+    // Editing is HGM-team only: the lock toggle is hidden from clients, and a
+    // signed-in @hiddengem.media Supabase session is required to enter edit mode.
+    const [isTeam, setIsTeam] = useState(false);
 
-    const editing = !locked;
+    useEffect(() => {
+        const check = (email: string | undefined) => setIsTeam(!!email && email.toLowerCase().endsWith("@hiddengem.media"));
+        supabase.auth.getSession().then(({ data }) => check(data.session?.user?.email));
+        const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => check(session?.user?.email));
+        return () => sub.subscription.unsubscribe();
+    }, []);
+
+    const editing = isTeam && !locked;
 
     const contentHydrated = useRef(false);
 
@@ -1018,6 +1080,12 @@ export const OwnerGuideScreen = () => {
                 onSelect={navigate} onMoveStep={moveStep}
                 onDeleteStep={deleteStep} onAddStep={addStep}
                 onNavigateOverview={navigateToOverview}
+                canShare={!isTemplate && !!meta}
+                sharePassword={meta?.share_password ?? null}
+                showSharePw={showSharePw}
+                onToggleSharePw={() => setShowSharePw(s => !s)}
+                onCopyShareLink={copyShareLink}
+                shareCopied={shareCopied}
             />
 
             <main ref={mainRef} className="flex-1 overflow-y-auto scroll-smooth">
@@ -1040,30 +1108,12 @@ export const OwnerGuideScreen = () => {
                     </div>
                 )}
 
-                {/* Client guide header — name, shareable link, share password. */}
+                {/* Client guide header — name only; share controls live in the sidebar. */}
                 {!isTemplate && meta && (
                     <div className="border-b border-secondary bg-primary px-8 py-3.5">
-                        <div className="mx-auto flex max-w-[760px] flex-wrap items-center justify-between gap-3">
-                            <div className="min-w-0">
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-quaternary">Owner guide for</p>
-                                <p className="truncate text-[15px] font-bold text-primary">{meta.client_name}</p>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-2">
-                                {meta.share_password && (
-                                    <div className="flex items-center gap-1.5 rounded-lg border border-secondary bg-secondary px-2.5 py-1.5">
-                                        <span className="text-[11px] font-semibold uppercase tracking-wide text-quaternary">Password</span>
-                                        <code className="text-[12px] text-primary">{showSharePw ? meta.share_password : "••••••"}</code>
-                                        <button type="button" onClick={() => setShowSharePw(s => !s)} title={showSharePw ? "Hide" : "Show"}
-                                            className="flex size-6 items-center justify-center rounded-md text-tertiary hover:bg-primary hover:text-primary">
-                                            <EyeIcon off={!showSharePw} />
-                                        </button>
-                                    </div>
-                                )}
-                                <button type="button" onClick={copyShareLink}
-                                    className="flex items-center gap-1.5 rounded-lg border border-secondary bg-primary px-3 py-1.5 text-[12px] font-semibold text-secondary transition hover:bg-secondary hover:text-primary">
-                                    {shareCopied ? "Link copied!" : "Copy share link"}
-                                </button>
-                            </div>
+                        <div className="mx-auto max-w-[760px]">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-quaternary">Owner guide for</p>
+                            <p className="truncate text-[15px] font-bold text-primary">{meta.client_name}</p>
                         </div>
                     </div>
                 )}
@@ -1449,19 +1499,21 @@ export const OwnerGuideScreen = () => {
                 </motion.div>
             </main>
 
-            {/* floating lock/unlock */}
-            <button type="button" onClick={() => setLocked(l => !l)}
-                title={locked ? "Unlock editing" : "Lock editing"}
-                className={cx(
-                    "fixed bottom-5 right-5 z-40 flex size-11 items-center justify-center rounded-full shadow-lg ring-1 transition duration-100 ease-linear",
-                    editing ? "bg-brand-600 ring-brand-600 text-white hover:bg-brand-700" : "bg-primary ring-secondary text-quaternary hover:bg-secondary hover:text-secondary",
-                )}>
-                {locked ? (
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 018 0v4" /></svg>
-                ) : (
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 017.5-1.9" /></svg>
-                )}
-            </button>
+            {/* floating lock/unlock — HGM team only */}
+            {isTeam && (
+                <button type="button" onClick={() => setLocked(l => !l)}
+                    title={locked ? "Unlock editing" : "Lock editing"}
+                    className={cx(
+                        "fixed bottom-5 right-5 z-40 flex size-11 items-center justify-center rounded-full shadow-lg ring-1 transition duration-100 ease-linear",
+                        editing ? "bg-brand-600 ring-brand-600 text-white hover:bg-brand-700" : "bg-primary ring-secondary text-quaternary hover:bg-secondary hover:text-secondary",
+                    )}>
+                    {locked ? (
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 018 0v4" /></svg>
+                    ) : (
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 017.5-1.9" /></svg>
+                    )}
+                </button>
+            )}
 
             {/* completion modal */}
             <AnimatePresence>

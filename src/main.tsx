@@ -12,15 +12,23 @@ import { RequestsScreen } from "@/pages/requests-screen";
 import { DesignSystemScreen } from "@/pages/design-system-screen";
 import { HomeTwoScreen } from "@/pages/home-two-screen";
 import { ClientScreen } from "@/pages/client-screen";
+import { SettingsScreen } from "@/pages/settings-screen";
 import { ThemeToggle } from "@/components/base/theme-toggle/theme-toggle";
 import { NotFound } from "@/pages/not-found";
 import { RouteProvider } from "@/providers/router-provider";
 import { ThemeProvider } from "@/providers/theme-provider";
 import "@/styles/globals.css";
 
+// Internal app pages render their own theme chrome inside the icon rail, so the
+// floating toggle is hidden there to avoid duplicates. The account avatar is NOT
+// shown globally — it's a team-only settings shortcut that lives in the dashboard
+// rail, and it must never appear on client-facing pages (owner guides, popups, etc.).
+const PAGES_WITHOUT_FLOATING_CHROME = ["/designsystem", "/home2", "/dashboard", "/webteam/ai-website-setup", "/settings"];
+
 const GlobalThemeToggle = () => {
     const { pathname } = useLocation();
-    if (pathname === "/dashboard" || pathname === "/designsystem" || pathname === "/home2") return null;
+    // Owner-guide pages have their own theme toggle in the sidebar (incl. /owner-guide/:slug).
+    if (PAGES_WITHOUT_FLOATING_CHROME.includes(pathname) || pathname.startsWith("/owner-guide")) return null;
     return <ThemeToggle />;
 };
 
@@ -42,6 +50,7 @@ createRoot(document.getElementById("root")!).render(
                         <Route path="/requests" element={<RequestsScreen />} />
                         <Route path="/designsystem" element={<DesignSystemScreen />} />
                         <Route path="/home2" element={<HomeTwoScreen />} />
+                        <Route path="/settings" element={<SettingsScreen />} />
                         <Route path="/:clientSlug" element={<ClientScreen />} />
                         <Route path="*" element={<NotFound />} />
                     </Routes>

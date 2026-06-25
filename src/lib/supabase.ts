@@ -9,7 +9,14 @@ if (import.meta.env.DEV && (!supabaseUrl || !supabaseAnonKey)) {
     );
 }
 
-export const supabase = createClient(supabaseUrl ?? "", supabaseAnonKey ?? "", {
+// Fall back to a syntactically-valid placeholder when env vars are missing (e.g. a
+// fresh local checkout with no .env.local). createClient throws on an empty URL,
+// which — now that the client is imported at the app root — would blank every page.
+// With a placeholder the app still renders; auth calls simply resolve to no session.
+const FALLBACK_URL = "https://placeholder.supabase.co";
+const FALLBACK_KEY = "placeholder-anon-key";
+
+export const supabase = createClient(supabaseUrl || FALLBACK_URL, supabaseAnonKey || FALLBACK_KEY, {
     // persistSession + detectSessionInUrl are required for the dashboard Google OAuth
     // gate so the session survives the redirect back from Google.
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },

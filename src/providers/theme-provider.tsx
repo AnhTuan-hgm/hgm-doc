@@ -1,7 +1,11 @@
 import type { ReactNode } from "react";
 import { createContext, useContext, useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
 
 type Theme = "light" | "dark" | "system";
+
+/** Users whose pages default to dark mode (until they explicitly pick a theme). */
+const DARK_MODE_DEFAULT_USERS = ["anhtuan@hiddengem.media"];
 
 interface ThemeContextType {
     theme: Theme;
@@ -47,6 +51,27 @@ export const ThemeProvider = ({ children, defaultTheme = "system", storageKey = 
         }
         return defaultTheme;
     });
+
+    // For specific users (e.g. anhtuan@hiddengem.media), default every page to dark
+    // mode — but only if they haven't already chosen a theme on this device, so a
+    // manual toggle still wins. Runs on mount and whenever the auth state changes
+    // (e.g. returning from the dashboard Google OAuth redirect).
+    useEffect(() => {
+        const applyUserDefault = (email: string | undefined) => {
+            if (localStorage.getItem(storageKey)) return; // user already picked a theme
+            if (email && DARK_MODE_DEFAULT_USERS.includes(email.toLowerCase())) {
+                setTheme("dark");
+            }
+        };
+
+        supabase.auth.getSession().then(({ data }) => applyUserDefault(data.session?.user?.email));
+
+        const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+            applyUserDefault(session?.user?.email);
+        });
+
+        return () => sub.subscription.unsubscribe();
+    }, [storageKey]);
 
     useEffect(() => {
         const applyTheme = () => {

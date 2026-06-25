@@ -5,6 +5,9 @@ import { AnimatePresence, motion } from "motion/react";
 import { ArrowUpRight, BookOpen01, Briefcase01, Code02, Image01, Inbox01, LayoutAlt01, Lock01, LockUnlocked01, Mail01, Plus, SearchSm, Send01, Share07, Star01, Trash01, Users01, XClose } from "@untitledui/icons";
 import { supabase, type ClientPageData, type LeadCapturePageData, type OverviewCard, type OwnerGuideMeta, type OverviewTab } from "@/lib/supabase";
 import { DocsRequestModal } from "@/components/application/docs-request-modal";
+import { Avatar } from "@/components/base/avatar/avatar";
+import { SettingsDialog } from "@/pages/settings-screen";
+import { useAuthUser } from "@/hooks/use-auth-user";
 import { useTheme } from "@/providers/theme-provider";
 import { cx } from "@/utils/cx";
 
@@ -203,9 +206,18 @@ const MoonIcon = () => (
 
 const RailBottom = ({ editing, onToggleEditing }: { editing: boolean; onToggleEditing: () => void }) => {
     const { theme, setTheme } = useTheme();
+    const { user } = useAuthUser();
+    const [settingsOpen, setSettingsOpen] = useState(false);
     const isDark =
         theme === "dark" ||
         (theme === "system" && typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+
+    const initials = (user?.name ?? "")
+        .split(" ")
+        .map((part) => part[0])
+        .slice(0, 2)
+        .join("")
+        .toUpperCase();
 
     return (
         <>
@@ -233,6 +245,24 @@ const RailBottom = ({ editing, onToggleEditing }: { editing: boolean; onToggleEd
             >
                 {isDark ? <SunIcon /> : <MoonIcon />}
             </button>
+
+            {/* Account avatar — opens settings popup */}
+            {user && (
+                <>
+                    <span className="my-2 h-px w-8 bg-border-secondary" />
+                    <button
+                        type="button"
+                        onClick={() => setSettingsOpen(true)}
+                        title="Settings"
+                        aria-label="Open settings"
+                        className="rounded-full outline-focus-ring transition duration-100 ease-linear hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2"
+                    >
+                        <Avatar size="md" src={user.avatarUrl} alt={user.name} initials={initials} />
+                    </button>
+                </>
+            )}
+
+            <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
         </>
     );
 };
@@ -1451,20 +1481,30 @@ export const DashboardScreen = () => {
         setUnlocked(true);
     };
 
-    // On load (incl. return from Google OAuth): if there's a session, only let
-    // @hiddengem.media accounts in — otherwise sign out and show an error.
+    // On load and on sign-in (incl. the async return from Google OAuth): if there's a
+    // session, only let @hiddengem.media accounts in — otherwise sign out and show an
+    // error. Subscribing to auth changes ensures we land on the dashboard as soon as
+    // the OAuth session is ready, instead of only checking once on mount.
     useEffect(() => {
-        if (sessionStorage.getItem("hgm_dashboard_unlocked") === "1") return;
-        supabase.auth.getSession().then(({ data }) => {
-            const email = data.session?.user?.email?.toLowerCase() ?? "";
-            if (!email) return;
-            if (email.endsWith(`@${ALLOWED_DOMAIN}`)) {
+        const admit = (email: string | undefined) => {
+            if (sessionStorage.getItem("hgm_dashboard_unlocked") === "1") return;
+            const normalized = email?.toLowerCase() ?? "";
+            if (!normalized) return;
+            if (normalized.endsWith(`@${ALLOWED_DOMAIN}`)) {
                 handleUnlock();
             } else {
                 supabase.auth.signOut();
                 setGoogleError(`That account isn't allowed. Use an @${ALLOWED_DOMAIN} Google account.`);
             }
+        };
+
+        supabase.auth.getSession().then(({ data }) => admit(data.session?.user?.email));
+
+        const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+            admit(session?.user?.email);
         });
+
+        return () => sub.subscription.unsubscribe();
     }, []);
 
     const handleGoogle = async () => {

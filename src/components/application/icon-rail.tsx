@@ -1,9 +1,50 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
-import { Briefcase01, Code02, SearchSm, Users01 } from "@untitledui/icons";
+import { Briefcase01, Code02, Lock01, LockUnlocked01, Moon01, SearchSm, Sun, Users01 } from "@untitledui/icons";
 import { useTheme } from "@/providers/theme-provider";
 import { SearchModal } from "@/components/application/search-modal";
 import { cx } from "@/utils/cx";
+
+/**
+ * Bottom controls for the icon rail: an edit lock toggle and a light/dark theme
+ * toggle. Shared so every internal team page (dashboard, web team) renders the
+ * same chrome. Pass it to <IconRail bottom={...} />.
+ */
+export const RailBottom = ({ editing, onToggleEditing }: { editing: boolean; onToggleEditing: () => void }) => {
+    const { theme, setTheme } = useTheme();
+    const isDark =
+        theme === "dark" ||
+        (theme === "system" && typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+
+    return (
+        <>
+            {/* Lock / unlock (edit mode) */}
+            <button
+                type="button"
+                onClick={onToggleEditing}
+                title={editing ? "Lock editing" : "Unlock editing"}
+                className={cx(
+                    "mb-2 flex size-10 items-center justify-center rounded-full border transition duration-100 ease-linear",
+                    editing
+                        ? "border-brand bg-brand-solid text-white hover:opacity-90"
+                        : "border-secondary bg-primary text-secondary hover:bg-tertiary hover:text-primary",
+                )}
+            >
+                {editing ? <LockUnlocked01 className="size-[18px]" /> : <Lock01 className="size-[18px]" />}
+            </button>
+
+            {/* Theme toggle */}
+            <button
+                type="button"
+                onClick={() => setTheme(isDark ? "light" : "dark")}
+                title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+                className="flex size-10 items-center justify-center rounded-full border border-secondary bg-primary text-secondary transition duration-100 ease-linear hover:bg-tertiary hover:text-primary"
+            >
+                {isDark ? <Sun className="size-[18px]" /> : <Moon01 className="size-[18px]" />}
+            </button>
+        </>
+    );
+};
 
 /** Department rail shown on every internal HiddenGem team page (not on client-facing pages). */
 export const RAIL_ITEMS = [
@@ -25,11 +66,7 @@ export const IconRail = ({
     bottom?: ReactNode;
 }) => {
     const navigate = useNavigate();
-    const { theme } = useTheme();
     const [searchOpen, setSearchOpen] = useState(false);
-    const isDark =
-        theme === "dark" ||
-        (theme === "system" && typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches);
 
     // Global shortcut: Shift + F opens search (ignored while typing in a field).
     useEffect(() => {
@@ -56,7 +93,7 @@ export const IconRail = ({
             {/* Favicon — same header height as the side menu + main content headers */}
             <div className="flex h-[73px] w-full shrink-0 items-center justify-center border-b border-secondary">
                 <img
-                    src={isDark ? "/hgm logo/Favicon ON Dark.svg" : "/hgm logo/Favicon ON LIGHT.svg"}
+                    src="/hgm logo/Favicon ON LIGHT.svg"
                     alt="HiddenGem"
                     className="size-9"
                     draggable={false}
