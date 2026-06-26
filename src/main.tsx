@@ -12,6 +12,7 @@ import { RequestsScreen } from "@/pages/requests-screen";
 import { DesignSystemScreen } from "@/pages/design-system-screen";
 import { HomeTwoScreen } from "@/pages/home-two-screen";
 import { ClientScreen } from "@/pages/client-screen";
+import { ChatWidgetScreen } from "@/pages/chat-widget-screen";
 import { SettingsScreen } from "@/pages/settings-screen";
 import { ThemeToggle } from "@/components/base/theme-toggle/theme-toggle";
 import { NotFound } from "@/pages/not-found";
@@ -51,6 +52,7 @@ createRoot(document.getElementById("root")!).render(
                         <Route path="/designsystem" element={<DesignSystemScreen />} />
                         <Route path="/home2" element={<HomeTwoScreen />} />
                         <Route path="/settings" element={<SettingsScreen />} />
+                        <Route path="/chat-widget" element={<ChatWidgetScreen isTemplate />} />
                         <Route path="/:clientSlug" element={<ClientScreen />} />
                         <Route path="*" element={<NotFound />} />
                     </Routes>

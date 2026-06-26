@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router";
 import { PixelPage } from "./pixel-page";
 import { PopupPage } from "./popup-page";
+import { ChatWidgetScreen } from "./chat-widget-screen";
 import { NotFound } from "./not-found";
-import { supabase, type ClientPageData, type LeadCapturePageData } from "@/lib/supabase";
+import { supabase, type ChatWidgetPageData, type ClientPageData, type LeadCapturePageData } from "@/lib/supabase";
 
 const Spinner = () => (
     <main className="flex min-h-dvh items-center justify-center bg-secondary">
@@ -54,11 +55,51 @@ const LeadCaptureScreen = ({ slug }: { slug: string }) => {
     );
 };
 
+/* Chat-widget pages live at /{name}-chatwidget and load from chatwidget_pages. */
+const ChatWidgetClientScreen = ({ slug }: { slug: string }) => {
+    const [data, setData] = useState<ChatWidgetPageData | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [notFound, setNotFound] = useState(false);
+
+    useEffect(() => {
+        setLoading(true);
+        setData(null);
+        setNotFound(false);
+        supabase
+            .from("chatwidget_pages")
+            .select("*")
+            .eq("slug", slug)
+            .single()
+            .then(({ data: row, error }) => {
+                if (!error && row) setData(row as ChatWidgetPageData);
+                else setNotFound(true);
+                setLoading(false);
+            });
+    }, [slug]);
+
+    if (loading) return <Spinner />;
+    if (notFound) return <NotFound />;
+
+    return (
+        <ChatWidgetScreen
+            key={slug}
+            slug={slug}
+            initialClientName={data?.client_name ?? ""}
+            initialClientWebsite={data?.client_website ?? ""}
+            initialWidgetId={data?.widget_id || undefined}
+        />
+    );
+};
+
 export const ClientScreen = () => {
     const { clientSlug } = useParams<{ clientSlug: string }>();
 
     if (clientSlug?.endsWith("-leadcapture")) {
         return <LeadCaptureScreen slug={clientSlug} />;
+    }
+
+    if (clientSlug?.endsWith("-chatwidget")) {
+        return <ChatWidgetClientScreen slug={clientSlug} />;
     }
 
     return <PixelScreen clientSlug={clientSlug} />;

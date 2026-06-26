@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { IconRail } from "@/components/application/icon-rail";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowUpRight, BookOpen01, Briefcase01, Code02, Image01, Inbox01, LayoutAlt01, Lock01, LockUnlocked01, Mail01, Plus, SearchSm, Send01, Share07, Star01, Trash01, Users01, XClose } from "@untitledui/icons";
-import { supabase, type ClientPageData, type LeadCapturePageData, type OverviewCard, type OwnerGuideMeta, type OverviewTab } from "@/lib/supabase";
+import { ArrowUpRight, BookOpen01, Briefcase01, Code02, Image01, Inbox01, LayoutAlt01, Lock01, LockUnlocked01, Mail01, MessageChatCircle, Plus, SearchSm, Send01, Share07, Star01, Trash01, Users01, XClose } from "@untitledui/icons";
+import { supabase, type ChatWidgetPageData, type ClientPageData, type LeadCapturePageData, type OverviewCard, type OwnerGuideMeta, type OverviewTab } from "@/lib/supabase";
 import { DocsRequestModal } from "@/components/application/docs-request-modal";
 import { Avatar } from "@/components/base/avatar/avatar";
 import { SettingsDialog } from "@/pages/settings-screen";
@@ -172,6 +172,7 @@ const DEPARTMENTS: Department[] = [
         tabs: [
             { id: "meta-pixel", label: "Meta Pixel", icon: Share07 },
             { id: "popups", label: "Popups", icon: Mail01 },
+            { id: "chat-widget", label: "Chat Widget", icon: MessageChatCircle },
             { id: "owner-guides", label: "Owner Guides", icon: BookOpen01 },
         ],
     },
@@ -1052,6 +1053,201 @@ const PopupsContent = () => {
     );
 };
 
+/* ── Chat Widget content ──────────────────────────────────────────── */
+
+const ChatWidgetRow = ({
+    page,
+    index,
+    onDelete,
+}: {
+    page: ChatWidgetPageData;
+    index: number;
+    onDelete: (slug: string) => void;
+}) => {
+    const navigate = useNavigate();
+    const [confirmDelete, setConfirmDelete] = useState(false);
+    const initials = getInitials(page.client_name || page.slug);
+
+    const colors = [
+        "bg-brand-100 text-brand-700",
+        "bg-success-secondary text-success-primary",
+        "bg-warning-secondary text-warning-primary",
+        "bg-error-secondary text-error-primary",
+    ];
+    const colorClass = colors[index % colors.length];
+
+    return (
+        <motion.tr
+            onClick={() => !confirmDelete && navigate(`/${page.slug}`)}
+            className="group border-b border-secondary transition duration-100 ease-linear last:border-0 hover:bg-secondary"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: Math.min(index * 0.04, 0.4), ease: [0.22, 1, 0.36, 1] }}
+        >
+            <td className="px-6 py-4">
+                <div className="flex items-center gap-3">
+                    <span className={cx("flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold", colorClass)}>
+                        {initials || "?"}
+                    </span>
+                    <div className="min-w-0 cursor-pointer">
+                        <p className="truncate text-sm font-medium text-primary">{page.client_name || "(no name)"}</p>
+                        <p className="truncate text-xs text-tertiary">{page.client_website || "—"}</p>
+                    </div>
+                </div>
+            </td>
+            <td className="px-6 py-4">
+                <span className="inline-flex items-center gap-1 rounded-md bg-secondary px-2 py-1 font-mono text-xs text-tertiary">
+                    docs-hgm.netlify.app/{page.slug}
+                </span>
+            </td>
+            <td className="px-6 py-4 text-sm text-tertiary">{page.created_at ? formatDate(page.created_at) : "—"}</td>
+            <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
+                {confirmDelete ? (
+                    <div className="flex items-center justify-end gap-2">
+                        <span className="text-xs text-tertiary">Delete?</span>
+                        <button
+                            type="button"
+                            onClick={() => setConfirmDelete(false)}
+                            className="rounded-md px-2 py-1 text-xs font-medium text-secondary transition duration-100 ease-linear hover:bg-primary"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => onDelete(page.slug)}
+                            className="rounded-md bg-error-solid px-2 py-1 text-xs font-semibold text-white transition duration-100 ease-linear hover:bg-error-solid_hover"
+                        >
+                            Delete
+                        </button>
+                    </div>
+                ) : (
+                    <div className="flex items-center justify-end gap-1 opacity-0 transition duration-100 ease-linear group-hover:opacity-100">
+                        <button
+                            type="button"
+                            title="Delete"
+                            onClick={() => setConfirmDelete(true)}
+                            className="flex size-7 items-center justify-center rounded-md text-tertiary transition duration-100 ease-linear hover:bg-primary hover:text-error-primary"
+                        >
+                            <Trash01 className="size-3.5" aria-hidden="true" />
+                        </button>
+                        <button
+                            type="button"
+                            title="Open page"
+                            onClick={() => navigate(`/${page.slug}`)}
+                            className="flex size-7 items-center justify-center rounded-md text-tertiary transition duration-100 ease-linear hover:bg-primary hover:text-brand-secondary"
+                        >
+                            <ArrowUpRight className="size-3.5" aria-hidden="true" />
+                        </button>
+                    </div>
+                )}
+            </td>
+        </motion.tr>
+    );
+};
+
+const ChatWidgetContent = () => {
+    const navigate = useNavigate();
+    const [pages, setPages] = useState<ChatWidgetPageData[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        supabase
+            .from("chatwidget_pages")
+            .select("slug, client_name, client_website, created_at")
+            .order("created_at", { ascending: false })
+            .then(({ data, error }) => {
+                if (!error && data) setPages(data as ChatWidgetPageData[]);
+                setLoading(false);
+            });
+    }, []);
+
+    const handleDelete = async (slug: string) => {
+        setPages((prev) => prev.filter((p) => p.slug !== slug));
+        await supabase.from("chatwidget_pages").delete().eq("slug", slug);
+    };
+
+    return (
+        <div className="flex h-dvh flex-1 flex-col overflow-hidden bg-secondary">
+            <header className="flex h-[73px] shrink-0 items-center justify-between border-b border-secondary bg-primary px-6">
+                <div>
+                    <h1 className="text-md font-semibold text-primary">Chat Widget Guides</h1>
+                    <p className="text-sm text-tertiary">
+                        {loading ? "Loading…" : `${pages.length} guide${pages.length !== 1 ? "s" : ""} created`}
+                    </p>
+                </div>
+                <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={() => navigate("/chat-widget")}
+                        className="rounded-lg border border-secondary bg-primary px-3.5 py-2 text-sm font-semibold text-secondary transition duration-100 ease-linear hover:bg-secondary hover:text-primary"
+                    >
+                        View Template
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => navigate("/chat-widget?create=1")}
+                        className="flex items-center gap-1.5 rounded-lg bg-brand-solid px-3.5 py-2 text-sm font-semibold text-white transition duration-100 ease-linear hover:opacity-90"
+                    >
+                        <Plus className="size-4" aria-hidden="true" />
+                        New Guide
+                    </button>
+                </div>
+            </header>
+
+            <div className="flex-1 overflow-y-auto">
+                <div className="mx-auto w-full max-w-[900px] px-6">
+                    {loading ? (
+                        <div className="flex h-48 items-center justify-center">
+                            <div className="size-6 animate-spin rounded-full border-2 border-brand border-t-transparent opacity-60" />
+                        </div>
+                    ) : pages.length === 0 ? (
+                        <motion.div
+                            className="flex h-64 flex-col items-center justify-center gap-3 text-center"
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.4, ease: "easeOut" }}
+                        >
+                            <div className="flex size-12 items-center justify-center rounded-full bg-brand-50">
+                                <MessageChatCircle className="size-5 text-fg-brand-primary" aria-hidden="true" />
+                            </div>
+                            <div>
+                                <p className="text-sm font-medium text-primary">No chat widget guides yet</p>
+                                <p className="mt-0.5 text-sm text-tertiary">Create your first client chat widget guide to get started.</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => navigate("/chat-widget?create=1")}
+                                className="mt-1 flex items-center gap-1.5 rounded-lg bg-brand-solid px-3.5 py-2 text-sm font-semibold text-white transition duration-100 ease-linear hover:opacity-90"
+                            >
+                                <Plus className="size-4" aria-hidden="true" />
+                                New Guide
+                            </button>
+                        </motion.div>
+                    ) : (
+                        <div className="my-6 overflow-hidden rounded-xl bg-primary shadow-sm ring-1 ring-secondary">
+                            <table className="w-full">
+                                <thead>
+                                    <tr className="border-b border-secondary bg-secondary">
+                                        <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-quaternary">Client</th>
+                                        <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-quaternary">Page URL</th>
+                                        <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-quaternary">Created</th>
+                                        <th className="px-6 py-3" />
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {pages.map((page, i) => (
+                                        <ChatWidgetRow key={page.slug} page={page} index={i} onDelete={handleDelete} />
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
 /* ── Overview cards ───────────────────────────────────────────────── */
 
 /** Resolve a card link to an in-app path or external URL. */
@@ -1459,9 +1655,11 @@ const DashboardLayout = () => {
             {dept.kind === "docs"
                 ? activeSection === "popups"
                     ? <PopupsContent />
-                    : activeSection === "owner-guides"
-                        ? <OwnerGuidesContent />
-                        : <MetaPixelContent />
+                    : activeSection === "chat-widget"
+                        ? <ChatWidgetContent />
+                        : activeSection === "owner-guides"
+                            ? <OwnerGuidesContent />
+                            : <MetaPixelContent />
                 : <OverviewContent key={dept.id + ":" + activeSection} department={dept} tab={activeSection} editing={editing} />}
         </div>
     );
