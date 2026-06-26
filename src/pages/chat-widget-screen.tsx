@@ -256,9 +256,9 @@ export const ChatWidgetScreen = ({
                 {/* Overview */}
                 <SectionHeading>Overview</SectionHeading>
                 <p className="mb-3.5 text-md leading-relaxed text-balance text-secondary">
-                    This guide explains how to add a live chat widget to your WordPress website using the WPCode plugin.
-                    Once installed, a chat bubble will appear on every page of your site, letting visitors start a
-                    conversation with your team instantly.
+                    This guide explains how to add a live chat widget to your Wix website. Once installed, a chat bubble
+                    will appear on every page of your site, letting visitors start a conversation with your team
+                    instantly.
                 </p>
                 <p className="mb-9 text-md leading-relaxed text-balance text-secondary">
                     No coding experience is needed. The whole process takes about{" "}
@@ -270,62 +270,41 @@ export const ChatWidgetScreen = ({
                 <div className="mb-10 rounded-xl border border-secondary bg-secondary p-5">
                     <p className="mb-3.5 text-sm font-semibold text-primary">Make sure you have:</p>
                     <ul className="flex flex-col gap-3">
-                        <ChecklistItem>Admin access to your WordPress website</ChecklistItem>
-                        <ChecklistItem>
-                            The WPCode plugin installed and activated{" "}
-                            <span className="text-quaternary">(free version works fine)</span>
-                        </ChecklistItem>
-                        <ChecklistItem>The widget script code provided in Step 3 below</ChecklistItem>
+                        <ChecklistItem>Admin access to your Wix account</ChecklistItem>
+                        <ChecklistItem>The widget script code provided in Step 2 below</ChecklistItem>
                     </ul>
                 </div>
 
                 {/* Step 1 */}
-                <StepCard number={1} title="Install WPCode">
+                <StepCard number={1} title="Open Custom Code settings">
                     <p className="mb-3.5 text-sm text-quaternary italic">
-                        Skip this step if WPCode is already active on your site.
+                        Wix lets you add custom scripts site-wide through the Dashboard settings.
                     </p>
                     <ol className="mb-3.5 list-decimal space-y-1 pl-5 text-md leading-relaxed text-secondary">
                         <li>
-                            In your WordPress dashboard, go to{" "}
-                            <strong className="font-semibold text-primary">Plugins &gt; Add New</strong>.
+                            Log in to your Wix account and go to your site{" "}
+                            <strong className="font-semibold text-primary">Dashboard</strong>.
                         </li>
                         <li>
-                            Search for <strong className="font-semibold text-primary">“WPCode”</strong> in the search
-                            bar.
+                            In the left sidebar, click <strong className="font-semibold text-primary">Settings</strong>.
                         </li>
                         <li>
-                            Click <strong className="font-semibold text-primary">Install Now</strong> on the WPCode
-                            plugin, then click <strong className="font-semibold text-primary">Activate</strong>.
+                            Scroll down and click <strong className="font-semibold text-primary">Custom Code</strong>{" "}
+                            (under the Advanced section).
                         </li>
                     </ol>
                     <p className="text-sm text-tertiary">
-                        A new <strong className="font-semibold text-secondary">Code Snippets</strong> item will appear in
-                        your dashboard sidebar once activated.
+                        You will see a <strong className="font-semibold text-secondary">Custom Code</strong> page where
+                        scripts can be added to your site head, body, or footer.
                     </p>
                 </StepCard>
 
                 {/* Step 2 */}
-                <StepCard number={2} title="Open header and footer settings">
-                    <ol className="mb-3.5 list-decimal space-y-1 pl-5 text-md leading-relaxed text-secondary">
-                        <li>
-                            In your WordPress dashboard sidebar, click{" "}
-                            <strong className="font-semibold text-primary">Code Snippets</strong>.
-                        </li>
-                        <li>
-                            From the submenu, select{" "}
-                            <strong className="font-semibold text-primary">Header &amp; Footer</strong>.
-                        </li>
-                    </ol>
-                    <p className="text-sm text-tertiary">
-                        This opens a settings page with text areas for adding code to your site header, body, and footer.
-                    </p>
-                </StepCard>
-
-                {/* Step 3 */}
-                <StepCard number={3} title="Add the widget script">
+                <StepCard number={2} title="Add the widget script">
                     <p className="mb-4 text-md leading-relaxed text-secondary">
-                        Copy the script below and paste it into the{" "}
-                        <strong className="font-semibold text-primary">Header</strong> field. Use the{" "}
+                        Copy the script below, then click{" "}
+                        <strong className="font-semibold text-primary">+ Add Custom Code</strong> on the Custom Code page
+                        and paste it into the code field. Use the{" "}
                         <strong className="font-semibold text-primary">Copy</strong> button for a clean one-click copy.
                     </p>
 
@@ -349,7 +328,7 @@ export const ChatWidgetScreen = ({
 
                     <div className="mb-3.5 overflow-hidden rounded-xl bg-primary-solid">
                         <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-2.5">
-                            <span className="font-mono text-xs text-white/60">Header field — paste into WPCode</span>
+                            <span className="font-mono text-xs text-white/60">Widget script — paste entire contents</span>
                             <Button
                                 size="sm"
                                 color="tertiary"
@@ -381,17 +360,40 @@ export const ChatWidgetScreen = ({
                         copied.
                     </p>
                     <ol className="mb-3.5 list-decimal space-y-1 pl-5 text-md leading-relaxed text-secondary">
+                        <li>Paste the widget script into the code field.</li>
                         <li>
-                            Click inside the <strong className="font-semibold text-primary">Header</strong> text area
-                            (labelled Header or Scripts in Header).
+                            Set the <strong className="font-semibold text-primary">Name</strong> to{" "}
+                            <strong className="font-semibold text-primary">LeadConnector Chat Widget</strong>.
                         </li>
-                        <li>Paste the widget script.</li>
                         <li>
-                            Click <strong className="font-semibold text-primary">Save Changes</strong>.
+                            Under <strong className="font-semibold text-primary">Place Code in</strong>, select{" "}
+                            <strong className="font-semibold text-primary">Head</strong>.
+                        </li>
+                        <li>
+                            Under <strong className="font-semibold text-primary">Add Code to Pages</strong>, select{" "}
+                            <strong className="font-semibold text-primary">All Pages</strong>.
+                        </li>
+                        <li>
+                            Click <strong className="font-semibold text-primary">Apply</strong>.
                         </li>
                     </ol>
                     <p className="text-sm text-tertiary">
                         The widget will now load on every page of your site automatically.
+                    </p>
+                </StepCard>
+
+                {/* Step 3 */}
+                <StepCard number={3} title="Publish your site">
+                    <ol className="mb-3.5 list-decimal space-y-1 pl-5 text-md leading-relaxed text-secondary">
+                        <li>
+                            Click <strong className="font-semibold text-primary">Publish</strong> in the top-right corner
+                            of the Wix Editor or Dashboard.
+                        </li>
+                        <li>Wait for the publish to complete.</li>
+                    </ol>
+                    <p className="text-sm text-tertiary">
+                        Custom code changes only go live after you publish. The widget will not appear until this step is
+                        done.
                     </p>
                 </StepCard>
 
@@ -410,8 +412,8 @@ export const ChatWidgetScreen = ({
                         <div>
                             <p className="mb-1 text-sm font-semibold text-primary">Widget not showing?</p>
                             <p className="text-sm leading-relaxed text-tertiary">
-                                Try a hard refresh: Ctrl+Shift+R on Windows or Cmd+Shift+R on Mac. If you use a caching
-                                plugin, clear your cache after saving.
+                                Try a hard refresh: Ctrl+Shift+R on Windows or Cmd+Shift+R on Mac. Make sure you have
+                                published your site after adding the code.
                             </p>
                         </div>
                     </div>
@@ -420,6 +422,10 @@ export const ChatWidgetScreen = ({
                 {/* Quick tips */}
                 <SectionHeading>Quick tips</SectionHeading>
                 <div className="mb-10 overflow-hidden rounded-xl border border-secondary">
+                    <TipRow label="Must publish">
+                        Custom code changes in Wix do not go live until you click Publish. Always publish after saving
+                        your code.
+                    </TipRow>
                     <TipRow label="Do not edit the ID">
                         The{" "}
                         <code className="rounded bg-brand-primary px-1.5 py-0.5 font-mono text-xs text-brand-secondary">
@@ -427,13 +433,13 @@ export const ChatWidgetScreen = ({
                         </code>{" "}
                         value is unique to your account. Changing it will break the widget.
                     </TipRow>
-                    <TipRow label="Caching plugins">
-                        If you use WP Rocket, W3 Total Cache, or similar, clear your cache after saving so the widget
-                        loads right away.
-                    </TipRow>
                     <TipRow label="Site-wide by default">
-                        Adding the script in the WPCode header section loads it on every page automatically. No need to
-                        add it page by page.
+                        Setting Add Code to Pages to All Pages means the widget loads everywhere automatically. No need
+                        to add it page by page.
+                    </TipRow>
+                    <TipRow label="Head placement">
+                        Placing the script in the Head ensures it loads early, which is the recommended placement for
+                        chat widgets.
                     </TipRow>
                 </div>
 
