@@ -88,7 +88,7 @@ export const ChatWidgetScreen = ({
 
     // Editable content
     const [clientName, setClientName] = useState(initialClientName);
-    const [clientWebsite] = useState(initialClientWebsite);
+    const [clientWebsite, setClientWebsite] = useState(initialClientWebsite);
     const [widgetId, setWidgetId] = useState(initialWidgetId || DEFAULT_WIDGET_ID);
 
     // Create wizard
@@ -203,9 +203,35 @@ export const ChatWidgetScreen = ({
             >
                 {/* Header */}
                 <header className="mb-10">
-                    <p className="mb-3.5 font-mono text-xs font-semibold tracking-[0.08em] text-brand-secondary uppercase">
-                        Installation guide
-                    </p>
+                    {/* Top row: eyebrow (left) + client website (top-right corner of the document) */}
+                    <div className="mb-3.5 flex items-start justify-between gap-4">
+                        <p className="font-mono text-xs font-semibold tracking-[0.08em] text-brand-secondary uppercase">
+                            Installation guide
+                        </p>
+                        {(clientWebsite || !isLocked) && (
+                            <div className="flex shrink-0 items-center gap-1.5">
+                                <Globe01 aria-hidden="true" className="size-3.5 text-quaternary" />
+                                {isLocked ? (
+                                    <a
+                                        href={`https://${clientWebsite.replace(/^https?:\/\//, "")}`}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="font-mono text-xs text-tertiary transition hover:text-brand-secondary"
+                                    >
+                                        {clientWebsite.replace(/^https?:\/\//, "")}
+                                    </a>
+                                ) : (
+                                    <input
+                                        type="text"
+                                        value={clientWebsite}
+                                        onChange={(e) => setClientWebsite(e.target.value)}
+                                        placeholder="client-website.com"
+                                        className={editFieldClass("w-44 text-right font-mono text-xs text-tertiary")}
+                                    />
+                                )}
+                            </div>
+                        )}
+                    </div>
                     <h1 className="mb-3.5 text-display-sm font-semibold tracking-tight text-primary md:text-display-md">
                         Chat widget installation guide
                     </h1>
@@ -427,13 +453,13 @@ export const ChatWidgetScreen = ({
                             {SUPPORT_EMAIL}
                         </a>
                         <a
-                            href={clientWebsite.trim() ? `https://${clientWebsite.replace(/^https?:\/\//, "")}` : "https://www.hiddengemmedia.com"}
+                            href="https://www.hiddengemmedia.com"
                             target="_blank"
                             rel="noreferrer"
                             className="flex items-center gap-2.5 text-sm font-semibold text-primary_on-brand transition hover:opacity-80"
                         >
                             <Globe01 aria-hidden="true" className="size-4.5 text-tertiary_on-brand" />
-                            {clientWebsite.trim() ? clientWebsite.replace(/^https?:\/\//, "") : "www.hiddengemmedia.com"}
+                            www.hiddengemmedia.com
                         </a>
                     </div>
                 </div>
