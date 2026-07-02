@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { IconRail } from "@/components/application/icon-rail";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowUpRight, BookOpen01, Briefcase01, Code02, Image01, LayoutAlt01, Lock01, LockUnlocked01, Mail01, MessageChatCircle, Plus, SearchSm, Share07, Star01, Trash01, Users01, XClose } from "@untitledui/icons";
-import { supabase, type ChatWidgetPageData, type ClientPageData, type LeadCapturePageData, type OverviewCard, type OwnerGuideMeta, type OverviewTab } from "@/lib/supabase";
+import { ArrowUpRight, Award01, BookOpen01, Briefcase01, Code02, Diamond01, Image01, LayoutAlt01, Lock01, LockUnlocked01, Mail01, MarkerPin01, MessageChatCircle, Plus, SearchSm, Share07, Star01, Trash01, Trophy01, Users01, XClose } from "@untitledui/icons";
+import { supabase, type ChatWidgetPageData, type ClientPageData, type ClientRecord, type LeadCapturePageData, type OverviewCard, type OwnerGuideMeta, type OverviewTab } from "@/lib/supabase";
 import { Avatar } from "@/components/base/avatar/avatar";
 import { SettingsDialog } from "@/pages/settings-screen";
 import { useAuthUser } from "@/hooks/use-auth-user";
@@ -157,24 +157,28 @@ interface Department {
     header: string;
     icon: typeof Share07;
     sectionLabel: string;
-    kind: "docs" | "cards" | "empty";
+    kind: "docs" | "cards" | "empty" | "clientlist";
     tabs: DeptTab[];
 }
+
+/** Fixed client tiers for the Client List page (grouped in the sidebar). */
+const TIERS: { id: string; label: string; icon: typeof Share07 }[] = [
+    { id: "tier-0", label: "Tier 0", icon: Award01 },
+    { id: "tier-1", label: "Tier 1", icon: Star01 },
+    { id: "tier-2", label: "Tier 2", icon: Trophy01 },
+    { id: "mastermind", label: "Mastermind", icon: Diamond01 },
+];
+const tierLabel = (id: string) => TIERS.find((t) => t.id === id)?.label ?? "Tier 0";
 
 const DEPARTMENTS: Department[] = [
     {
         id: "clients",
         short: "Clients",
-        header: "Client Support",
+        header: "Client List",
         icon: Users01,
-        sectionLabel: "Create Docs",
-        kind: "docs",
-        tabs: [
-            { id: "meta-pixel", label: "Meta Pixel", icon: Share07 },
-            { id: "popups", label: "Popups", icon: Mail01 },
-            { id: "chat-widget", label: "Chat Widget", icon: MessageChatCircle },
-            { id: "owner-guides", label: "Owner Guides", icon: BookOpen01 },
-        ],
+        sectionLabel: "By Tiers",
+        kind: "clientlist",
+        tabs: [],
     },
     {
         id: "website",
@@ -193,6 +197,20 @@ const DEPARTMENTS: Department[] = [
         sectionLabel: "Account Managers",
         kind: "cards",
         tabs: [{ id: "overview", label: "Overview", icon: LayoutAlt01 }],
+    },
+    {
+        id: "docs",
+        short: "Docs",
+        header: "Client Docs",
+        icon: BookOpen01,
+        sectionLabel: "Create Docs",
+        kind: "docs",
+        tabs: [
+            { id: "meta-pixel", label: "Meta Pixel", icon: Share07 },
+            { id: "popups", label: "Popups", icon: Mail01 },
+            { id: "chat-widget", label: "Chat Widget", icon: MessageChatCircle },
+            { id: "owner-guides", label: "Owner Guides", icon: BookOpen01 },
+        ],
     },
 ];
 
@@ -1546,6 +1564,474 @@ const OverviewContent = ({ department, tab, editing }: { department: Department;
     );
 };
 
+/* ── Clients (Client List) ────────────────────────────────────────── */
+
+type ClientFilter = { type: "tier" | "am"; value: string };
+
+/** Create/edit modal for a client record. Mirrors AddCardModal. */
+const ClientModal = ({
+    initial,
+    onClose,
+    onSave,
+}: {
+    initial?: ClientRecord;
+    onClose: () => void;
+    onSave: (c: Omit<ClientRecord, "id" | "created_at">) => Promise<void>;
+}) => {
+    const [name, setName] = useState(initial?.name ?? "");
+    const [tier, setTier] = useState(initial?.tier ?? "tier-0");
+    const [am, setAm] = useState(initial?.am ?? "");
+    const [location, setLocation] = useState(initial?.location ?? "");
+    const [link, setLink] = useState(initial?.link ?? "");
+    const [cover, setCover] = useState(initial?.cover_url ?? "");
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState("");
+
+    const valid = name.trim().length > 0;
+
+    const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => setCover(reader.result as string);
+        reader.readAsDataURL(file);
+        e.target.value = "";
+    };
+
+    const submit = async () => {
+        if (!valid) return;
+        setSaving(true);
+        setError("");
+        try {
+            await onSave({
+                name: name.trim(),
+                tier,
+                am: am.trim(),
+                location: location.trim(),
+                link: link.trim(),
+                cover_url: cover,
+                starred: initial?.starred ?? false,
+            });
+        } catch (e) {
+            setError(e instanceof Error ? e.message : "Could not save — check your connection.");
+        }
+        setSaving(false);
+    };
+
+    return (
+        <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-8"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}
+        >
+            <motion.div
+                className="max-h-full w-full max-w-md overflow-y-auto rounded-2xl bg-primary p-6 shadow-2xl ring-1 ring-secondary"
+                initial={{ opacity: 0, scale: 0.94, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96, y: 10 }}
+                transition={{ type: "spring", stiffness: 300, damping: 26 }}
+            >
+                <div className="flex items-start justify-between">
+                    <div>
+                        <h3 className="text-md font-semibold text-primary">{initial ? "Edit Client" : "New Client"}</h3>
+                        <p className="mt-1 text-sm text-tertiary">{initial ? "Update this client's details." : "Add a client to the list."}</p>
+                    </div>
+                    <button type="button" aria-label="Close" onClick={onClose} className="flex size-8 items-center justify-center rounded-lg text-tertiary hover:bg-secondary">
+                        <XClose className="size-4" aria-hidden="true" />
+                    </button>
+                </div>
+
+                <div className="mt-4 flex flex-col gap-4">
+                    <div>
+                        <label className="mb-1.5 block text-sm font-medium text-secondary">Cover image <span className="font-normal text-quaternary">(optional)</span></label>
+                        {cover ? (
+                            <div className="relative overflow-hidden rounded-lg ring-1 ring-secondary">
+                                <img src={cover} alt="cover" className="aspect-[16/10] w-full object-cover" />
+                                <button type="button" aria-label="Remove cover" onClick={() => setCover("")} className="absolute right-2 top-2 flex size-7 items-center justify-center rounded-lg bg-black/60 text-white hover:bg-black/80">
+                                    <XClose className="size-3.5" aria-hidden="true" />
+                                </button>
+                            </div>
+                        ) : (
+                            <label className="flex aspect-[16/10] w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-primary bg-secondary text-tertiary transition hover:border-brand hover:text-brand-secondary">
+                                <input type="file" accept="image/*" className="hidden" onChange={handleFile} />
+                                <Image01 className="size-6" aria-hidden="true" />
+                                <span className="text-xs font-medium">Upload cover (auto-generated if empty)</span>
+                            </label>
+                        )}
+                    </div>
+                    <div>
+                        <label htmlFor="client-name" className="mb-1.5 block text-sm font-medium text-secondary">Client name <span className="text-error-primary">*</span></label>
+                        <input id="client-name" type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Acme Corp" autoFocus
+                            className="w-full rounded-lg border border-secondary px-3 py-2 text-sm text-primary placeholder:text-placeholder outline-none transition duration-100 ease-linear focus:border-brand focus:ring-1 focus:ring-brand" />
+                    </div>
+                    <div>
+                        <label className="mb-1.5 block text-sm font-medium text-secondary">Tier</label>
+                        <div className="flex flex-wrap gap-1.5">
+                            {TIERS.map((t) => (
+                                <button
+                                    key={t.id}
+                                    type="button"
+                                    onClick={() => setTier(t.id)}
+                                    className={cx(
+                                        "rounded-full px-3 py-1 text-xs font-medium transition duration-100 ease-linear",
+                                        tier === t.id ? "bg-brand-solid text-white" : "bg-secondary text-tertiary ring-1 ring-secondary hover:text-secondary",
+                                    )}
+                                >
+                                    {t.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                    <div>
+                        <label htmlFor="client-am" className="mb-1.5 block text-sm font-medium text-secondary">Account manager</label>
+                        <input id="client-am" type="text" value={am} onChange={(e) => setAm(e.target.value)} placeholder="e.g. Makenna Moran"
+                            className="w-full rounded-lg border border-secondary px-3 py-2 text-sm text-primary placeholder:text-placeholder outline-none transition duration-100 ease-linear focus:border-brand focus:ring-1 focus:ring-brand" />
+                    </div>
+                    <div>
+                        <label htmlFor="client-location" className="mb-1.5 block text-sm font-medium text-secondary">Location</label>
+                        <input id="client-location" type="text" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. Austin, TX"
+                            className="w-full rounded-lg border border-secondary px-3 py-2 text-sm text-primary placeholder:text-placeholder outline-none transition duration-100 ease-linear focus:border-brand focus:ring-1 focus:ring-brand" />
+                    </div>
+                    <div>
+                        <label htmlFor="client-link" className="mb-1.5 block text-sm font-medium text-secondary">Dashboard / page link <span className="font-normal text-quaternary">(optional)</span></label>
+                        <input id="client-link" type="text" value={link} onChange={(e) => setLink(e.target.value)} placeholder="/acme-dashboard or https://…"
+                            className="w-full rounded-lg border border-secondary px-3 py-2 text-sm text-primary placeholder:text-placeholder outline-none transition duration-100 ease-linear focus:border-brand focus:ring-1 focus:ring-brand" />
+                    </div>
+                </div>
+
+                {error && <p className="mt-3 text-xs text-error-primary">{error}</p>}
+
+                <div className="mt-5 flex gap-3">
+                    <button type="button" onClick={onClose} disabled={saving} className="flex-1 rounded-lg border border-secondary px-4 py-2 text-sm font-semibold text-secondary transition hover:bg-secondary disabled:opacity-50">
+                        Cancel
+                    </button>
+                    <button type="button" onClick={submit} disabled={!valid || saving} className="flex-1 rounded-lg bg-brand-solid px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-40">
+                        {saving ? "Saving…" : initial ? "Save" : "Add Client"}
+                    </button>
+                </div>
+            </motion.div>
+        </motion.div>
+    );
+};
+
+const ClientCard = ({
+    client,
+    index,
+    editing,
+    onStar,
+    onDelete,
+    onEdit,
+}: {
+    client: ClientRecord;
+    index: number;
+    editing: boolean;
+    onStar: (id: string, starred: boolean) => void;
+    onDelete: (id: string) => void;
+    onEdit: (client: ClientRecord) => void;
+}) => {
+    const navigate = useNavigate();
+    const open = () => {
+        if (editing) {
+            onEdit(client);
+            return;
+        }
+        if (!client.link?.trim()) return;
+        const { external, to } = resolveLink(client.link);
+        if (external) window.open(to, "_blank", "noopener,noreferrer");
+        else navigate(to);
+    };
+
+    const clickable = editing || !!client.link?.trim();
+
+    return (
+        <motion.div
+            layout
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.96 }}
+            transition={{ duration: 0.35, delay: Math.min(index * 0.05, 0.4), ease: [0.22, 1, 0.36, 1] }}
+            whileHover={clickable ? { y: -4 } : undefined}
+            onClick={open}
+            className={cx(
+                "group relative flex flex-col overflow-hidden rounded-2xl bg-primary ring-1 ring-secondary transition-shadow duration-200",
+                clickable && "cursor-pointer hover:shadow-xl",
+            )}
+        >
+            {/* Cover */}
+            <div className="relative aspect-[16/10] w-full overflow-hidden">
+                {client.cover_url ? (
+                    <img src={client.cover_url} alt={client.name} className="size-full object-cover transition duration-300 group-hover:scale-105" draggable={false} />
+                ) : (
+                    <div className="flex size-full items-center justify-center transition duration-300 group-hover:scale-105" style={{ background: gradientFor(client.name || "Client") }}>
+                        <span className="text-4xl font-bold text-white/90">{(client.name || "C").charAt(0).toUpperCase()}</span>
+                    </div>
+                )}
+
+                {/* Tier badge */}
+                <span className="absolute left-3 top-3 rounded-full bg-black/45 px-2.5 py-0.5 text-[11px] font-semibold text-white backdrop-blur">
+                    {tierLabel(client.tier)}
+                </span>
+
+                {/* Star */}
+                {(client.starred || editing) && (
+                    <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onStar(client.id, !client.starred); }}
+                        title={client.starred ? "Unstar" : "Star"}
+                        className={cx(
+                            "absolute right-3 top-3 flex size-8 items-center justify-center rounded-full backdrop-blur transition duration-100 ease-linear",
+                            client.starred ? "bg-black/40 text-yellow-300" : "bg-black/40 text-white opacity-0 group-hover:opacity-100",
+                        )}
+                    >
+                        <Star01 className={cx("size-4", client.starred && "fill-current")} />
+                    </button>
+                )}
+
+                {/* Delete (edit mode) */}
+                {editing && (
+                    <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onDelete(client.id); }}
+                        title="Delete client"
+                        className="absolute bottom-3 right-3 flex size-8 items-center justify-center rounded-full bg-black/40 text-white opacity-0 backdrop-blur transition duration-100 ease-linear hover:bg-error-solid group-hover:opacity-100"
+                    >
+                        <Trash01 className="size-4" />
+                    </button>
+                )}
+            </div>
+
+            {/* Body */}
+            <div className="flex flex-1 items-start gap-3 p-4">
+                <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg bg-secondary ring-1 ring-secondary">
+                    <img src="/hgm logo/Favicon ON LIGHT.svg" alt="" className="size-6 dark:hidden" draggable={false} />
+                    <img src="/hgm logo/Favicon ON Dark.svg" alt="" className="hidden size-6 dark:block" draggable={false} />
+                </span>
+                <div className="min-w-0">
+                    <h3 className="truncate text-sm font-semibold text-primary">{client.name || "Untitled client"}</h3>
+                    {client.location && (
+                        <p className="mt-0.5 flex items-center gap-1 text-sm text-tertiary">
+                            <MarkerPin01 className="size-3.5 shrink-0" aria-hidden="true" />
+                            <span className="truncate">{client.location}</span>
+                        </p>
+                    )}
+                    {client.am && <p className="mt-0.5 truncate text-xs text-quaternary">Assigned to {client.am}</p>}
+                </div>
+            </div>
+        </motion.div>
+    );
+};
+
+const ClientListContent = ({ editing }: { editing: boolean }) => {
+    const [clients, setClients] = useState<ClientRecord[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [filter, setFilter] = useState<ClientFilter>({ type: "tier", value: "tier-0" });
+    const [modal, setModal] = useState<{ mode: "new" } | { mode: "edit"; client: ClientRecord } | null>(null);
+
+    useEffect(() => {
+        setLoading(true);
+        supabase
+            .from("clients")
+            .select("*")
+            .order("created_at", { ascending: true })
+            .then(({ data, error }) => {
+                if (!error && data) setClients(data as ClientRecord[]);
+                setLoading(false);
+            });
+    }, []);
+
+    // Account managers present in the data (for the "By AM" group).
+    const ams = [...new Set(clients.map((c) => c.am.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+
+    const filtered = clients.filter((c) =>
+        filter.type === "tier" ? c.tier === filter.value : c.am.trim() === filter.value,
+    );
+    const sorted = [...filtered].sort((a, b) => (!!a.starred === !!b.starred ? 0 : a.starred ? -1 : 1));
+
+    const headerLabel = filter.type === "tier" ? tierLabel(filter.value) : filter.value;
+
+    const handleStar = async (id: string, starred: boolean) => {
+        setClients((prev) => prev.map((c) => (c.id === id ? { ...c, starred } : c)));
+        await supabase.from("clients").update({ starred }).eq("id", id);
+    };
+
+    const handleDelete = async (id: string) => {
+        setClients((prev) => prev.filter((c) => c.id !== id));
+        await supabase.from("clients").delete().eq("id", id);
+    };
+
+    const handleCreate = async (data: Omit<ClientRecord, "id" | "created_at">) => {
+        const id = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
+        const row: ClientRecord = { id, ...data };
+        const { error } = await supabase.from("clients").insert(row);
+        if (error) {
+            console.error("[client insert] Supabase error:", error);
+            throw new Error(error.message);
+        }
+        setClients((prev) => [...prev, row]);
+        // Jump to the group the new client landed in so it's visible.
+        setFilter({ type: "tier", value: row.tier });
+        setModal(null);
+    };
+
+    const handleUpdate = async (existing: ClientRecord, data: Omit<ClientRecord, "id" | "created_at">) => {
+        const row: ClientRecord = { ...existing, ...data };
+        setClients((prev) => prev.map((c) => (c.id === existing.id ? row : c)));
+        const { error } = await supabase.from("clients").update(data).eq("id", existing.id);
+        if (error) {
+            console.error("[client update] Supabase error:", error);
+            throw new Error(error.message);
+        }
+        setModal(null);
+    };
+
+    const SidebarGroup = ({ label, children }: { label: string; children: React.ReactNode }) => (
+        <div className="flex flex-col gap-0.5">
+            <p className="mb-1 px-2 text-xs font-semibold uppercase tracking-widest text-quaternary">{label}</p>
+            {children}
+        </div>
+    );
+
+    const NavItem = ({ active, icon: Icon, label, count, onClick }: { active: boolean; icon: typeof Share07; label: string; count: number; onClick: () => void }) => (
+        <motion.button
+            type="button"
+            variants={{ hidden: { opacity: 0, x: -10 }, show: { opacity: 1, x: 0, transition: { duration: 0.3, ease: [0.22, 1, 0.36, 1] } } }}
+            onClick={onClick}
+            className={cx(
+                "group flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm font-medium transition duration-100 ease-linear",
+                active ? "bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300" : "text-secondary hover:bg-secondary hover:text-primary",
+            )}
+        >
+            <Icon className="size-4 shrink-0" aria-hidden="true" />
+            <span className="flex-1 truncate">{label}</span>
+            <span className={cx("text-xs tabular-nums", active ? "text-brand-700 dark:text-brand-300" : "text-quaternary")}>{count}</span>
+        </motion.button>
+    );
+
+    return (
+        <>
+            {/* Client List sidebar (tier + AM grouping) */}
+            <aside className="flex h-dvh w-60 shrink-0 flex-col border-r border-secondary bg-primary">
+                <div className="flex h-[73px] shrink-0 items-center border-b border-secondary px-5">
+                    <h2 className="text-md font-semibold text-primary">Client List</h2>
+                </div>
+                <nav className="flex-1 overflow-y-auto px-3 py-4">
+                    <motion.div
+                        className="flex flex-col gap-8"
+                        initial="hidden"
+                        animate="show"
+                        variants={{ show: { transition: { staggerChildren: 0.05 } } }}
+                    >
+                        <SidebarGroup label="By Tiers">
+                            {TIERS.map((t) => (
+                                <NavItem
+                                    key={t.id}
+                                    active={filter.type === "tier" && filter.value === t.id}
+                                    icon={t.icon}
+                                    label={t.label}
+                                    count={clients.filter((c) => c.tier === t.id).length}
+                                    onClick={() => setFilter({ type: "tier", value: t.id })}
+                                />
+                            ))}
+                        </SidebarGroup>
+
+                        {ams.length > 0 && (
+                            <SidebarGroup label="By AM">
+                                {ams.map((am) => (
+                                    <NavItem
+                                        key={am}
+                                        active={filter.type === "am" && filter.value === am}
+                                        icon={Users01}
+                                        label={am}
+                                        count={clients.filter((c) => c.am.trim() === am).length}
+                                        onClick={() => setFilter({ type: "am", value: am })}
+                                    />
+                                ))}
+                            </SidebarGroup>
+                        )}
+                    </motion.div>
+                </nav>
+            </aside>
+
+            {/* Main */}
+            <div className="flex h-dvh flex-1 flex-col overflow-hidden bg-secondary">
+                <header className="flex h-[73px] shrink-0 items-center justify-between border-b border-secondary bg-primary px-6">
+                    <div>
+                        <h1 className="text-md font-semibold text-primary">{headerLabel}</h1>
+                        <p className="text-sm text-tertiary">
+                            {loading ? "Loading…" : `Total ${filtered.length} ${filtered.length === 1 ? "client" : "clients"}`}
+                            {editing && " · editing"}
+                        </p>
+                    </div>
+                    {editing && (
+                        <button
+                            type="button"
+                            onClick={() => setModal({ mode: "new" })}
+                            className="flex items-center gap-1.5 rounded-lg bg-brand-solid px-3.5 py-2 text-sm font-semibold text-white transition duration-100 ease-linear hover:opacity-90"
+                        >
+                            <Plus className="size-4" aria-hidden="true" />
+                            New Client
+                        </button>
+                    )}
+                </header>
+
+                <div className="flex-1 overflow-y-auto">
+                    <div className="mx-auto w-full max-w-[1100px] px-6 py-6">
+                        {loading ? (
+                            <div className="flex h-48 items-center justify-center">
+                                <div className="size-6 animate-spin rounded-full border-2 border-brand border-t-transparent opacity-60" />
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                                <AnimatePresence mode="popLayout">
+                                    {sorted.map((client, i) => (
+                                        <ClientCard
+                                            key={client.id}
+                                            client={client}
+                                            index={i}
+                                            editing={editing}
+                                            onStar={handleStar}
+                                            onDelete={handleDelete}
+                                            onEdit={(c) => setModal({ mode: "edit", client: c })}
+                                        />
+                                    ))}
+                                </AnimatePresence>
+
+                                {editing && (
+                                    <motion.button
+                                        layout
+                                        type="button"
+                                        onClick={() => setModal({ mode: "new" })}
+                                        initial={{ opacity: 0 }}
+                                        animate={{ opacity: 1 }}
+                                        whileHover={{ y: -4 }}
+                                        className="flex aspect-[16/10] min-h-[220px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-primary text-tertiary transition duration-100 ease-linear hover:border-brand hover:bg-brand-50 hover:text-brand-secondary dark:hover:bg-brand-950/30"
+                                    >
+                                        <Plus className="size-7" />
+                                        <span className="text-sm font-semibold">New Client</span>
+                                    </motion.button>
+                                )}
+                            </div>
+                        )}
+
+                        {!loading && filtered.length === 0 && !editing && (
+                            <div className="flex h-64 flex-col items-center justify-center gap-2 text-center">
+                                <p className="text-sm font-medium text-primary">No clients in {headerLabel} yet</p>
+                                <p className="text-sm text-tertiary">Unlock editing (rail, bottom-left) to add clients.</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                <AnimatePresence>
+                    {modal?.mode === "new" && (
+                        <ClientModal onClose={() => setModal(null)} onSave={handleCreate} />
+                    )}
+                    {modal?.mode === "edit" && (
+                        <ClientModal initial={modal.client} onClose={() => setModal(null)} onSave={(data) => handleUpdate(modal.client, data)} />
+                    )}
+                </AnimatePresence>
+            </div>
+        </>
+    );
+};
+
 /* ── Dashboard layout ─────────────────────────────────────────────── */
 
 const DashboardLayout = () => {
@@ -1556,7 +2042,7 @@ const DashboardLayout = () => {
     })();
     const [department, setDepartment] = useState(initialDeptId);
     const [activeSection, setActiveSection] = useState(
-        () => (DEPARTMENTS.find((d) => d.id === initialDeptId) ?? DEPARTMENTS[0]).tabs[0].id,
+        () => (DEPARTMENTS.find((d) => d.id === initialDeptId) ?? DEPARTMENTS[0]).tabs[0]?.id ?? "",
     );
     const [editing, setEditing] = useState(false);
     // Shift+E toggles edit mode; Shift+S locks (dashboard edits already save on change).
@@ -1589,7 +2075,7 @@ const DashboardLayout = () => {
     const selectDept = (id: string) => {
         const d = DEPARTMENTS.find((x) => x.id === id) ?? DEPARTMENTS[0];
         setDepartment(id);
-        setActiveSection(d.tabs[0].id);
+        setActiveSection(d.tabs[0]?.id ?? "");
     };
 
     const addTab = async (label: string) => {
@@ -1620,26 +2106,32 @@ const DashboardLayout = () => {
                 onSelectDept={selectDept}
                 bottom={<RailBottom editing={editing} onToggleEditing={() => setEditing((e) => !e)} />}
             />
-            <Sidebar
-                department={dept}
-                tabs={tabs}
-                activeSection={activeSection}
-                onSelect={setActiveSection}
-                editing={editing}
-                canEditTabs={dept.kind === "cards"}
-                customTabIds={customTabs.map((t) => t.id)}
-                onAddTab={addTab}
-                onDeleteTab={deleteTab}
-            />
-            {dept.kind === "docs"
-                ? activeSection === "popups"
-                    ? <PopupsContent />
-                    : activeSection === "chat-widget"
-                        ? <ChatWidgetContent />
-                        : activeSection === "owner-guides"
-                            ? <OwnerGuidesContent />
-                            : <MetaPixelContent />
-                : <OverviewContent key={dept.id + ":" + activeSection} department={dept} tab={activeSection} editing={editing} />}
+            {dept.kind === "clientlist" ? (
+                <ClientListContent editing={editing} />
+            ) : (
+                <>
+                    <Sidebar
+                        department={dept}
+                        tabs={tabs}
+                        activeSection={activeSection}
+                        onSelect={setActiveSection}
+                        editing={editing}
+                        canEditTabs={dept.kind === "cards"}
+                        customTabIds={customTabs.map((t) => t.id)}
+                        onAddTab={addTab}
+                        onDeleteTab={deleteTab}
+                    />
+                    {dept.kind === "docs"
+                        ? activeSection === "popups"
+                            ? <PopupsContent />
+                            : activeSection === "chat-widget"
+                                ? <ChatWidgetContent />
+                                : activeSection === "owner-guides"
+                                    ? <OwnerGuidesContent />
+                                    : <MetaPixelContent />
+                        : <OverviewContent key={dept.id + ":" + activeSection} department={dept} tab={activeSection} editing={editing} />}
+                </>
+            )}
         </div>
     );
 };

@@ -3,8 +3,9 @@ import { useParams } from "react-router";
 import { PixelPage } from "./pixel-page";
 import { PopupPage } from "./popup-page";
 import { ChatWidgetScreen } from "./chat-widget-screen";
+import { ClientDashboardPage } from "./client-dashboard-page";
 import { NotFound } from "./not-found";
-import { supabase, type ChatWidgetPageData, type ClientPageData, type LeadCapturePageData } from "@/lib/supabase";
+import { supabase, type ChatWidgetPageData, type ClientPageData, type DashboardPageData, type LeadCapturePageData } from "@/lib/supabase";
 
 const Spinner = () => (
     <main className="flex min-h-dvh items-center justify-center bg-secondary">
@@ -91,6 +92,50 @@ const ChatWidgetClientScreen = ({ slug }: { slug: string }) => {
     );
 };
 
+/* Client dashboards live at /{name}-dashboard and load from dashboard_pages.
+   The bare "/client-dashboard" slug is the master template (no DB row needed). */
+const ClientDashboardScreen = ({ slug }: { slug: string }) => {
+    const [data, setData] = useState<DashboardPageData | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [notFound, setNotFound] = useState(false);
+
+    const isTemplate = slug === "client-dashboard";
+
+    useEffect(() => {
+        if (isTemplate) {
+            setLoading(false);
+            return;
+        }
+        setLoading(true);
+        setData(null);
+        setNotFound(false);
+        supabase
+            .from("dashboard_pages")
+            .select("*")
+            .eq("slug", slug)
+            .single()
+            .then(({ data: row, error }) => {
+                if (!error && row) setData(row as DashboardPageData);
+                else setNotFound(true);
+                setLoading(false);
+            });
+    }, [slug, isTemplate]);
+
+    if (loading) return <Spinner />;
+    if (notFound) return <NotFound />;
+
+    return (
+        <ClientDashboardPage
+            key={slug}
+            slug={slug}
+            isTemplate={isTemplate}
+            initialClientName={data?.client_name ?? ""}
+            initialClientWebsite={data?.client_website ?? ""}
+            initialData={data?.data}
+        />
+    );
+};
+
 export const ClientScreen = () => {
     const { clientSlug } = useParams<{ clientSlug: string }>();
 
@@ -100,6 +145,10 @@ export const ClientScreen = () => {
 
     if (clientSlug?.endsWith("-chatwidget")) {
         return <ChatWidgetClientScreen slug={clientSlug} />;
+    }
+
+    if (clientSlug?.endsWith("-dashboard")) {
+        return <ClientDashboardScreen slug={clientSlug} />;
     }
 
     return <PixelScreen clientSlug={clientSlug} />;

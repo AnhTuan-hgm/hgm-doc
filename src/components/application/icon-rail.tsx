@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
-import { Briefcase01, Code02, Lock01, LockUnlocked01, Moon01, SearchSm, Sun, Users01 } from "@untitledui/icons";
+import { BookOpen01, Briefcase01, Code02, Lock01, LockUnlocked01, Moon01, SearchSm, Sun, Users01 } from "@untitledui/icons";
 import { useTheme } from "@/providers/theme-provider";
 import { SearchModal } from "@/components/application/search-modal";
 import { cx } from "@/utils/cx";
@@ -51,6 +51,7 @@ export const RAIL_ITEMS = [
     { id: "clients", short: "Clients", icon: Users01 },
     { id: "website", short: "Website", icon: Code02 },
     { id: "am", short: "AM", icon: Briefcase01 },
+    { id: "docs", short: "Docs", icon: BookOpen01 },
 ];
 
 export const IconRail = ({

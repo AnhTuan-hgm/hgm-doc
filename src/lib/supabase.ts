@@ -42,6 +42,19 @@ export interface OverviewCard {
     created_at?: string;
 }
 
+/** A client record shown on the dashboard "Clients" (Client List) page. */
+export interface ClientRecord {
+    id: string;
+    name: string;
+    tier: string; // tier-0 | tier-1 | tier-2 | mastermind
+    am: string; // account manager name
+    location: string;
+    cover_url?: string;
+    link?: string; // optional link to their dashboard / any page
+    starred?: boolean;
+    created_at?: string;
+}
+
 export interface OverviewTab {
     id: string;
     department: string;
@@ -72,6 +85,38 @@ export interface ChatWidgetPageData {
     client_name: string;
     client_website: string;
     widget_id: string;
+    created_at?: string;
+}
+
+/** Section content for per-client dashboards (dashboard_pages.data jsonb). */
+export interface DashboardContent {
+    status: string; // Onboarding | Active | Paused
+    logo_url: string;
+    brand: {
+        colors: { name: string; hex: string }[];
+        fonts: string;
+        folder_link: string;
+    };
+    instagram: {
+        profile_url: string;
+        highlights: { title: string; image_url: string }[];
+    };
+    ghl: {
+        login_url: string;
+        items: { label: string; done: boolean }[];
+    };
+    revenue: {
+        currency: string;
+        months: { month: string; revenue: number; leads: number; appointments: number }[];
+    };
+    links: { title: string; description: string; url: string }[];
+}
+
+export interface DashboardPageData {
+    slug: string;
+    client_name: string;
+    client_website: string;
+    data: Partial<DashboardContent> | null;
     created_at?: string;
 }
 
