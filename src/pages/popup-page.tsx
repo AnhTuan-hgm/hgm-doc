@@ -482,6 +482,8 @@ export interface PopupPageProps {
     initialAfterImg1?: string;
     initialBeforeImg2?: string;
     initialAfterImg2?: string;
+    /** Which Task-2 option(s) to show the client: "both" | "a" | "b". */
+    initialFormOption?: string;
 }
 
 export const PopupPage = ({
@@ -496,6 +498,7 @@ export const PopupPage = ({
     initialAfterImg1 = "",
     initialBeforeImg2 = "",
     initialAfterImg2 = "",
+    initialFormOption = "both",
 }: PopupPageProps) => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
@@ -524,6 +527,13 @@ export const PopupPage = ({
     const [afterImg1, setAfterImg1] = useState(initialAfterImg1);
     const [beforeImg, setBeforeImg] = useState(initialBeforeImg2);
     const [afterImg, setAfterImg] = useState(initialAfterImg2);
+    const [formOption, setFormOption] = useState(initialFormOption);
+
+    // Which Task-2 option(s) are visible. When only one is shown, the framing
+    // chrome (lead-in, option pills, "Or" divider) is suppressed for a clean read.
+    const showA = formOption !== "b";
+    const showB = formOption !== "a";
+    const showBoth = showA && showB;
 
     // Create wizard
     const [showCreate, setShowCreate] = useState(false);
@@ -549,6 +559,7 @@ export const PopupPage = ({
                 after_img_1: afterImg1,
                 before_img_2: beforeImg,
                 after_img_2: afterImg,
+                form_option: formOption,
             },
             { onConflict: "slug" },
         );
@@ -681,23 +692,39 @@ export const PopupPage = ({
                     )}
 
                     {/* ── Header: client name + website ── */}
-                    <header className="flex items-center justify-between gap-4">
-                        <input
-                            type="text"
-                            placeholder="Client Name"
-                            value={clientName}
-                            onChange={(e) => setClientName(e.target.value)}
-                            readOnly={isLocked}
-                            className={headerFieldClass("min-w-0")}
-                        />
-                        <input
-                            type="text"
-                            placeholder="Client Website"
-                            value={clientWebsite}
-                            onChange={(e) => setClientWebsite(e.target.value)}
-                            readOnly={isLocked}
-                            className={headerFieldClass("min-w-0 text-right")}
-                        />
+                    <header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                        {isLocked ? (
+                            <>
+                                <span className="min-w-0 text-sm text-primary opacity-60">{clientName}</span>
+                                {clientWebsite && (
+                                    <a
+                                        href={clientWebsite}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="min-w-0 flex-1 text-right text-sm break-all text-primary opacity-60 transition duration-100 ease-linear hover:underline hover:opacity-100"
+                                    >
+                                        {clientWebsite}
+                                    </a>
+                                )}
+                            </>
+                        ) : (
+                            <>
+                                <input
+                                    type="text"
+                                    placeholder="Client Name"
+                                    value={clientName}
+                                    onChange={(e) => setClientName(e.target.value)}
+                                    className={headerFieldClass("min-w-0 flex-1")}
+                                />
+                                <input
+                                    type="text"
+                                    placeholder="Client Website"
+                                    value={clientWebsite}
+                                    onChange={(e) => setClientWebsite(e.target.value)}
+                                    className={headerFieldClass("min-w-0 flex-1 text-right")}
+                                />
+                            </>
+                        )}
                     </header>
 
                     {/* ── Title ── */}
@@ -880,81 +907,178 @@ export const PopupPage = ({
                     {/* ── Section 03 — TASK 2: 2-column promo section ── */}
                     <Reveal className="mt-10">
                         <SectionEyebrow number="03" />
-                        <SectionHeading>Task 2 — Add a promotion section (2 columns)</SectionHeading>
+                        <SectionHeading>Task 2 — Add your always-on sign-up form</SectionHeading>
 
-                        {/* Before / after result */}
-                        <h3 className="mt-4 text-lg font-semibold text-primary">Before &amp; after</h3>
-                        <p className="mt-2 text-sm text-tertiary">
-                            Drag the handle to see how your homepage looks once the promotion section is added.
-                        </p>
-                        <div className="mt-4">
-                            <BeforeAfterSlider
-                                before={beforeImg}
-                                after={afterImg}
-                                editable={!isLocked}
-                                onBeforeChange={setBeforeImg}
-                                onAfterChange={setAfterImg}
-                            />
-                        </div>
-
-                        <p className="mt-6 text-md text-tertiary">
-                            On your homepage, create a <span className="font-semibold text-secondary">2-column section</span>.
-                            The left column holds your promotion text; the right column holds the sign-up form. This always-on
-                            form is your best long-term lead capture.
-                        </p>
-
-                        <Steps
-                            steps={[
-                                <>In your builder, add a <span className="font-semibold text-secondary">2-column section</span> to the homepage.</>,
-                                <><span className="font-semibold text-secondary">Left column:</span> add a heading and a short description — copy the text below.</>,
-                                <><span className="font-semibold text-secondary">Right column:</span> add an <span className="font-semibold text-secondary">HTML / embed block</span> and paste the form code below.</>,
-                                <>Save and publish. Resize the columns so they sit side-by-side on desktop.</>,
-                            ]}
-                        />
-
-                        {/* Two-column builder */}
-                        <div className="mt-6 grid gap-4 md:grid-cols-2">
-                            <div className="flex flex-col rounded-xl p-5 ring-1 ring-secondary">
-                                <span className="mb-4 inline-flex w-fit items-center rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-semibold text-brand-700">
-                                    Column 1 · Promotion text
-                                </span>
-                                <div className="flex flex-col gap-4">
-                                    <CopyableField
-                                        label="Heading"
-                                        value={promoHeader}
-                                        copyId="promo-header"
-                                        copied={copied}
-                                        onCopy={copy}
-                                        editable={!isLocked}
-                                        onChange={setPromoHeader}
-                                    />
-                                    <CopyableField
-                                        label="Description"
-                                        value={promoDesc}
-                                        copyId="promo-desc"
-                                        copied={copied}
-                                        onCopy={copy}
-                                        editable={!isLocked}
-                                        onChange={setPromoDesc}
-                                        multiline
-                                    />
+                        {/* Edit-mode: choose which option(s) the client sees */}
+                        {!isLocked && (
+                            <div className="mt-4 rounded-xl border border-secondary bg-secondary p-4">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-quaternary">
+                                    Which option should the client see?
+                                </p>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                    {[
+                                        { id: "both", label: "Show both" },
+                                        { id: "a", label: "Option A only" },
+                                        { id: "b", label: "Option B only" },
+                                    ].map((opt) => (
+                                        <button
+                                            key={opt.id}
+                                            type="button"
+                                            onClick={() => setFormOption(opt.id)}
+                                            className={cx(
+                                                "rounded-lg px-3 py-1.5 text-sm font-medium ring-1 transition duration-100 ease-linear",
+                                                formOption === opt.id
+                                                    ? "bg-brand-solid text-white ring-transparent"
+                                                    : "bg-primary text-secondary ring-secondary hover:bg-secondary_hover",
+                                            )}
+                                        >
+                                            {opt.label}
+                                        </button>
+                                    ))}
                                 </div>
+                                <p className="mt-2 text-xs text-tertiary">
+                                    Shown only while editing. The client sees just the option(s) you pick — save by locking.
+                                </p>
                             </div>
+                        )}
 
-                            <div className="flex flex-col rounded-xl p-5 ring-1 ring-secondary">
-                                <span className="mb-4 inline-flex w-fit items-center rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-semibold text-brand-700">
-                                    Column 2 · Insert code
-                                </span>
-                                <CodeBlock
-                                    code={formCode}
-                                    copyId="form-code"
-                                    copied={copied}
-                                    onCopy={copy}
+                        {/* Before / after — shown for every option */}
+                        <div className="mt-8">
+                            <h3 className="text-lg font-semibold text-primary">Before &amp; after</h3>
+                            <p className="mt-2 text-sm text-tertiary">
+                                Drag the handle to see your homepage before and after the sign-up form is added.
+                            </p>
+                            <div className="mt-4">
+                                <BeforeAfterSlider
+                                    before={beforeImg}
+                                    after={afterImg}
                                     editable={!isLocked}
-                                    onChange={setFormCode}
+                                    onBeforeChange={setBeforeImg}
+                                    onAfterChange={setAfterImg}
                                 />
                             </div>
                         </div>
+
+                        {/* Intro (only when both options are shown) */}
+                        {showBoth && (
+                            <p className="mt-8 text-md text-tertiary">
+                                There are two ways to add the always-on sign-up form — pick whichever matches your site.
+                            </p>
+                        )}
+
+                        {/* ── Option A — build a fresh 2-column section ── */}
+                        {showA && (
+                            <div className={cx(showBoth ? "mt-6" : "mt-8")}>
+                                {showBoth && (
+                                    <div className="inline-flex w-fit items-center rounded-full bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700">
+                                        Option A · Add a new 2-column section
+                                    </div>
+                                )}
+
+                                <p className={cx("text-md text-tertiary", showBoth && "mt-4")}>
+                                    On your homepage, create a <span className="font-semibold text-secondary">2-column section</span>.
+                                    The left column holds your promotion text; the right column holds the sign-up form. This always-on
+                                    form is your best long-term lead capture.
+                                </p>
+
+                                <Steps
+                                    steps={[
+                                        <>In your builder, add a <span className="font-semibold text-secondary">2-column section</span> to the homepage.</>,
+                                        <><span className="font-semibold text-secondary">Left column:</span> add a heading and a short description — copy the text below.</>,
+                                        <><span className="font-semibold text-secondary">Right column:</span> add an <span className="font-semibold text-secondary">HTML / embed block</span> and paste the form code below.</>,
+                                        <>Save and publish. Resize the columns so they sit side-by-side on desktop.</>,
+                                    ]}
+                                />
+
+                                {/* Two-column builder */}
+                                <div className="mt-6 grid gap-4 md:grid-cols-2">
+                                    <div className="flex flex-col rounded-xl p-5 ring-1 ring-secondary">
+                                        <span className="mb-4 inline-flex w-fit items-center rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-semibold text-brand-700">
+                                            Column 1 · Promotion text
+                                        </span>
+                                        <div className="flex flex-col gap-4">
+                                            <CopyableField
+                                                label="Heading"
+                                                value={promoHeader}
+                                                copyId="promo-header"
+                                                copied={copied}
+                                                onCopy={copy}
+                                                editable={!isLocked}
+                                                onChange={setPromoHeader}
+                                            />
+                                            <CopyableField
+                                                label="Description"
+                                                value={promoDesc}
+                                                copyId="promo-desc"
+                                                copied={copied}
+                                                onCopy={copy}
+                                                editable={!isLocked}
+                                                onChange={setPromoDesc}
+                                                multiline
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="flex flex-col rounded-xl p-5 ring-1 ring-secondary">
+                                        <span className="mb-4 inline-flex w-fit items-center rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-semibold text-brand-700">
+                                            Column 2 · Insert code
+                                        </span>
+                                        <CodeBlock
+                                            code={formCode}
+                                            copyId="form-code"
+                                            copied={copied}
+                                            onCopy={copy}
+                                            editable={!isLocked}
+                                            onChange={setFormCode}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Or — divider between the two options */}
+                        {showBoth && (
+                            <div className="mt-10 flex items-center gap-4">
+                                <span className="h-px flex-1 bg-border-secondary" />
+                                <span className="text-xs font-semibold uppercase tracking-wide text-quaternary">Or</span>
+                                <span className="h-px flex-1 bg-border-secondary" />
+                            </div>
+                        )}
+
+                        {/* ── Option B — replace an existing form ── */}
+                        {showB && (
+                            <div className="mt-8">
+                                {showBoth && (
+                                    <div className="inline-flex w-fit items-center rounded-full bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700">
+                                        Option B · Replace an existing form
+                                    </div>
+                                )}
+
+                                <p className={cx("text-md text-tertiary", showBoth && "mt-3")}>
+                                    Already have a sign-up form on your site? You don't need a new 2-column section — just swap your
+                                    current form for the code below.
+                                </p>
+
+                                <Steps
+                                    steps={[
+                                        <>Remove your <span className="font-semibold text-secondary">current form</span> from the page.</>,
+                                        <>Add a <span className="font-semibold text-secondary">code / HTML embed widget</span> where the form used to be.</>,
+                                        <>Paste the code below into the widget, then <span className="font-semibold text-secondary">save and publish</span>.</>,
+                                    ]}
+                                />
+
+                                <div className="mt-6">
+                                    <CodeBlock
+                                        code={formCode}
+                                        copyId="form-code-replace"
+                                        copied={copied}
+                                        onCopy={copy}
+                                        editable={!isLocked}
+                                        onChange={setFormCode}
+                                    />
+                                </div>
+                            </div>
+                        )}
 
                     </Reveal>
 

@@ -24,6 +24,7 @@ const STATIC_ITEMS: SearchItem[] = [
     { id: "s-requests", title: "Requests", subtitle: "Docs request queue", path: "/requests", kind: "Page", icon: Inbox01 },
     { id: "s-metapixel", title: "Meta Pixel template", subtitle: "New client pixel page", path: "/metapixel", kind: "Template", icon: Share07 },
     { id: "s-popup", title: "Popup template", subtitle: "New lead-capture page", path: "/popup", kind: "Template", icon: Mail01 },
+    { id: "s-template1", title: "Template 1", subtitle: "Copyable document template", path: "/template-1", kind: "Template", icon: Code02 },
 ];
 
 export const SearchModal = ({ open, onClose }: { open: boolean; onClose: () => void }) => {
@@ -45,7 +46,8 @@ export const SearchModal = ({ open, onClose }: { open: boolean; onClose: () => v
             supabase.from("client_pages").select("slug, client_name, client_website"),
             supabase.from("leadcapture_pages").select("slug, client_name"),
             supabase.from("overview_cards").select("id, title, description, link, department"),
-        ]).then(([clients, leads, cards]) => {
+            supabase.from("template_docs").select("slug, name"),
+        ]).then(([clients, leads, cards, docs]) => {
             if (cancelled) return;
             const items: SearchItem[] = [];
             (clients.data as ClientPageData[] | null)?.forEach((c) => {
@@ -58,6 +60,10 @@ export const SearchModal = ({ open, onClose }: { open: boolean; onClose: () => v
             (cards.data as OverviewCard[] | null)?.forEach((card) => {
                 if (!card.link) return;
                 items.push({ id: "card-" + card.id, title: card.title, subtitle: card.description, path: card.link, kind: "Card", icon: LayoutAlt01 });
+            });
+            (docs.data as { slug: string; name?: string }[] | null)?.forEach((d) => {
+                if (d.slug === "template-1") return; // the master is a static item
+                items.push({ id: "tpl-" + d.slug, title: d.name || d.slug, subtitle: `Template doc · /${d.slug}`, path: `/${d.slug}`, kind: "Template", icon: Code02 });
             });
             setDynamic(items);
         });

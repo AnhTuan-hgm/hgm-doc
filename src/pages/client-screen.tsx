@@ -4,6 +4,7 @@ import { PixelPage } from "./pixel-page";
 import { PopupPage } from "./popup-page";
 import { ChatWidgetScreen } from "./chat-widget-screen";
 import { ClientDashboardPage } from "./client-dashboard-page";
+import { TemplateOneScreen } from "./template-one-screen";
 import { NotFound } from "./not-found";
 import { supabase, type ChatWidgetPageData, type ClientPageData, type DashboardPageData, type LeadCapturePageData } from "@/lib/supabase";
 
@@ -52,6 +53,7 @@ const LeadCaptureScreen = ({ slug }: { slug: string }) => {
             initialAfterImg1={data?.after_img_1 ?? ""}
             initialBeforeImg2={data?.before_img_2 ?? ""}
             initialAfterImg2={data?.after_img_2 ?? ""}
+            initialFormOption={data?.form_option || undefined}
         />
     );
 };
@@ -158,6 +160,8 @@ const PixelScreen = ({ clientSlug }: { clientSlug?: string }) => {
     const [data, setData] = useState<ClientPageData | null>(null);
     const [loading, setLoading] = useState(true);
     const [notFound, setNotFound] = useState(false);
+    // Set when the slug isn't a pixel page but IS a template-1 document.
+    const [isTemplateDoc, setIsTemplateDoc] = useState(false);
 
     // "metapixel" is the template/create route and is always valid even without a saved row.
     const isTemplate = clientSlug === "metapixel";
@@ -175,19 +179,34 @@ const PixelScreen = ({ clientSlug }: { clientSlug?: string }) => {
         setLoading(true);
         setData(null);
         setNotFound(false);
+        setIsTemplateDoc(false);
         supabase
             .from("client_pages")
             .select("*")
             .eq("slug", clientSlug)
             .single()
             .then(({ data: row, error }) => {
-                if (!error && row) setData(row as ClientPageData);
-                else setNotFound(true);
-                setLoading(false);
+                if (!error && row) {
+                    setData(row as ClientPageData);
+                    setLoading(false);
+                    return;
+                }
+                // Not a pixel page — it might be a document copied from /template-1.
+                supabase
+                    .from("template_docs")
+                    .select("slug")
+                    .eq("slug", clientSlug)
+                    .maybeSingle()
+                    .then(({ data: doc }) => {
+                        if (doc) setIsTemplateDoc(true);
+                        else setNotFound(true);
+                        setLoading(false);
+                    });
             });
     }, [clientSlug, isTemplate]);
 
     if (loading) return <Spinner />;
+    if (isTemplateDoc && clientSlug) return <TemplateOneScreen key={clientSlug} slug={clientSlug} isTemplate={false} />;
     if (notFound) return <NotFound />;
 
     return (

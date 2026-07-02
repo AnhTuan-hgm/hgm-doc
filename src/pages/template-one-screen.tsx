@@ -1,0 +1,1305 @@
+import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router";
+import { AnimatePresence, motion } from "motion/react";
+import { IconRail, RailBottom } from "@/components/application/icon-rail";
+import { useAuthUser } from "@/hooks/use-auth-user";
+import { supabase } from "@/lib/supabase";
+import { cx } from "@/utils/cx";
+
+/** The master template lives at /template-1; copies live at /{custom-slug} (stored in template_docs). */
+const TEMPLATE_BASE = "template-1";
+const slugify = (s: string) =>
+    s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+
+/** Slugs that are named routes (or route elsewhere) — a copy can't use these or it'd be unreachable. */
+const RESERVED_SLUGS = new Set([
+    "template-1", "template", "dashboard", "roadmap", "requests", "settings",
+    "designsystem", "home2", "popup", "owner-guide", "chat-widget", "metapixel",
+]);
+const isReservedSlug = (slug: string) =>
+    RESERVED_SLUGS.has(slug) || /-(leadcapture|chatwidget|dashboard)$/.test(slug);
+
+/* ── Types ───────────────────────────────────────────────────────── */
+
+type LensPos = { x: number; y: number };
+type Step = { id: string; heading: string; tools: string[]; command: string; note?: string; image: string; lensPos?: LensPos };
+type Stage = { id: string; name: string; steps: Step[] };
+type SOPState = { stages: Stage[]; selectedId: string | null; locked: boolean };
+
+const storageKey = (slug: string) => `hgm_template1_${slug}`;
+
+/* ── Tools ───────────────────────────────────────────────────────── */
+
+type ToolDef = { name: string; color: string; bg: string; border: string; Icon: () => React.ReactElement };
+
+const TOOLS: ToolDef[] = [
+    {
+        name: "Git", color: "#D92D20", bg: "#FEF3F2", border: "rgba(217,45,32,0.30)",
+        Icon: () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="6" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="6" r="3" /><path d="M18 9a6 6 0 01-6 6H6" /></svg>,
+    },
+    {
+        name: "VS Code", color: "#2563EB", bg: "#EFF6FF", border: "rgba(37,99,235,0.30)",
+        Icon: () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6" /></svg>,
+    },
+    {
+        name: "Claude", color: "#D97757", bg: "#FAF0EB", border: "rgba(217,119,87,0.32)",
+        Icon: () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2.5v19M2.5 12h19M5.4 5.4l13.2 13.2M18.6 5.4L5.4 18.6" /></svg>,
+    },
+    {
+        name: "Netlify", color: "#16A34A", bg: "#ECFDF3", border: "rgba(22,163,74,0.30)",
+        Icon: () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a15 15 0 010 18a15 15 0 010-18" /></svg>,
+    },
+    {
+        name: "Supabase", color: "#7F56D9", bg: "#F9F5FF", border: "rgba(127,86,217,0.30)",
+        Icon: () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6" /></svg>,
+    },
+    {
+        name: "Stripe", color: "#635BFF", bg: "#F0EFFF", border: "rgba(99,91,255,0.30)",
+        Icon: () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2 10h20" /></svg>,
+    },
+    {
+        name: "Terminal", color: "#0EA5E9", bg: "#F0F9FF", border: "rgba(14,165,233,0.30)",
+        Icon: () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 17l6-6-6-6M12 19h8" /></svg>,
+    },
+    {
+        name: "GitHub", color: "#171717", bg: "#F5F5F5", border: "rgba(23,23,23,0.20)",
+        Icon: () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 00-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0020 4.77 5.07 5.07 0 0019.91 1S18.73.65 16 2.48a13.38 13.38 0 00-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 005 4.77a5.44 5.44 0 00-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 009 18.13V22" /></svg>,
+    },
+];
+
+const KNOWN_TOOL_NAMES = new Set(TOOLS.map((t) => t.name));
+const findTool = (name: string) => TOOLS.find((t) => t.name === name);
+
+/* ── Helpers ─────────────────────────────────────────────────────── */
+
+const uid = () => "id" + Math.random().toString(36).slice(2, 9);
+
+function mkStep(heading = "New step"): Step {
+    return { id: uid(), heading, tools: [], command: "", note: "", image: "" };
+}
+
+function seed(): SOPState {
+    const S = (heading: string, tool: string, command: string): Step => ({ id: uid(), heading, tools: tool ? [tool] : [], command, image: "" });
+    const stages: Stage[] = [
+        {
+            id: uid(), name: "Section One", steps: [
+                S("First step", "VS Code", "This is placeholder content for the first step. Unlock editing to replace this text, add a tool tag, drop in a command, or attach an image."),
+                S("Second step", "Terminal", "echo \"Replace this command with your own — every field on this page is editable once you unlock.\""),
+                S("Third step", "", "Add any closing notes for this section here. Copy this template to spin up a fresh document with the same layout."),
+            ],
+        },
+        {
+            id: uid(), name: "Section Two", steps: [
+                S("First step", "GitHub", "Placeholder instructions for section two, step one."),
+                S("Second step", "", "Placeholder instructions for section two, step two."),
+                S("Third step", "Netlify", "Placeholder instructions for section two, step three."),
+            ],
+        },
+        {
+            id: uid(), name: "Section Three", steps: [
+                S("First step", "", "Placeholder instructions for section three, step one."),
+                S("Second step", "Supabase", "Placeholder instructions for section three, step two."),
+                S("Third step", "", "Placeholder instructions for section three, step three."),
+            ],
+        },
+    ];
+    return { stages, selectedId: stages[0].id, locked: true };
+}
+
+function load(slug: string): SOPState {
+    try {
+        const raw = localStorage.getItem(storageKey(slug));
+        if (raw) {
+            const d = JSON.parse(raw) as SOPState;
+            if (Array.isArray(d.stages) && d.stages.length) {
+                // migrate old tool: string → tools: string[]
+                d.stages.forEach((stage) => {
+                    stage.steps.forEach((step: Step & { tool?: string }) => {
+                        if (!Array.isArray(step.tools)) {
+                            step.tools = step.tool ? [step.tool] : [];
+                        }
+                        delete step.tool;
+                    });
+                });
+                // Lock is a per-view UI state, never restored from saved data.
+                return { ...d, locked: true };
+            }
+        }
+    } catch {}
+    return seed();
+}
+
+function save(slug: string, s: SOPState) {
+    try { localStorage.setItem(storageKey(slug), JSON.stringify(s)); } catch {}
+}
+
+
+/* ── Icon buttons ────────────────────────────────────────────────── */
+
+const IconBtn = ({ onClick, title, danger, className, children }: {
+    onClick: (e: React.MouseEvent) => void;
+    title: string;
+    danger?: boolean;
+    className?: string;
+    children: React.ReactNode;
+}) => (
+    <button
+        type="button"
+        title={title}
+        onClick={onClick}
+        className={cx(
+            "flex size-[30px] shrink-0 items-center justify-center rounded-[7px] border border-secondary bg-primary text-tertiary transition duration-100 ease-linear",
+            danger ? "hover:border-red-300 hover:bg-red-50 hover:text-red-600" : "hover:border-primary hover:bg-secondary hover:text-primary",
+            className,
+        )}
+    >
+        {children}
+    </button>
+);
+
+/* ── Copy button ─────────────────────────────────────────────────── */
+
+const CopyButton = ({ text }: { text: string }) => {
+    const [copied, setCopied] = useState(false);
+    const copy = () => {
+        navigator.clipboard.writeText(text).then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        });
+    };
+    return (
+        <button
+            type="button"
+            onClick={copy}
+            title="Copy to clipboard"
+            className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-secondary"
+        >
+            {copied ? (
+                <>
+                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-success-primary"><path d="M20 6L9 17l-5-5" /></svg>
+                    <span className="text-success-primary">Copied</span>
+                </>
+            ) : (
+                <>
+                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg>
+                    Copy
+                </>
+            )}
+        </button>
+    );
+};
+
+/* ── Image with magnifier ────────────────────────────────────────── */
+
+const LENS = 72;
+const ZOOM = 1.3;
+
+const ImageWithMagnifier = ({ src, editing, lensPos, onLensPosChange }: {
+    src: string;
+    editing: boolean;
+    lensPos?: LensPos;
+    onLensPosChange?: (pos: LensPos) => void;
+}) => {
+    const imgRef    = useRef<HTMLImageElement>(null);
+    const lbImgRef  = useRef<HTMLImageElement>(null);
+    const lbWrapRef = useRef<HTMLDivElement>(null);
+
+    const [dims,   setDims]   = useState({ w: 0, h: 0 });
+    const [lbDims, setLbDims] = useState({ w: 0, h: 0 });
+    const [lightbox, setLightbox] = useState(false);
+    const [pos, setPos] = useState<LensPos>(lensPos ?? { x: 0.5, y: 0.5 });
+    const posRef = useRef(pos);
+
+    const dragMode = useRef<"thumb" | "lb" | null>(null);
+
+    const applyPos = (newPos: LensPos) => {
+        setPos(newPos);
+        posRef.current = newPos;
+    };
+
+    // normalize against the image element itself — perfectly consistent with offsetWidth/Height
+    const computePos = (el: HTMLImageElement | null, clientX: number, clientY: number) => {
+        const rect = el?.getBoundingClientRect();
+        if (!rect || rect.width === 0) return;
+        applyPos({
+            x: Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)),
+            y: Math.max(0, Math.min(1, (clientY - rect.top) / rect.height)),
+        });
+    };
+
+    // window-level drag: mouse can leave the element freely
+    useEffect(() => {
+        const onMove = (e: MouseEvent) => {
+            if (dragMode.current === "thumb") computePos(imgRef.current, e.clientX, e.clientY);
+            else if (dragMode.current === "lb") computePos(lbImgRef.current, e.clientX, e.clientY);
+        };
+        const onUp = () => {
+            if (dragMode.current !== null) onLensPosChange?.(posRef.current);
+            dragMode.current = null;
+        };
+        window.addEventListener("mousemove", onMove);
+        window.addEventListener("mouseup", onUp);
+        return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+    }, []);
+
+    useEffect(() => {
+        const refresh = () => { if (imgRef.current) setDims({ w: imgRef.current.offsetWidth, h: imgRef.current.offsetHeight }); };
+        window.addEventListener("resize", refresh);
+        return () => window.removeEventListener("resize", refresh);
+    }, []);
+
+    useEffect(() => {
+        if (!lightbox) return;
+        const esc = (e: KeyboardEvent) => { if (e.key === "Escape") closeLightbox(); };
+        window.addEventListener("keydown", esc);
+        return () => window.removeEventListener("keydown", esc);
+    }, [lightbox]);
+
+    // no didDrag guard — clicking the image always opens the lightbox
+    // (the lens circle has stopPropagation so clicks on it never reach the img)
+    const openLightbox  = () => setLightbox(true);
+    const closeLightbox = () => { dragMode.current = null; setLightbox(false); };
+
+    const lensStyle = (w: number, h: number): React.CSSProperties => ({
+        position: "absolute",
+        width: LENS, height: LENS,
+        left: pos.x * w - LENS / 2,
+        top:  pos.y * h - LENS / 2,
+        borderRadius: "50%",
+        border: "2.5px solid rgba(255,255,255,0.9)",
+        boxShadow: "0 0 0 1.5px rgba(0,0,0,0.18), 0 3px 12px rgba(0,0,0,0.25)",
+        backgroundImage: `url(${src})`,
+        backgroundSize: `${w * ZOOM}px ${h * ZOOM}px`,
+        backgroundPosition: `${-(pos.x * w * ZOOM - LENS / 2)}px ${-(pos.y * h * ZOOM - LENS / 2)}px`,
+        backgroundRepeat: "no-repeat",
+    });
+
+    return (
+        <>
+            {/* thumbnail */}
+            <div
+                className="relative select-none"
+                onTouchMove={(e) => { if (dragMode.current === "thumb") { e.preventDefault(); computePos(imgRef.current, e.touches[0].clientX, e.touches[0].clientY); } }}
+                onTouchEnd={() => { dragMode.current = null; }}
+            >
+                <img
+                    ref={imgRef}
+                    src={src}
+                    alt="reference"
+                    className="block w-full cursor-zoom-in rounded-xl border border-secondary"
+                    onLoad={() => { if (imgRef.current) setDims({ w: imgRef.current.offsetWidth, h: imgRef.current.offsetHeight }); }}
+                    draggable={false}
+                    onClick={openLightbox}
+                />
+                {dims.w > 0 && (
+                    <div
+                        style={{ ...lensStyle(dims.w, dims.h), cursor: editing ? "grab" : "default" }}
+                        onClick={(e) => e.stopPropagation()}
+                        onMouseDown={editing ? (e) => { e.preventDefault(); dragMode.current = "thumb"; computePos(imgRef.current, e.clientX, e.clientY); } : undefined}
+                        onTouchStart={editing ? (e) => { e.preventDefault(); dragMode.current = "thumb"; computePos(imgRef.current, e.touches[0].clientX, e.touches[0].clientY); } : undefined}
+                    />
+                )}
+            </div>
+
+            {/* lightbox */}
+            <AnimatePresence>
+            {lightbox && (
+                <motion.div onClick={closeLightbox} className="fixed inset-0 z-50 flex cursor-zoom-out items-center justify-center bg-black/80 p-10 backdrop-blur-sm"
+                    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2, ease: "easeOut" }}>
+                    <motion.div
+                        ref={lbWrapRef}
+                        className="relative select-none"
+                        onClick={(e) => e.stopPropagation()}
+                        onTouchMove={(e) => { if (dragMode.current === "lb") computePos(lbImgRef.current, e.touches[0].clientX, e.touches[0].clientY); }}
+                        onTouchEnd={() => { dragMode.current = null; }}
+                        initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.92, opacity: 0 }}
+                        transition={{ type: "spring", stiffness: 300, damping: 26 }}
+                    >
+                        <img
+                            ref={lbImgRef}
+                            src={src}
+                            alt="full view"
+                            className="block rounded-xl shadow-2xl"
+                            style={{ maxHeight: "90vh", maxWidth: "90vw" }}
+                            onLoad={() => { if (lbImgRef.current) setLbDims({ w: lbImgRef.current.offsetWidth, h: lbImgRef.current.offsetHeight }); }}
+                            draggable={false}
+                        />
+                        {lbDims.w > 0 && (
+                            <div
+                                style={{ ...lensStyle(lbDims.w, lbDims.h), cursor: "grab" }}
+                                onMouseDown={(e) => { e.preventDefault(); dragMode.current = "lb"; computePos(lbImgRef.current, e.clientX, e.clientY); }}
+                                onTouchStart={(e) => { e.preventDefault(); dragMode.current = "lb"; computePos(lbImgRef.current, e.touches[0].clientX, e.touches[0].clientY); }}
+                            />
+                        )}
+                    </motion.div>
+                    <button type="button" onClick={closeLightbox} title="Close"
+                        className="absolute right-6 top-6 flex size-10 items-center justify-center rounded-xl bg-white/10 text-white transition hover:bg-white/20">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+                    </button>
+                </motion.div>
+            )}
+            </AnimatePresence>
+        </>
+    );
+};
+
+/* ── Step card ───────────────────────────────────────────────────── */
+
+const StepCard = ({
+    step, index, editing, onUpdate, onUpdateTools, onUpdateLensPos, onDelete, onMove, onInsert,
+}: {
+    step: Step;
+    index: number;
+    editing: boolean;
+    onUpdate: (id: string, field: keyof Step, val: string) => void;
+    onUpdateTools: (id: string, tools: string[]) => void;
+    onUpdateLensPos: (id: string, pos: LensPos) => void;
+    onDelete: (id: string) => void;
+    onMove: (id: string, dir: -1 | 1) => void;
+    onInsert: (id: string, pos: "before" | "after") => void;
+}) => {
+    const fileRef = useRef<HTMLInputElement>(null);
+    const customInputRef = useRef<HTMLInputElement>(null);
+    const [customDraft, setCustomDraft] = useState<string | null>(null);
+
+    // auto-focus the custom tool input when it opens
+    useEffect(() => {
+        if (customDraft === "") customInputRef.current?.focus();
+    }, [customDraft]);
+
+    const commitCustom = () => {
+        const v = (customDraft ?? "").trim();
+        if (v) onUpdateTools(step.id, [...step.tools, v]);
+        setCustomDraft(null);
+    };
+    const cancelCustom = () => setCustomDraft(null);
+
+    const handleImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => onUpdate(step.id, "image", reader.result as string);
+        reader.readAsDataURL(file);
+        e.target.value = "";
+    };
+
+    return (
+        <div className="group/step relative">
+            {/* insert above */}
+            {editing && index === 0 && (
+                <div className="absolute -top-5 left-0 right-0 z-10 flex items-center gap-2.5 px-3.5 opacity-0 transition duration-100 ease-linear group-hover/step:opacity-100 pointer-events-none group-hover/step:pointer-events-auto">
+                    <span className="h-0.5 flex-1 rounded-full bg-brand-200" />
+                    <button type="button" onClick={() => onInsert(step.id, "before")} title="Insert step above"
+                        className="flex size-6 shrink-0 items-center justify-center rounded-full bg-brand-600 text-white shadow-md hover:brightness-110">
+                        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+                    </button>
+                    <span className="h-0.5 flex-1 rounded-full bg-brand-200" />
+                </div>
+            )}
+
+            <div className="rounded-2xl border border-secondary bg-primary pb-6 shadow-xs">
+                {/* title row */}
+                <div className="flex items-start gap-3.5 p-5 pb-0">
+                    <div className="flex size-[34px] shrink-0 items-center justify-center rounded-full bg-brand-100 font-bold text-[15px] text-brand-700 dark:bg-brand-950/40 dark:text-brand-300">
+                        {index + 1}
+                    </div>
+                    {editing ? (
+                        <input
+                            type="text"
+                            value={step.heading}
+                            onChange={(e) => onUpdate(step.id, "heading", e.target.value)}
+                            placeholder="Step title"
+                            className="mt-0.5 flex-1 min-w-0 rounded-lg border border-secondary bg-transparent px-2.5 py-1 text-[18px] font-semibold leading-7 text-primary outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                        />
+                    ) : (
+                        <p className="mt-1 flex-1 min-w-0 text-[18px] font-semibold leading-7 text-primary">{step.heading}</p>
+                    )}
+                    {editing && (
+                        <div className="flex shrink-0 gap-1 mt-0.5">
+                            <IconBtn onClick={(e) => { e.stopPropagation(); onMove(step.id, -1); }} title="Move up">
+                                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 15l-6-6-6 6" /></svg>
+                            </IconBtn>
+                            <IconBtn onClick={(e) => { e.stopPropagation(); onMove(step.id, 1); }} title="Move down">
+                                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
+                            </IconBtn>
+                            <IconBtn onClick={(e) => { e.stopPropagation(); onDelete(step.id); }} title="Delete step" danger>
+                                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" /></svg>
+                            </IconBtn>
+                        </div>
+                    )}
+                </div>
+
+                {/* tool selector */}
+                <div className="mt-3.5 px-5 pl-[69px]">
+                    {editing ? (
+                        <div className="flex flex-wrap items-center gap-2">
+                            {/* predefined tool chips — multi-select */}
+                            {TOOLS.map((t) => {
+                                const active = step.tools.includes(t.name);
+                                return (
+                                    <button
+                                        key={t.name}
+                                        type="button"
+                                        onClick={() => onUpdateTools(step.id,
+                                            active
+                                                ? step.tools.filter((x) => x !== t.name)
+                                                : [...step.tools, t.name],
+                                        )}
+                                        style={{
+                                            color: t.color,
+                                            background: active ? t.bg : "transparent",
+                                            border: `1.5px solid ${active ? t.color : t.border}`,
+                                        }}
+                                        className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-semibold transition duration-100 ease-linear hover:opacity-80"
+                                    >
+                                        <t.Icon />
+                                        {t.name}
+                                    </button>
+                                );
+                            })}
+
+                            {/* custom (non-predefined) chips */}
+                            {step.tools.map((name, idx) =>
+                                KNOWN_TOOL_NAMES.has(name) ? null : (
+                                    <span
+                                        key={idx}
+                                        style={{ color: "#525252", background: "#F5F5F5", border: "1.5px solid rgba(82,82,82,0.30)" }}
+                                        className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[12px] font-semibold"
+                                    >
+                                        {name}
+                                        <button
+                                            type="button"
+                                            onClick={() => onUpdateTools(step.id, step.tools.filter((_, j) => j !== idx))}
+                                            className="ml-0.5 leading-none text-[#888] hover:text-[#333]"
+                                        >
+                                            <svg viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                                        </button>
+                                    </span>
+                                ),
+                            )}
+
+                            {/* "Other" chip (no icon) and "+" button — both add a custom entry */}
+                            {customDraft === null ? (
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={() => setCustomDraft("")}
+                                        style={{ color: "#525252", border: "1.5px dashed rgba(82,82,82,0.40)" }}
+                                        className="inline-flex items-center rounded-full bg-transparent px-3 py-1 text-[12px] font-semibold transition duration-100 ease-linear hover:opacity-70"
+                                    >
+                                        Other
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setCustomDraft("")}
+                                        style={{ color: "#525252", border: "1.5px dashed rgba(82,82,82,0.40)" }}
+                                        className="inline-flex size-[27px] items-center justify-center rounded-full bg-transparent text-[16px] font-medium leading-none transition duration-100 ease-linear hover:opacity-70"
+                                    >
+                                        +
+                                    </button>
+                                </>
+                            ) : (
+                                <div
+                                    style={{ border: "1.5px solid rgba(82,82,82,0.50)" }}
+                                    className="inline-flex items-center rounded-full px-2.5 py-0.5"
+                                >
+                                    <input
+                                        ref={customInputRef}
+                                        value={customDraft}
+                                        onChange={(e) => setCustomDraft(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === "Enter") commitCustom();
+                                            if (e.key === "Escape") cancelCustom();
+                                        }}
+                                        onBlur={commitCustom}
+                                        placeholder="Tool name…"
+                                        className="w-24 bg-transparent text-[12px] text-secondary outline-none placeholder:text-placeholder"
+                                    />
+                                </div>
+                            )}
+                        </div>
+                    ) : step.tools.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                            {step.tools.map((name, i) => {
+                                const t = findTool(name);
+                                return t ? (
+                                    <span
+                                        key={i}
+                                        style={{ color: t.color, background: t.bg, border: `1.5px solid ${t.border}` }}
+                                        className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-semibold"
+                                    >
+                                        <t.Icon />
+                                        {t.name}
+                                    </span>
+                                ) : (
+                                    <span
+                                        key={i}
+                                        style={{ color: "#525252", background: "#F5F5F5", border: "1.5px solid rgba(82,82,82,0.30)" }}
+                                        className="inline-flex items-center rounded-full px-3 py-1 text-[12px] font-semibold"
+                                    >
+                                        {name}
+                                    </span>
+                                );
+                            })}
+                        </div>
+                    ) : null}
+                </div>
+
+                {/* command */}
+                <div className="mt-3.5 flex flex-col gap-1.5 px-5 pl-[69px]">
+                    <div className="flex items-center justify-between">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-quaternary">Command / Prompt</p>
+                        {step.command && <CopyButton text={step.command} />}
+                    </div>
+                    {editing ? (
+                        <textarea
+                            value={step.command}
+                            onChange={(e) => onUpdate(step.id, "command", e.target.value)}
+                            placeholder="Describe exactly what to do…"
+                            rows={3}
+                            className="w-full resize-y rounded-lg border border-secondary bg-secondary px-3.5 py-3 font-mono text-[13.5px] leading-[22px] text-secondary outline-none focus:border-brand focus:bg-primary focus:ring-1 focus:ring-brand"
+                        />
+                    ) : step.command ? (
+                        <pre className="whitespace-pre-wrap rounded-lg border border-secondary bg-secondary px-3.5 py-3 font-mono text-[13.5px] leading-[22px] text-secondary">{step.command}</pre>
+                    ) : (
+                        <span className="text-sm text-placeholder">—</span>
+                    )}
+                </div>
+
+                {/* note */}
+                {(editing || !!step.note) && (
+                    <div className="mt-3.5 flex flex-col gap-1.5 px-5 pl-[69px]">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-quaternary">Note</p>
+                        {editing ? (
+                            <textarea
+                                value={step.note ?? ""}
+                                onChange={(e) => onUpdate(step.id, "note", e.target.value)}
+                                placeholder="Add a note…"
+                                rows={2}
+                                className="w-full resize-y border-0 bg-transparent px-0 py-0 text-[13.5px] leading-[22px] text-secondary outline-none placeholder:text-placeholder"
+                            />
+                        ) : (
+                            <p className="text-[13.5px] leading-[22px] text-secondary">{step.note}</p>
+                        )}
+                    </div>
+                )}
+
+                {/* image */}
+                {step.image ? (
+                    <div className="relative mx-5 ml-[69px]">
+                        <ImageWithMagnifier
+                                        src={step.image}
+                                        editing={editing}
+                                        lensPos={step.lensPos}
+                                        onLensPosChange={(p) => onUpdateLensPos(step.id, p)}
+                                        />
+                        {editing && (
+                            <button type="button" onClick={() => onUpdate(step.id, "image", "")} title="Remove image"
+                                className="absolute right-2 top-2 z-10 flex size-7 items-center justify-center rounded-[7px] bg-black/70 text-white backdrop-blur hover:bg-black/90">
+                                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+                            </button>
+                        )}
+                    </div>
+                ) : editing ? (
+                    <label className="mx-5 ml-[69px] flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-[1.5px] border-dashed border-primary bg-secondary py-8 text-[13px] font-medium text-tertiary transition duration-100 ease-linear hover:border-brand hover:bg-brand-50 hover:text-brand-700">
+                        <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleImage} />
+                        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="3" y="3" width="18" height="18" rx="2" />
+                            <circle cx="8.5" cy="8.5" r="1.5" />
+                            <path d="M21 15l-5-5L5 21" />
+                        </svg>
+                        Add reference image
+                    </label>
+                ) : null}
+            </div>
+
+            {/* insert below */}
+            {editing && (
+                <div className="absolute -bottom-5 left-0 right-0 z-10 flex items-center gap-2.5 px-3.5 opacity-0 transition duration-100 ease-linear group-hover/step:opacity-100 pointer-events-none group-hover/step:pointer-events-auto">
+                    <span className="h-0.5 flex-1 rounded-full bg-brand-200" />
+                    <button type="button" onClick={() => onInsert(step.id, "after")} title="Insert step below"
+                        className="flex size-6 shrink-0 items-center justify-center rounded-full bg-brand-600 text-white shadow-md hover:brightness-110">
+                        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+                    </button>
+                    <span className="h-0.5 flex-1 rounded-full bg-brand-200" />
+                </div>
+            )}
+        </div>
+    );
+};
+
+/* ── Sidebar ─────────────────────────────────────────────────────── */
+
+const Sidebar = ({
+    stages, selectedId, locked, editing,
+    onSelect, onAddStage, onDeleteStage, onMoveStage,
+}: {
+    stages: Stage[];
+    selectedId: string | null;
+    locked: boolean;
+    editing: boolean;
+    onSelect: (id: string) => void;
+    onAddStage: () => void;
+    onDeleteStage: (id: string) => void;
+    onMoveStage: (id: string, dir: -1 | 1) => void;
+}) => {
+    return (
+    <aside className="flex h-dvh w-[300px] shrink-0 flex-col border-r border-secondary bg-primary">
+        {/* header */}
+        <div className="flex h-[73px] shrink-0 items-center border-b border-secondary px-5">
+            <h2 className="text-md font-semibold text-primary">Web Team</h2>
+        </div>
+
+        {/* stage list */}
+        <div className="flex-1 overflow-y-auto px-3 py-3.5">
+            <p className="mb-3 px-2 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-quaternary">Workflow</p>
+            <motion.div
+                className="flex flex-col gap-[3px]"
+                initial="hidden"
+                animate="show"
+                variants={{ show: { transition: { staggerChildren: 0.05 } } }}
+            >
+                {stages.map((s, i) => {
+                    const active = s.id === selectedId;
+                    return (
+                        <motion.div
+                            key={s.id}
+                            variants={{ hidden: { opacity: 0, x: -10 }, show: { opacity: 1, x: 0, transition: { duration: 0.3, ease: [0.22, 1, 0.36, 1] } } }}
+                            onClick={() => onSelect(s.id)}
+                            className={cx(
+                                "relative flex cursor-pointer items-center gap-[11px] rounded-[9px] px-3 py-[9px] pl-[13px] transition-colors duration-100 ease-linear",
+                                active
+                                    ? "bg-brand-50 dark:bg-brand-950/40"
+                                    : "hover:bg-secondary hover:text-primary",
+                            )}
+                        >
+                            {/* active bar */}
+                            <span className={cx(
+                                "absolute left-0 top-[7px] bottom-[7px] w-[3px] rounded-r-[3px] bg-brand-600 transition duration-100",
+                                active ? "opacity-100" : "opacity-0",
+                            )} />
+                            {/* number */}
+                            <span className={cx(
+                                "shrink-0 font-mono text-[11px] font-semibold",
+                                active ? "text-brand-600 dark:text-brand-400" : "text-quaternary",
+                            )}>
+                                {String(i + 1).padStart(2, "0")}
+                            </span>
+                            {/* name */}
+                            <span className={cx(
+                                "flex-1 min-w-0 truncate text-[14px] font-medium",
+                                active ? "text-primary" : "text-secondary",
+                            )}>
+                                {s.name}
+                            </span>
+                            {/* step count badge */}
+                            {locked && (
+                                <span className={cx(
+                                    "shrink-0 rounded-full px-[7px] py-[1px] text-[11px] font-semibold",
+                                    active
+                                        ? "bg-brand-100 text-brand-700 dark:bg-brand-900/50 dark:text-brand-300"
+                                        : "bg-secondary text-quaternary",
+                                )}>
+                                    {s.steps.length}
+                                </span>
+                            )}
+                            {/* editing controls */}
+                            {editing && (
+                                <div className="flex shrink-0 gap-px" onClick={(e) => e.stopPropagation()}>
+                                    <button type="button" title="Move up" onClick={() => onMoveStage(s.id, -1)}
+                                        className="flex size-[22px] items-center justify-center rounded-md text-quaternary transition duration-100 hover:bg-secondary hover:text-primary">
+                                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 15l-6-6-6 6" /></svg>
+                                    </button>
+                                    <button type="button" title="Move down" onClick={() => onMoveStage(s.id, 1)}
+                                        className="flex size-[22px] items-center justify-center rounded-md text-quaternary transition duration-100 hover:bg-secondary hover:text-primary">
+                                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
+                                    </button>
+                                    <button type="button" title="Delete stage" onClick={() => onDeleteStage(s.id)}
+                                        className="flex size-[22px] items-center justify-center rounded-md text-quaternary transition duration-100 hover:bg-red-50 hover:text-red-600">
+                                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" /></svg>
+                                    </button>
+                                </div>
+                            )}
+                        </motion.div>
+                    );
+                })}
+            </motion.div>
+        </div>
+
+        {/* footer */}
+        {editing && (
+            <div className="flex flex-col gap-2 border-t border-secondary p-3.5">
+                <button type="button" onClick={onAddStage}
+                    className="flex items-center justify-center gap-2 rounded-[9px] border border-primary bg-primary px-2.5 py-2.5 text-[13px] font-semibold text-secondary transition duration-100 ease-linear hover:bg-secondary">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+                    Add stage
+                </button>
+            </div>
+        )}
+    </aside>
+    );
+};
+
+/* ── Main screen ─────────────────────────────────────────────────── */
+
+export const TemplateOneScreen = ({
+    slug = TEMPLATE_BASE,
+    isTemplate = slug === TEMPLATE_BASE,
+}: {
+    slug?: string;
+    isTemplate?: boolean;
+}) => {
+    const navigate = useNavigate();
+    const { user } = useAuthUser(); // Supabase session — required for writes (authenticated-only RLS).
+    const [signingIn, setSigningIn] = useState(false);
+    const [state, setState] = useState<SOPState>(() => load(slug));
+    const [saved, setSaved] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [saveError, setSaveError] = useState("");
+    const mainRef = useRef<HTMLElement>(null);
+    const hydratedRef = useRef(false);
+
+    // "Copy this template" modal state.
+    const [copyOpen, setCopyOpen] = useState(false);
+    const [copyName, setCopyName] = useState("");
+    const [copySlug, setCopySlug] = useState("");
+    const [slugTouched, setSlugTouched] = useState(false);
+    const [copying, setCopying] = useState(false);
+    const [copyError, setCopyError] = useState("");
+
+    const openCopy = () => {
+        setCopyName("");
+        setCopySlug("");
+        setSlugTouched(false);
+        setCopyError("");
+        setCopyOpen(true);
+    };
+
+    // Slug follows the name until the user edits the slug field directly.
+    const onCopyNameChange = (v: string) => {
+        setCopyName(v);
+        if (!slugTouched) setCopySlug(slugify(v));
+    };
+    const effectiveSlug = slugify(copySlug || copyName);
+
+    // Supabase is the shared source of truth; override the local cache on mount.
+    useEffect(() => {
+        supabase
+            .from("template_docs")
+            .select("data")
+            .eq("slug", slug)
+            .maybeSingle()
+            .then(({ data, error }) => {
+                if (!error && Array.isArray((data?.data as SOPState | undefined)?.stages)) {
+                    const loaded = data!.data as SOPState;
+                    loaded.stages.forEach((stage) => {
+                        stage.steps.forEach((step: Step & { tool?: string }) => {
+                            if (!Array.isArray(step.tools)) step.tools = step.tool ? [step.tool] : [];
+                            delete step.tool;
+                        });
+                    });
+                    // Always open locked, regardless of the saved lock flag.
+                    setState({ ...loaded, locked: true });
+                }
+                hydratedRef.current = true;
+            });
+    }, []);
+
+    const { stages, selectedId, locked } = state;
+
+    // Auto-publish every edit (stages, steps and all step details) to Supabase, debounced,
+    // so nothing is trapped in one browser even if the user forgets to click Save.
+    useEffect(() => {
+        if (!hydratedRef.current) return;
+        const t = setTimeout(() => {
+            supabase
+                .from("template_docs")
+                .upsert({ slug, data: state, updated_at: new Date().toISOString() }, { onConflict: "slug" })
+                .then(({ error }) => { if (error) console.error("[template-1 autosave]", error); });
+        }, 1000);
+        return () => clearTimeout(t);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [state]);
+    const editing = !locked;
+
+    const sel = stages.find((s) => s.id === selectedId) ?? stages[0] ?? null;
+    const selIdx = sel ? stages.findIndex((s) => s.id === sel.id) : -1;
+
+    const update = (mutator: (draft: SOPState) => SOPState | void) => {
+        setState((prev) => {
+            const next = JSON.parse(JSON.stringify(prev)) as SOPState;
+            const result = mutator(next);
+            const final = result ?? next;
+            save(slug, final);
+            return final;
+        });
+    };
+
+    // auto-select first stage on load
+    useEffect(() => {
+        if (!selectedId && stages.length) {
+            update((d) => { d.selectedId = d.stages[0].id; });
+        }
+    }, []);
+
+    /* ── Stage handlers ── */
+    const handleSelect = (id: string) => {
+        update((d) => { d.selectedId = id; });
+        mainRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+    };
+    const handleToggleLock = () => update((d) => { d.locked = !d.locked; });
+
+    const handleSave = async () => {
+        setSaving(true);
+        setSaveError("");
+        save(slug, state); // best-effort local cache
+        const { error } = await supabase
+            .from("template_docs")
+            .upsert({ slug, data: state, updated_at: new Date().toISOString() }, { onConflict: "slug" });
+        setSaving(false);
+        if (error) {
+            console.error("[template-1 save] Supabase error:", error);
+            setSaveError(error.message);
+            setTimeout(() => setSaveError(""), 5000);
+            return;
+        }
+        setSaved(true);
+        setTimeout(() => setSaved(false), 1800);
+    };
+
+    // "Copy this template" → create a new document from the current content.
+    const handleCopy = async () => {
+        if (!copyName.trim() || copying) return;
+        if (!user) { setCopyError("Sign in with your team Google account to create documents."); return; }
+        const newSlug = effectiveSlug;
+        if (!newSlug) { setCopyError("Enter a name or slug with at least one letter or number."); return; }
+        if (isReservedSlug(newSlug)) { setCopyError("That slug is reserved — please pick another."); return; }
+        setCopying(true);
+        setCopyError("");
+        // Fresh copy: clone the current stages/steps with brand-new ids, locked.
+        const cloned: SOPState = {
+            stages: state.stages.map((st) => ({
+                id: uid(),
+                name: st.name,
+                steps: st.steps.map((s) => ({ ...s, id: uid() })),
+            })),
+            selectedId: null,
+            locked: true,
+        };
+        cloned.selectedId = cloned.stages[0]?.id ?? null;
+        const { error } = await supabase
+            .from("template_docs")
+            .insert({ slug: newSlug, name: copyName.trim(), data: cloned, updated_at: new Date().toISOString() });
+        setCopying(false);
+        if (error) {
+            setCopyError(error.code === "23505" ? "A document with that slug already exists — pick another." : error.message);
+            return;
+        }
+        setCopyOpen(false);
+        navigate(`/${newSlug}`);
+    };
+
+    // Team Google sign-in — writes require an authenticated Supabase session.
+    const handleGoogleSignIn = async () => {
+        setSigningIn(true);
+        const { error } = await supabase.auth.signInWithOAuth({
+            provider: "google",
+            options: { redirectTo: window.location.href, queryParams: { prompt: "select_account" } },
+        });
+        if (error) setSigningIn(false);
+    };
+
+    const handleAddStage = () => update((d) => {
+        const id = uid();
+        d.stages.push({ id, name: "New Stage", steps: [] });
+        d.selectedId = id;
+        d.locked = false;
+    });
+
+    const handleDeleteStage = (id: string) => update((d) => {
+        const i = d.stages.findIndex((s) => s.id === id);
+        if (i < 0) return;
+        d.stages.splice(i, 1);
+        if (d.selectedId === id) {
+            d.selectedId = d.stages[i]?.id ?? d.stages[i - 1]?.id ?? d.stages[0]?.id ?? null;
+        }
+    });
+
+    const handleMoveStage = (id: string, dir: -1 | 1) => update((d) => {
+        const i = d.stages.findIndex((s) => s.id === id);
+        const j = i + dir;
+        if (i < 0 || j < 0 || j >= d.stages.length) return;
+        [d.stages[i], d.stages[j]] = [d.stages[j], d.stages[i]];
+    });
+
+    /* ── Step handlers ── */
+    const handleUpdateStageName = (val: string) => update((d) => {
+        const s = d.stages.find((x) => x.id === d.selectedId);
+        if (s) s.name = val || "Untitled stage";
+    });
+
+    const handleUpdateStep = (stepId: string, field: keyof Step, val: string) => update((d) => {
+        const s = d.stages.find((x) => x.id === d.selectedId);
+        const st = s?.steps.find((x) => x.id === stepId);
+        if (st) (st as Record<string, unknown>)[field as string] = val;
+    });
+
+    const handleUpdateTools = (stepId: string, tools: string[]) => update((d) => {
+        const s = d.stages.find((x) => x.id === d.selectedId);
+        const st = s?.steps.find((x) => x.id === stepId);
+        if (st) st.tools = tools;
+    });
+
+    const handleUpdateLensPos = (stepId: string, pos: LensPos) => update((d) => {
+        const s = d.stages.find((x) => x.id === d.selectedId);
+        const st = s?.steps.find((x) => x.id === stepId);
+        if (st) st.lensPos = pos;
+    });
+
+    const handleAddStep = () => update((d) => {
+        const s = d.stages.find((x) => x.id === d.selectedId);
+        if (s) s.steps.push(mkStep());
+    });
+
+    const handleDeleteStep = (stepId: string) => update((d) => {
+        const s = d.stages.find((x) => x.id === d.selectedId);
+        if (s) s.steps = s.steps.filter((st) => st.id !== stepId);
+    });
+
+    const handleMoveStep = (stepId: string, dir: -1 | 1) => update((d) => {
+        const s = d.stages.find((x) => x.id === d.selectedId);
+        if (!s) return;
+        const i = s.steps.findIndex((st) => st.id === stepId);
+        const j = i + dir;
+        if (i < 0 || j < 0 || j >= s.steps.length) return;
+        [s.steps[i], s.steps[j]] = [s.steps[j], s.steps[i]];
+    });
+
+    const handleInsertStep = (stepId: string, pos: "before" | "after") => update((d) => {
+        const s = d.stages.find((x) => x.id === d.selectedId);
+        if (!s) return;
+        const i = s.steps.findIndex((st) => st.id === stepId);
+        if (i < 0) return;
+        const at = pos === "before" ? i : i + 1;
+        s.steps.splice(at, 0, mkStep());
+    });
+
+    return (
+        <div className="flex h-dvh overflow-hidden bg-secondary">
+            <IconRail activeDept="" bottom={<RailBottom editing={editing} onToggleEditing={handleToggleLock} />} />
+            <Sidebar
+                stages={stages}
+                selectedId={selectedId}
+                locked={locked}
+                editing={editing}
+                onSelect={handleSelect}
+                onAddStage={handleAddStage}
+                onDeleteStage={handleDeleteStage}
+                onMoveStage={handleMoveStage}
+            />
+
+            <main ref={mainRef} className="flex-1 overflow-y-auto">
+                <AnimatePresence mode="wait">
+                {sel ? (
+                    <motion.div
+                        key={sel.id}
+                        className="mx-auto max-w-[840px] px-10 py-9 pb-20"
+                        initial={{ opacity: 0, y: 12 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -8 }}
+                        transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                    >
+                        {/* stage header */}
+                        <div className="mb-1.5 flex items-start gap-4">
+                            <div className="flex-1 min-w-0">
+                                <div className="mb-2 flex items-center gap-2.5">
+                                    <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-brand-600 dark:text-brand-400">
+                                        Stage {String(selIdx + 1).padStart(2, "0")}
+                                    </span>
+                                    <span className="size-1 rounded-full bg-tertiary" />
+                                    <span className="text-[12px] font-medium text-quaternary">
+                                        {sel.steps.length} {sel.steps.length === 1 ? "step" : "steps"}
+                                    </span>
+                                </div>
+                                {editing ? (
+                                    <div className="-ml-2.5 flex items-center gap-2">
+                                        <span className="shrink-0 px-2.5 py-1 text-[34px] font-semibold leading-10 tracking-[-0.02em] text-primary">{selIdx + 1}.</span>
+                                        <input
+                                            type="text"
+                                            value={sel.name}
+                                            onChange={(e) => handleUpdateStageName(e.target.value)}
+                                            className="w-full rounded-xl border border-secondary bg-transparent px-2.5 py-1 text-[34px] font-semibold leading-10 tracking-[-0.02em] text-primary outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                                        />
+                                    </div>
+                                ) : (
+                                    <h1 className="text-[34px] font-semibold leading-10 tracking-[-0.02em] text-primary">
+                                        {selIdx + 1}. {sel.name}
+                                    </h1>
+                                )}
+                            </div>
+                            <span className={cx(
+                                "shrink-0 mt-1 inline-flex items-center rounded-full border px-3 py-1.5 text-[12px] font-semibold whitespace-nowrap",
+                                editing
+                                    ? "border-brand-200 bg-brand-50 text-brand-700"
+                                    : "border-secondary bg-secondary text-tertiary",
+                            )}>
+                                {editing ? "Editing on — fields are live" : "Locked — read only"}
+                            </span>
+                        </div>
+
+                        <hr className="my-6 border-secondary" />
+
+                        {/* steps */}
+                        {sel.steps.length > 0 ? (
+                            <motion.div
+                                className={cx("flex flex-col", editing ? "gap-9" : "gap-4")}
+                                initial="hidden"
+                                animate="show"
+                                variants={{ show: { transition: { staggerChildren: 0.06, delayChildren: 0.05 } } }}
+                            >
+                                {sel.steps.map((step, i) => (
+                                    <motion.div
+                                        key={step.id}
+                                        variants={{ hidden: { opacity: 0, y: 18 }, show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] } } }}
+                                    >
+                                        <StepCard
+                                            step={step}
+                                            index={i}
+                                            editing={editing}
+                                            onUpdate={handleUpdateStep}
+                                            onUpdateTools={handleUpdateTools}
+                                            onUpdateLensPos={handleUpdateLensPos}
+                                            onDelete={handleDeleteStep}
+                                            onMove={handleMoveStep}
+                                            onInsert={handleInsertStep}
+                                        />
+                                    </motion.div>
+                                ))}
+                            </motion.div>
+                        ) : (
+                            <div className="rounded-2xl border-[1.5px] border-dashed border-primary bg-primary p-14 text-center">
+                                <p className="text-[17px] font-semibold text-primary">No steps in this stage yet</p>
+                                <p className="mt-1.5 text-[14px] text-tertiary">Unlock editing and add the first step of this workflow.</p>
+                            </div>
+                        )}
+
+                        {editing && (
+                            <button type="button" onClick={handleAddStep}
+                                className="mt-4 flex w-full items-center justify-center gap-2.5 rounded-xl border-[1.5px] border-dashed border-primary bg-primary py-3.5 text-[14px] font-semibold text-secondary transition duration-100 ease-linear hover:border-brand hover:bg-brand-50 hover:text-brand-700">
+                                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+                                Add step
+                            </button>
+                        )}
+                    </motion.div>
+                ) : (
+                    <motion.div
+                        key="empty"
+                        className="flex h-full flex-col items-center justify-center gap-3.5 p-10 text-center"
+                        initial={{ opacity: 0, y: 12 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -8 }}
+                        transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                    >
+                        <div className="flex size-14 items-center justify-center rounded-2xl bg-brand-50 dark:bg-brand-950/30">
+                            <svg viewBox="0 0 32 32" width="30" height="30">
+                                <path d="M16 2 L30 13 L16 30 L2 13 Z" fill="#7F56D9" />
+                                <path d="M16 2 L30 13 L16 13 Z" fill="#fff" opacity="0.3" />
+                            </svg>
+                        </div>
+                        <div>
+                            <p className="text-[20px] font-semibold text-primary">No stages yet</p>
+                            <p className="mt-1 max-w-xs text-[14px] text-tertiary">
+                                Add your first workflow stage from the sidebar to start building your SOP.
+                            </p>
+                        </div>
+                    </motion.div>
+                )}
+                </AnimatePresence>
+            </main>
+
+            {/* Fixed bottom-right controls */}
+            <div className="fixed bottom-5 right-5 z-40 flex flex-col items-end gap-2.5">
+                {/* Copy this template — master template only */}
+                {isTemplate && (
+                    <button
+                        type="button"
+                        onClick={openCopy}
+                        className="flex items-center gap-2 rounded-full bg-brand-600 px-4 py-2.5 text-[13px] font-semibold text-white shadow-lg ring-1 ring-brand-600 transition duration-100 ease-linear hover:bg-brand-700"
+                    >
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+                        Copy this template
+                    </button>
+                )}
+
+                {/* Save — editing only */}
+                <AnimatePresence>
+                    {editing && (
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.8, y: 6 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.8, y: 6 }}
+                            transition={{ type: "spring", stiffness: 320, damping: 24 }}
+                            className="relative"
+                        >
+                            <button
+                                type="button"
+                                onClick={handleSave}
+                                disabled={saving}
+                                title="Save"
+                                className={cx(
+                                    "flex size-11 items-center justify-center rounded-full shadow-lg ring-1 transition duration-100 ease-linear disabled:opacity-80",
+                                    saveError
+                                        ? "bg-error-solid text-white ring-error-solid"
+                                        : saved
+                                          ? "bg-success-solid text-white ring-success-solid"
+                                          : "bg-brand-600 text-white ring-brand-600 hover:bg-brand-700",
+                                )}
+                            >
+                                {saving ? (
+                                    <span className="size-[18px] animate-spin rounded-full border-2 border-white border-t-transparent" />
+                                ) : saveError ? (
+                                    <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 8v5M12 16h.01" /><circle cx="12" cy="12" r="9" /></svg>
+                                ) : saved ? (
+                                    <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+                                ) : (
+                                    <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" /><path d="M17 21v-8H7v8M7 3v5h8" /></svg>
+                                )}
+                            </button>
+                            <AnimatePresence>
+                                {(saved || saveError) && (
+                                    <motion.span
+                                        initial={{ opacity: 0, x: 6 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        exit={{ opacity: 0, x: 6 }}
+                                        className={cx(
+                                            "absolute right-full top-1/2 mr-2.5 -translate-y-1/2 max-w-[220px] truncate rounded-lg px-2.5 py-1 text-[12px] font-semibold text-white shadow-md",
+                                            saveError ? "bg-error-solid" : "bg-success-solid",
+                                        )}
+                                    >
+                                        {saveError ? `Save failed: ${saveError}` : "Saved!"}
+                                    </motion.span>
+                                )}
+                            </AnimatePresence>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+            </div>
+
+            {/* Copy-template modal */}
+            <AnimatePresence>
+                {copyOpen && (
+                    <motion.div
+                        className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-4"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.16 }}
+                        onMouseDown={(e) => { if (e.target === e.currentTarget && !copying) setCopyOpen(false); }}
+                    >
+                        <motion.div
+                            className="w-full max-w-md rounded-2xl bg-primary p-6 shadow-2xl ring-1 ring-secondary"
+                            initial={{ opacity: 0, scale: 0.94, y: 16 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.96, y: 10 }}
+                            transition={{ type: "spring", stiffness: 300, damping: 26 }}
+                        >
+                            <h3 className="text-md font-semibold text-primary">Copy this template</h3>
+
+                            {!user ? (
+                                <>
+                                    <p className="mt-1 text-sm text-tertiary">
+                                        Creating a document saves to the database, which requires signing in with your team Google account.
+                                    </p>
+                                    <button
+                                        type="button"
+                                        onClick={handleGoogleSignIn}
+                                        disabled={signingIn}
+                                        className="mt-5 flex w-full items-center justify-center gap-2.5 rounded-lg border border-secondary bg-primary px-3.5 py-2.5 text-sm font-semibold text-primary transition duration-100 ease-linear hover:bg-secondary_hover disabled:opacity-50"
+                                    >
+                                        {signingIn ? (
+                                            <span className="size-4 animate-spin rounded-full border-2 border-brand border-t-transparent" />
+                                        ) : (
+                                            <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" /><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z" /><path fill="#FBBC05" d="M5.84 14.1a6.6 6.6 0 0 1 0-4.2V7.06H2.18a11 11 0 0 0 0 9.88l3.66-2.84z" /><path fill="#EA4335" d="M12 4.75c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 1.46 14.97.5 12 .5A11 11 0 0 0 2.18 7.06l3.66 2.84C6.71 6.68 9.14 4.75 12 4.75z" /></svg>
+                                        )}
+                                        Sign in with Google
+                                    </button>
+                                    <div className="mt-4 flex justify-end">
+                                        <button
+                                            type="button"
+                                            onClick={() => setCopyOpen(false)}
+                                            className="rounded-lg border border-secondary bg-primary px-3.5 py-2 text-sm font-semibold text-secondary transition duration-100 ease-linear hover:bg-secondary_hover"
+                                        >
+                                            Cancel
+                                        </button>
+                                    </div>
+                                </>
+                            ) : (
+                            <>
+                            <p className="mt-1 text-sm text-tertiary">
+                                Name your new document. It starts as a copy of this template — same sections and steps, ready to edit.
+                            </p>
+
+                            <label htmlFor="template-copy-name" className="mt-4 block text-sm font-medium text-secondary">
+                                Document name
+                            </label>
+                            <input
+                                id="template-copy-name"
+                                autoFocus
+                                type="text"
+                                value={copyName}
+                                onChange={(e) => onCopyNameChange(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === "Enter") handleCopy(); }}
+                                placeholder="e.g. Acme Onboarding"
+                                className="mt-1.5 w-full rounded-lg border border-secondary bg-primary px-3 py-2 text-sm text-primary placeholder:text-placeholder outline-none transition duration-100 ease-linear focus:border-brand focus:ring-1 focus:ring-brand"
+                            />
+
+                            <label htmlFor="template-copy-slug" className="mt-4 block text-sm font-medium text-secondary">
+                                Slug
+                            </label>
+                            <div className="mt-1.5 flex items-center overflow-hidden rounded-lg border border-secondary bg-primary transition duration-100 ease-linear focus-within:border-brand focus-within:ring-1 focus-within:ring-brand">
+                                <span className="shrink-0 border-r border-secondary bg-secondary px-3 py-2 text-sm text-quaternary">/</span>
+                                <input
+                                    id="template-copy-slug"
+                                    type="text"
+                                    value={copySlug}
+                                    onChange={(e) => { setSlugTouched(true); setCopySlug(e.target.value); }}
+                                    onKeyDown={(e) => { if (e.key === "Enter") handleCopy(); }}
+                                    placeholder="acme-onboarding"
+                                    className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-primary placeholder:text-placeholder outline-none"
+                                />
+                            </div>
+                            <p className="mt-1.5 text-xs text-quaternary">
+                                URL: /{effectiveSlug || "…"}
+                            </p>
+
+                            {copyError && <p className="mt-2 text-sm text-error-primary">{copyError}</p>}
+
+                            <div className="mt-5 flex justify-end gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setCopyOpen(false)}
+                                    disabled={copying}
+                                    className="rounded-lg border border-secondary bg-primary px-3.5 py-2 text-sm font-semibold text-secondary transition duration-100 ease-linear hover:bg-secondary_hover disabled:opacity-50"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleCopy}
+                                    disabled={copying || !copyName.trim()}
+                                    className="flex items-center gap-2 rounded-lg bg-brand-600 px-3.5 py-2 text-sm font-semibold text-white transition duration-100 ease-linear hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    {copying && <span className="size-4 animate-spin rounded-full border-2 border-white border-t-transparent" />}
+                                    Create document
+                                </button>
+                            </div>
+                            </>
+                            )}
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+        </div>
+    );
+};

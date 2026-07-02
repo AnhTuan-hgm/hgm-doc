@@ -1,6 +1,6 @@
 import { type FC, type ReactNode, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Bell01, Check, Monitor01, Moon01, Settings01, Sun, User01, Users01 } from "@untitledui/icons";
+import { Bell01, Check, LogOut01, Monitor01, Moon01, Settings01, Sun, User01, Users01 } from "@untitledui/icons";
 
 type IconComponent = FC<{ className?: string }>;
 import { useNavigate } from "react-router";
@@ -8,6 +8,7 @@ import { Avatar } from "@/components/base/avatar/avatar";
 import { Button } from "@/components/base/buttons/button";
 import { Toggle } from "@/components/base/toggle/toggle";
 import { useAuthUser } from "@/hooks/use-auth-user";
+import { supabase } from "@/lib/supabase";
 import { useTheme } from "@/providers/theme-provider";
 import { cx } from "@/utils/cx";
 
@@ -118,6 +119,13 @@ export const SettingsPanel = ({ onCancel, sticky = false }: { onCancel: () => vo
         .slice(0, 2)
         .join("")
         .toUpperCase();
+
+    const handleLogout = async () => {
+        await supabase.auth.signOut();
+        // Clear the dashboard view-gate bypass too, so the login screen reappears.
+        try { sessionStorage.removeItem("hgm_dashboard_unlocked"); } catch { /* ignore */ }
+        window.location.assign("/dashboard");
+    };
 
     const handleSave = () => {
         localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(prefs));
@@ -232,6 +240,11 @@ export const SettingsPanel = ({ onCancel, sticky = false }: { onCancel: () => vo
                             <p className="text-sm text-tertiary">Manage your workspace, profile, and notifications.</p>
                         </div>
                         <div className="flex gap-3">
+                            {user && (
+                                <Button color="secondary-destructive" size="md" iconLeading={LogOut01} onClick={handleLogout}>
+                                    Log out
+                                </Button>
+                            )}
                             <Button color="secondary" size="md" onClick={onCancel}>
                                 Cancel
                             </Button>

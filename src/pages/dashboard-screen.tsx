@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { IconRail } from "@/components/application/icon-rail";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowUpRight, Award01, BookOpen01, Briefcase01, Code02, Diamond01, Image01, LayoutAlt01, Lock01, LockUnlocked01, Mail01, MarkerPin01, MessageChatCircle, Plus, SearchSm, Share07, Star01, Trash01, Trophy01, Users01, XClose } from "@untitledui/icons";
+import { ArrowUpRight, Award01, BookOpen01, Briefcase01, Check, ChevronDown, Code02, Diamond01, Edit01, Grid01, Image01, LayoutAlt01, List, Lock01, LockUnlocked01, Mail01, MarkerPin01, MessageChatCircle, Plus, SearchSm, Share07, Star01, Trash01, Trophy01, Users01, XClose } from "@untitledui/icons";
 import { supabase, type ChatWidgetPageData, type ClientPageData, type ClientRecord, type LeadCapturePageData, type OverviewCard, type OwnerGuideMeta, type OverviewTab } from "@/lib/supabase";
 import { Avatar } from "@/components/base/avatar/avatar";
 import { SettingsDialog } from "@/pages/settings-screen";
@@ -13,6 +13,9 @@ import { cx } from "@/utils/cx";
 
 const PASSWORDS = ["ANHTUAN", "HGTEAM"];
 const ALLOWED_DOMAIN = "hiddengem.media";
+// Only this account can UNLOCK edit mode (add/edit/delete cards & clients). Everyone
+// else can view. Requires a real Supabase session — the password bypass has no user.
+const OWNER_EMAIL = "anhtuan@hiddengem.media";
 
 /* Google "G" mark (official multicolor). */
 const GoogleIcon = ({ className }: { className?: string }) => (
@@ -163,9 +166,9 @@ interface Department {
 
 /** Fixed client tiers for the Client List page (grouped in the sidebar). */
 const TIERS: { id: string; label: string; icon: typeof Share07 }[] = [
-    { id: "tier-0", label: "Tier 0", icon: Award01 },
+    { id: "tier-0", label: "Tier 0", icon: Trophy01 },
     { id: "tier-1", label: "Tier 1", icon: Star01 },
-    { id: "tier-2", label: "Tier 2", icon: Trophy01 },
+    { id: "tier-2", label: "Tier 2", icon: Award01 },
     { id: "mastermind", label: "Mastermind", icon: Diamond01 },
 ];
 const tierLabel = (id: string) => TIERS.find((t) => t.id === id)?.label ?? "Tier 0";
@@ -1272,14 +1275,20 @@ const OverviewCard = ({
     card,
     index,
     editing,
+    isOwner,
     onStar,
     onDelete,
+    onEdit,
+    onToggleLock,
 }: {
     card: OverviewCard;
     index: number;
     editing: boolean;
+    isOwner: boolean;
     onStar: (id: string, starred: boolean) => void;
     onDelete: (id: string) => void;
+    onEdit: (card: OverviewCard) => void;
+    onToggleLock: (id: string, locked: boolean) => void;
 }) => {
     const navigate = useNavigate();
     const open = () => {
@@ -1324,16 +1333,45 @@ const OverviewCard = ({
                     </button>
                 )}
 
-                {/* Delete (edit mode) */}
+                {/* Edit / protect / delete (edit mode) */}
                 {editing && (
-                    <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); onDelete(card.id); }}
-                        title="Delete card"
-                        className="absolute left-3 top-3 flex size-8 items-center justify-center rounded-full bg-black/40 text-white opacity-0 backdrop-blur transition duration-100 ease-linear hover:bg-error-solid group-hover:opacity-100"
-                    >
-                        <Trash01 className="size-4" />
-                    </button>
+                    <div className="absolute left-3 top-3 flex items-center gap-2 opacity-0 transition duration-100 ease-linear group-hover:opacity-100">
+                        <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); onEdit(card); }}
+                            title="Edit card"
+                            className="flex size-8 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur transition duration-100 ease-linear hover:bg-brand-solid"
+                        >
+                            <Edit01 className="size-4" />
+                        </button>
+                        {isOwner && (
+                            <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); onToggleLock(card.id, !card.locked); }}
+                                title={card.locked ? "Protected — only you can delete. Click to unprotect." : "Protect this card (only you can delete it)"}
+                                className="flex size-8 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur transition duration-100 ease-linear hover:bg-brand-solid"
+                            >
+                                {card.locked ? <Lock01 className="size-4" /> : <LockUnlocked01 className="size-4" />}
+                            </button>
+                        )}
+                        {(isOwner || !card.locked) && (
+                            <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); onDelete(card.id); }}
+                                title="Delete card"
+                                className="flex size-8 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur transition duration-100 ease-linear hover:bg-error-solid"
+                            >
+                                <Trash01 className="size-4" />
+                            </button>
+                        )}
+                    </div>
+                )}
+
+                {/* Protected badge — visible to everyone so it's clear it can't be deleted by others */}
+                {card.locked && (
+                    <span className="absolute bottom-3 left-3 flex items-center gap-1 rounded-full bg-black/45 px-2.5 py-0.5 text-[11px] font-semibold text-white backdrop-blur">
+                        <Lock01 className="size-3" aria-hidden="true" /> Protected
+                    </span>
                 )}
             </div>
 
@@ -1352,11 +1390,16 @@ const OverviewCard = ({
     );
 };
 
-const AddCardModal = ({ onClose, onCreate }: { onClose: () => void; onCreate: (c: { title: string; description: string; link: string; cover: string }) => Promise<void> }) => {
-    const [title, setTitle] = useState("");
-    const [description, setDescription] = useState("");
-    const [link, setLink] = useState("");
-    const [cover, setCover] = useState("");
+const AddCardModal = ({ onClose, onSubmit, initial }: {
+    onClose: () => void;
+    onSubmit: (c: { title: string; description: string; link: string; cover: string }) => Promise<void>;
+    initial?: { title: string; description: string; link: string; cover: string };
+}) => {
+    const isEdit = !!initial;
+    const [title, setTitle] = useState(initial?.title ?? "");
+    const [description, setDescription] = useState(initial?.description ?? "");
+    const [link, setLink] = useState(initial?.link ?? "");
+    const [cover, setCover] = useState(initial?.cover ?? "");
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
 
@@ -1376,7 +1419,7 @@ const AddCardModal = ({ onClose, onCreate }: { onClose: () => void; onCreate: (c
         setSaving(true);
         setError("");
         try {
-            await onCreate({ title: title.trim(), description: description.trim(), link: link.trim(), cover });
+            await onSubmit({ title: title.trim(), description: description.trim(), link: link.trim(), cover });
         } catch (e) {
             setError(e instanceof Error ? e.message : "Could not save — check your connection.");
         }
@@ -1395,8 +1438,8 @@ const AddCardModal = ({ onClose, onCreate }: { onClose: () => void; onCreate: (c
             >
                 <div className="flex items-start justify-between">
                     <div>
-                        <h3 className="text-md font-semibold text-primary">Add Card</h3>
-                        <p className="mt-1 text-sm text-tertiary">Link a page to this overview.</p>
+                        <h3 className="text-md font-semibold text-primary">{isEdit ? "Edit Card" : "Add Card"}</h3>
+                        <p className="mt-1 text-sm text-tertiary">{isEdit ? "Update this overview card." : "Link a page to this overview."}</p>
                     </div>
                     <button type="button" onClick={onClose} className="flex size-8 items-center justify-center rounded-lg text-tertiary hover:bg-secondary">
                         <XClose className="size-4" />
@@ -1445,7 +1488,7 @@ const AddCardModal = ({ onClose, onCreate }: { onClose: () => void; onCreate: (c
                         Cancel
                     </button>
                     <button type="button" onClick={submit} disabled={!valid || saving} className="flex-1 rounded-lg bg-brand-solid px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-40">
-                        {saving ? "Adding…" : "Add Card"}
+                        {saving ? (isEdit ? "Saving…" : "Adding…") : (isEdit ? "Save changes" : "Add Card")}
                     </button>
                 </div>
             </motion.div>
@@ -1453,10 +1496,11 @@ const AddCardModal = ({ onClose, onCreate }: { onClose: () => void; onCreate: (c
     );
 };
 
-const OverviewContent = ({ department, tab, editing }: { department: Department; tab: string; editing: boolean }) => {
+const OverviewContent = ({ department, tab, editing, isOwner }: { department: Department; tab: string; editing: boolean; isOwner: boolean }) => {
     const [cards, setCards] = useState<OverviewCard[]>([]);
     const [loading, setLoading] = useState(true);
     const [showAdd, setShowAdd] = useState(false);
+    const [editCard, setEditCard] = useState<OverviewCard | null>(null);
 
     useEffect(() => {
         setLoading(true);
@@ -1482,6 +1526,11 @@ const OverviewContent = ({ department, tab, editing }: { department: Department;
         await supabase.from("overview_cards").delete().eq("id", id);
     };
 
+    const handleToggleLock = async (id: string, locked: boolean) => {
+        setCards((prev) => prev.map((c) => (c.id === id ? { ...c, locked } : c)));
+        await supabase.from("overview_cards").update({ locked }).eq("id", id);
+    };
+
     const handleCreate = async (c: { title: string; description: string; link: string; cover: string }) => {
         const id = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
         const row: OverviewCard = {
@@ -1501,6 +1550,18 @@ const OverviewContent = ({ department, tab, editing }: { department: Department;
         }
         setCards((prev) => [...prev, row]);
         setShowAdd(false);
+    };
+
+    const handleUpdate = async (c: { title: string; description: string; link: string; cover: string }) => {
+        if (!editCard) return;
+        const patch = { title: c.title, description: c.description, link: c.link, cover_url: c.cover };
+        const { error } = await supabase.from("overview_cards").update(patch).eq("id", editCard.id);
+        if (error) {
+            console.error("[overview card update] Supabase error:", error);
+            throw new Error(error.message);
+        }
+        setCards((prev) => prev.map((x) => (x.id === editCard.id ? { ...x, ...patch } : x)));
+        setEditCard(null);
     };
 
     const sorted = [...cards].sort((a, b) => (a.starred === b.starred ? 0 : a.starred ? -1 : 1));
@@ -1527,7 +1588,7 @@ const OverviewContent = ({ department, tab, editing }: { department: Department;
                         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
                             <AnimatePresence mode="popLayout">
                                 {sorted.map((card, i) => (
-                                    <OverviewCard key={card.id} card={card} index={i} editing={editing} onStar={handleStar} onDelete={handleDelete} />
+                                    <OverviewCard key={card.id} card={card} index={i} editing={editing} isOwner={isOwner} onStar={handleStar} onDelete={handleDelete} onEdit={setEditCard} onToggleLock={handleToggleLock} />
                                 ))}
                             </AnimatePresence>
 
@@ -1558,7 +1619,15 @@ const OverviewContent = ({ department, tab, editing }: { department: Department;
             </div>
 
             <AnimatePresence>
-                {showAdd && <AddCardModal onClose={() => setShowAdd(false)} onCreate={handleCreate} />}
+                {showAdd && <AddCardModal onClose={() => setShowAdd(false)} onSubmit={handleCreate} />}
+                {editCard && (
+                    <AddCardModal
+                        key={editCard.id}
+                        onClose={() => setEditCard(null)}
+                        onSubmit={handleUpdate}
+                        initial={{ title: editCard.title, description: editCard.description, link: editCard.link, cover: editCard.cover_url ?? "" }}
+                    />
+                )}
             </AnimatePresence>
         </div>
     );
@@ -1715,6 +1784,7 @@ const ClientCard = ({
     client,
     index,
     editing,
+    layout = "grid",
     onStar,
     onDelete,
     onEdit,
@@ -1722,6 +1792,7 @@ const ClientCard = ({
     client: ClientRecord;
     index: number;
     editing: boolean;
+    layout?: "grid" | "list";
     onStar: (id: string, starred: boolean) => void;
     onDelete: (id: string) => void;
     onEdit: (client: ClientRecord) => void;
@@ -1739,6 +1810,87 @@ const ClientCard = ({
     };
 
     const clickable = editing || !!client.link?.trim();
+
+    // Compact horizontal row for the list view.
+    if (layout === "list") {
+        return (
+            <motion.div
+                layout
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.25, delay: Math.min(index * 0.03, 0.3), ease: [0.22, 1, 0.36, 1] }}
+                onClick={open}
+                className={cx(
+                    "group flex items-center gap-4 rounded-xl bg-primary px-4 py-3 ring-1 ring-secondary transition-shadow duration-200",
+                    clickable && "cursor-pointer hover:shadow-md",
+                )}
+            >
+                <div className="relative size-12 shrink-0 overflow-hidden rounded-lg">
+                    {client.cover_url ? (
+                        <img src={client.cover_url} alt={client.name} className="size-full object-cover" draggable={false} />
+                    ) : (
+                        <div className="flex size-full items-center justify-center" style={{ background: gradientFor(client.name || "Client") }}>
+                            <span className="text-lg font-bold text-white/90">{(client.name || "C").charAt(0).toUpperCase()}</span>
+                        </div>
+                    )}
+                </div>
+
+                <div className="min-w-0 flex-1">
+                    <h3 className="truncate text-sm font-semibold text-primary">{client.name || "Untitled client"}</h3>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-tertiary">
+                        {client.location && (
+                            <span className="flex items-center gap-1">
+                                <MarkerPin01 className="size-3.5 shrink-0" aria-hidden="true" />
+                                <span className="truncate">{client.location}</span>
+                            </span>
+                        )}
+                        {client.am && <span className="truncate text-quaternary">Assigned to {client.am}</span>}
+                    </div>
+                </div>
+
+                <span className="hidden shrink-0 rounded-full bg-secondary px-2.5 py-0.5 text-[11px] font-semibold text-secondary sm:inline">
+                    {tierLabel(client.tier)}
+                </span>
+
+                {(client.starred || editing) && (
+                    <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onStar(client.id, !client.starred); }}
+                        title={client.starred ? "Unstar" : "Star"}
+                        className={cx(
+                            "flex size-8 shrink-0 items-center justify-center rounded-lg transition duration-100 ease-linear",
+                            client.starred ? "text-warning-primary" : "text-fg-quaternary opacity-0 hover:text-fg-secondary group-hover:opacity-100",
+                        )}
+                    >
+                        <Star01 className={cx("size-4", client.starred && "fill-current")} />
+                    </button>
+                )}
+
+                {editing && (
+                    <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onEdit(client); }}
+                        title="Edit client"
+                        className="flex size-8 shrink-0 items-center justify-center rounded-lg text-fg-quaternary opacity-0 transition duration-100 ease-linear hover:bg-secondary hover:text-fg-secondary group-hover:opacity-100"
+                    >
+                        <Edit01 className="size-4" />
+                    </button>
+                )}
+
+                {editing && (
+                    <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onDelete(client.id); }}
+                        title="Delete client"
+                        className="flex size-8 shrink-0 items-center justify-center rounded-lg text-fg-quaternary opacity-0 transition duration-100 ease-linear hover:bg-error-primary hover:text-fg-error-primary group-hover:opacity-100"
+                    >
+                        <Trash01 className="size-4" />
+                    </button>
+                )}
+            </motion.div>
+        );
+    }
 
     return (
         <motion.div
@@ -1784,16 +1936,26 @@ const ClientCard = ({
                     </button>
                 )}
 
-                {/* Delete (edit mode) */}
+                {/* Edit + delete (edit mode) */}
                 {editing && (
-                    <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); onDelete(client.id); }}
-                        title="Delete client"
-                        className="absolute bottom-3 right-3 flex size-8 items-center justify-center rounded-full bg-black/40 text-white opacity-0 backdrop-blur transition duration-100 ease-linear hover:bg-error-solid group-hover:opacity-100"
-                    >
-                        <Trash01 className="size-4" />
-                    </button>
+                    <div className="absolute bottom-3 right-3 flex items-center gap-2 opacity-0 transition duration-100 ease-linear group-hover:opacity-100">
+                        <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); onEdit(client); }}
+                            title="Edit client"
+                            className="flex size-8 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur transition duration-100 ease-linear hover:bg-brand-solid"
+                        >
+                            <Edit01 className="size-4" />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); onDelete(client.id); }}
+                            title="Delete client"
+                            className="flex size-8 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur transition duration-100 ease-linear hover:bg-error-solid"
+                        >
+                            <Trash01 className="size-4" />
+                        </button>
+                    </div>
                 )}
             </div>
 
@@ -1823,6 +1985,20 @@ const ClientListContent = ({ editing }: { editing: boolean }) => {
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState<ClientFilter>({ type: "tier", value: "tier-0" });
     const [modal, setModal] = useState<{ mode: "new" } | { mode: "edit"; client: ClientRecord } | null>(null);
+    const [view, setView] = useState<"grid" | "list">("grid");
+    const [sortBy, setSortBy] = useState<"recent" | "name" | "tier">("recent");
+    const [sortOpen, setSortOpen] = useState(false);
+    const sortRef = useRef<HTMLDivElement>(null);
+
+    // Close the sort menu on outside click.
+    useEffect(() => {
+        if (!sortOpen) return;
+        const onDown = (e: MouseEvent) => {
+            if (sortRef.current && !sortRef.current.contains(e.target as Node)) setSortOpen(false);
+        };
+        document.addEventListener("mousedown", onDown);
+        return () => document.removeEventListener("mousedown", onDown);
+    }, [sortOpen]);
 
     useEffect(() => {
         setLoading(true);
@@ -1842,7 +2018,24 @@ const ClientListContent = ({ editing }: { editing: boolean }) => {
     const filtered = clients.filter((c) =>
         filter.type === "tier" ? c.tier === filter.value : c.am.trim() === filter.value,
     );
-    const sorted = [...filtered].sort((a, b) => (!!a.starred === !!b.starred ? 0 : a.starred ? -1 : 1));
+    // Starred clients always pin to the top; the dropdown decides the order within.
+    const tierRank = (id: string) => {
+        const i = TIERS.findIndex((t) => t.id === id);
+        return i === -1 ? TIERS.length : i;
+    };
+    const sorted = [...filtered].sort((a, b) => {
+        if (!!a.starred !== !!b.starred) return a.starred ? -1 : 1;
+        if (sortBy === "name") return a.name.localeCompare(b.name);
+        if (sortBy === "tier") return tierRank(a.tier) - tierRank(b.tier);
+        return (b.created_at ?? "").localeCompare(a.created_at ?? ""); // recent first
+    });
+
+    const SORT_OPTIONS: { id: typeof sortBy; label: string }[] = [
+        { id: "recent", label: "Recently added" },
+        { id: "name", label: "Name (A–Z)" },
+        { id: "tier", label: "Tier" },
+    ];
+    const sortLabel = SORT_OPTIONS.find((o) => o.id === sortBy)?.label ?? "Sort";
 
     const headerLabel = filter.type === "tier" ? tierLabel(filter.value) : filter.value;
 
@@ -1959,16 +2152,76 @@ const ClientListContent = ({ editing }: { editing: boolean }) => {
                             {editing && " · editing"}
                         </p>
                     </div>
-                    {editing && (
-                        <button
-                            type="button"
-                            onClick={() => setModal({ mode: "new" })}
-                            className="flex items-center gap-1.5 rounded-lg bg-brand-solid px-3.5 py-2 text-sm font-semibold text-white transition duration-100 ease-linear hover:opacity-90"
-                        >
-                            <Plus className="size-4" aria-hidden="true" />
-                            New Client
-                        </button>
-                    )}
+                    <div className="flex items-center gap-2">
+                        {/* Sort dropdown */}
+                        <div ref={sortRef} className="relative">
+                            <button
+                                type="button"
+                                onClick={() => setSortOpen((o) => !o)}
+                                className="flex items-center gap-2 rounded-lg border border-secondary bg-primary px-3 py-2 text-sm font-medium text-secondary transition duration-100 ease-linear hover:bg-secondary_hover"
+                            >
+                                {sortLabel}
+                                <ChevronDown className="size-4 text-fg-quaternary" aria-hidden="true" />
+                            </button>
+                            <AnimatePresence>
+                                {sortOpen && (
+                                    <motion.div
+                                        initial={{ opacity: 0, y: -4 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0, y: -4 }}
+                                        transition={{ duration: 0.12 }}
+                                        className="absolute right-0 z-20 mt-1.5 w-44 rounded-xl border border-secondary_alt bg-primary p-1.5 shadow-lg"
+                                    >
+                                        {SORT_OPTIONS.map((o) => (
+                                            <button
+                                                key={o.id}
+                                                type="button"
+                                                onClick={() => { setSortBy(o.id); setSortOpen(false); }}
+                                                className="flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium text-secondary transition duration-100 ease-linear hover:bg-primary_hover hover:text-primary"
+                                            >
+                                                {o.label}
+                                                {sortBy === o.id && <Check className="size-4 text-fg-brand-primary" aria-hidden="true" />}
+                                            </button>
+                                        ))}
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+                        </div>
+
+                        {/* Grid / list view toggle */}
+                        <div className="flex items-center rounded-lg border border-secondary bg-primary p-0.5">
+                            {([
+                                { id: "grid", icon: Grid01, title: "Grid view" },
+                                { id: "list", icon: List, title: "List view" },
+                            ] as const).map((v) => (
+                                <button
+                                    key={v.id}
+                                    type="button"
+                                    onClick={() => setView(v.id)}
+                                    title={v.title}
+                                    className={cx(
+                                        "flex size-8 items-center justify-center rounded-md transition duration-100 ease-linear",
+                                        view === v.id
+                                            ? "bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300"
+                                            : "text-fg-quaternary hover:text-fg-secondary",
+                                    )}
+                                >
+                                    <v.icon className="size-4" aria-hidden="true" />
+                                </button>
+                            ))}
+                        </div>
+
+                        {editing && (
+                            <button
+                                type="button"
+                                onClick={() => setModal({ mode: "new" })}
+                                className="flex items-center gap-1.5 rounded-lg bg-brand-solid px-3.5 py-2 text-sm font-semibold text-white transition duration-100 ease-linear hover:opacity-90"
+                            >
+                                <Plus className="size-4" aria-hidden="true" />
+                                New Client
+                            </button>
+                        )}
+                    </div>
                 </header>
 
                 <div className="flex-1 overflow-y-auto">
@@ -1978,7 +2231,7 @@ const ClientListContent = ({ editing }: { editing: boolean }) => {
                                 <div className="size-6 animate-spin rounded-full border-2 border-brand border-t-transparent opacity-60" />
                             </div>
                         ) : (
-                            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                            <div className={cx(view === "grid" ? "grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3" : "flex flex-col gap-2.5")}>
                                 <AnimatePresence mode="popLayout">
                                     {sorted.map((client, i) => (
                                         <ClientCard
@@ -1986,6 +2239,7 @@ const ClientListContent = ({ editing }: { editing: boolean }) => {
                                             client={client}
                                             index={i}
                                             editing={editing}
+                                            layout={view}
                                             onStar={handleStar}
                                             onDelete={handleDelete}
                                             onEdit={(c) => setModal({ mode: "edit", client: c })}
@@ -1993,7 +2247,7 @@ const ClientListContent = ({ editing }: { editing: boolean }) => {
                                     ))}
                                 </AnimatePresence>
 
-                                {editing && (
+                                {editing && (view === "grid" ? (
                                     <motion.button
                                         layout
                                         type="button"
@@ -2006,7 +2260,19 @@ const ClientListContent = ({ editing }: { editing: boolean }) => {
                                         <Plus className="size-7" />
                                         <span className="text-sm font-semibold">New Client</span>
                                     </motion.button>
-                                )}
+                                ) : (
+                                    <motion.button
+                                        layout
+                                        type="button"
+                                        onClick={() => setModal({ mode: "new" })}
+                                        initial={{ opacity: 0 }}
+                                        animate={{ opacity: 1 }}
+                                        className="flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-primary px-4 py-3 text-sm font-semibold text-tertiary transition duration-100 ease-linear hover:border-brand hover:bg-brand-50 hover:text-brand-secondary dark:hover:bg-brand-950/30"
+                                    >
+                                        <Plus className="size-5" />
+                                        New Client
+                                    </motion.button>
+                                ))}
                             </div>
                         )}
 
@@ -2045,6 +2311,11 @@ const DashboardLayout = () => {
         () => (DEPARTMENTS.find((d) => d.id === initialDeptId) ?? DEPARTMENTS[0]).tabs[0]?.id ?? "",
     );
     const [editing, setEditing] = useState(false);
+    // Anyone on the team can edit; a per-card lock (below) protects specific cards
+    // so only the owner can delete them.
+    const { user } = useAuthUser();
+    const isOwner = (user?.email ?? "").toLowerCase() === OWNER_EMAIL;
+
     // Shift+E toggles edit mode; Shift+S locks (dashboard edits already save on change).
     useEditShortcuts({ onToggle: () => setEditing((v) => !v), onSave: () => setEditing(false) });
     const [customTabs, setCustomTabs] = useState<OverviewTab[]>([]);
@@ -2129,7 +2400,7 @@ const DashboardLayout = () => {
                                 : activeSection === "owner-guides"
                                     ? <OwnerGuidesContent />
                                     : <MetaPixelContent />
-                        : <OverviewContent key={dept.id + ":" + activeSection} department={dept} tab={activeSection} editing={editing} />}
+                        : <OverviewContent key={dept.id + ":" + activeSection} department={dept} tab={activeSection} editing={editing} isOwner={isOwner} />}
                 </>
             )}
         </div>

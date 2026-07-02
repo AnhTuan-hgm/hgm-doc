@@ -39,6 +39,7 @@ export interface OverviewCard {
     link: string;
     cover_url?: string;
     starred?: boolean;
+    locked?: boolean; // protected card — only the owner can delete it
     created_at?: string;
 }
 
@@ -128,6 +129,7 @@ export interface LeadCapturePageData {
     inline_form_code: string;
     promo_header: string;
     promo_desc: string;
+    form_option?: string; // both | a | b — which Task-2 option(s) the client sees
     before_img_1?: string;
     after_img_1?: string;
     before_img_2?: string;
