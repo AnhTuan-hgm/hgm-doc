@@ -23,9 +23,12 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
         env:
-          UNTITLEDUI_PRO_TOKEN: ${{ secrets.UNTITLEDUI_PRO_TOKEN }}
+          RAW_UNTITLEDUI_TOKEN: ${{ secrets.UNTITLEDUI_PRO_TOKEN }}
+        run: |
+          # Trim any whitespace/newlines the secret may have been saved with
+          export UNTITLEDUI_PRO_TOKEN="$(printf '%s' "$RAW_UNTITLEDUI_TOKEN" | tr -d '[:space:]')"
+          npm ci
 
       - name: Build
         run: npm run build
