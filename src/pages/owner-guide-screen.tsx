@@ -20,6 +20,7 @@ import { cx } from "@/utils/cx";
 import { supabase, type OwnerGuideMeta } from "@/lib/supabase";
 import { readSopPage, writeSopPage } from "@/lib/db-sync";
 import { dbLogger } from "@/lib/db-logger";
+import { useEditShortcuts } from "@/hooks/use-edit-shortcuts";
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -854,6 +855,9 @@ export const OwnerGuideScreen = () => {
     }, []);
 
     const editing = isTeam && !locked;
+
+    // Shift+E toggles the lock, Shift+S locks — team members only (edits save on change).
+    useEditShortcuts({ enabled: isTeam, onToggle: () => setLocked((v) => !v), onSave: () => setLocked(true) });
 
     const contentHydrated = useRef(false);
 

@@ -2,12 +2,12 @@ import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { IconRail } from "@/components/application/icon-rail";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowUpRight, BookOpen01, Briefcase01, Code02, Image01, Inbox01, LayoutAlt01, Lock01, LockUnlocked01, Mail01, MessageChatCircle, Plus, SearchSm, Send01, Share07, Star01, Trash01, Users01, XClose } from "@untitledui/icons";
+import { ArrowUpRight, BookOpen01, Briefcase01, Code02, Image01, LayoutAlt01, Lock01, LockUnlocked01, Mail01, MessageChatCircle, Plus, SearchSm, Share07, Star01, Trash01, Users01, XClose } from "@untitledui/icons";
 import { supabase, type ChatWidgetPageData, type ClientPageData, type LeadCapturePageData, type OverviewCard, type OwnerGuideMeta, type OverviewTab } from "@/lib/supabase";
-import { DocsRequestModal } from "@/components/application/docs-request-modal";
 import { Avatar } from "@/components/base/avatar/avatar";
 import { SettingsDialog } from "@/pages/settings-screen";
 import { useAuthUser } from "@/hooks/use-auth-user";
+import { useEditShortcuts } from "@/hooks/use-edit-shortcuts";
 import { useTheme } from "@/providers/theme-provider";
 import { cx } from "@/utils/cx";
 
@@ -289,10 +289,8 @@ const Sidebar = ({
     onAddTab: (label: string) => void;
     onDeleteTab: (id: string) => void;
 }) => {
-    const navigate = useNavigate();
     const [adding, setAdding] = useState(false);
     const [newLabel, setNewLabel] = useState("");
-    const [requestOpen, setRequestOpen] = useState(false);
 
     const submitTab = () => {
         if (newLabel.trim()) onAddTab(newLabel.trim());
@@ -386,27 +384,6 @@ const Sidebar = ({
             </motion.div>
         </nav>
 
-        {/* Bottom */}
-        <div className="flex flex-col gap-2 border-t border-secondary px-5 py-5">
-            <button
-                type="button"
-                onClick={() => setRequestOpen(true)}
-                className="flex items-center gap-1.5 text-xs font-semibold text-brand-secondary transition duration-100 ease-linear hover:text-brand-primary"
-            >
-                <Send01 className="size-3.5 shrink-0" aria-hidden="true" />
-                Send new docs request
-            </button>
-            <button
-                type="button"
-                onClick={() => navigate("/requests")}
-                className="flex items-center gap-1.5 text-xs font-medium text-tertiary transition duration-100 ease-linear hover:text-primary"
-            >
-                <Inbox01 className="size-3.5 shrink-0" aria-hidden="true" />
-                Current requests
-            </button>
-        </div>
-
-        <DocsRequestModal open={requestOpen} onClose={() => setRequestOpen(false)} />
     </aside>
     );
 };
@@ -1582,6 +1559,8 @@ const DashboardLayout = () => {
         () => (DEPARTMENTS.find((d) => d.id === initialDeptId) ?? DEPARTMENTS[0]).tabs[0].id,
     );
     const [editing, setEditing] = useState(false);
+    // Shift+E toggles edit mode; Shift+S locks (dashboard edits already save on change).
+    useEditShortcuts({ onToggle: () => setEditing((v) => !v), onSave: () => setEditing(false) });
     const [customTabs, setCustomTabs] = useState<OverviewTab[]>([]);
     const dept = DEPARTMENTS.find((d) => d.id === department) ?? DEPARTMENTS[0];
 

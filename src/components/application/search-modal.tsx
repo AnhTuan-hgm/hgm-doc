@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowRight, BookOpen01, Code02, CornerDownLeft, Inbox01, LayoutAlt01, Mail01, SearchLg, Share07, XClose } from "@untitledui/icons";
+import { ArrowRight, BookOpen01, Code02, CornerDownLeft, Flag05, Inbox01, LayoutAlt01, Mail01, SearchLg, Share07, XClose } from "@untitledui/icons";
 import type { FC } from "react";
 import { supabase, type ClientPageData, type LeadCapturePageData, type OverviewCard } from "@/lib/supabase";
 import { cx } from "@/utils/cx";
@@ -17,6 +17,7 @@ interface SearchItem {
 
 /** Static, always-available destinations. */
 const STATIC_ITEMS: SearchItem[] = [
+    { id: "s-projectmgmt", title: "Project Management", subtitle: "Overview, to-dos, roadmap & timeline", path: "/roadmap", kind: "Page", icon: Flag05 },
     { id: "s-dashboard", title: "Dashboard", subtitle: "Client Support overview", path: "/dashboard", kind: "Page", icon: LayoutAlt01 },
     { id: "s-setup", title: "AI Website Setup", subtitle: "Web Team workflow", path: "/webteam/ai-website-setup", kind: "Page", icon: Code02 },
     { id: "s-owner", title: "Owner Guide", subtitle: "Client owner guide", path: "/owner-guide", kind: "Page", icon: BookOpen01 },
