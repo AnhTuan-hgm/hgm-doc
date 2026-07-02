@@ -13,11 +13,12 @@ A client-facing **guide / documentation site** (Meta Pixel setup, website popups
 - **react-router 7** — client-side routing (`src/main.tsx`)
 - **Tailwind CSS v4.2** — styling via a CSS-variable theme
 - **React Aria Components 1.16** — accessibility/behavior foundation
-- **Supabase** — persistence for editable page content (never localStorage-only)
+- **Supabase** — primary persistence for editable page content (never localStorage-only)
+- **Firebase Firestore** — fallback/dual-write layer (survives Supabase outages; see Persistence section)
 - **motion** (Framer Motion) — animation
 
 ## How pages work
-Most routes are "master template" pages (e.g. `/metapixel`, `/popup`, `/owner-guide`). The team creates a private per-client copy from a template, which saves to Supabase and gets its own slug (e.g. `/{client}-metapixel`, `/{client}-leadcapture`). Routing fans out through `src/pages/client-screen.tsx`. Content is edited in place (lock/unlock) and persisted to Supabase.
+Most routes are "master template" pages (e.g. `/metapixel`, `/popup`, `/owner-guide`). The team creates a private per-client copy from a template, which saves to Supabase and gets its own slug (e.g. `/{client}-metapixel`, `/{client}-leadcapture`). Routes are registered as a flat list in `src/main.tsx` (not nested); a `PAGES_WITHOUT_FLOATING_CHROME` array controls whether internal team pages suppress the global floating theme toggle (so their own chrome doesn't conflict). Routing fans out through `src/pages/client-screen.tsx`. Content is edited in place (lock/unlock) and persisted to Supabase.
 
 ## Critical conventions
 
@@ -45,8 +46,11 @@ All UI is built on React Aria Components using the compound pattern (`Select.Ite
 ## Commands
 ```bash
 npm run dev     # Vite dev server (defaults to :5173 — use the /dev skill to avoid port collisions)
-npm run build   # tsc -b && vite build (production)
+npm run build   # tsc -b && vite build (production build + type-check)
+npm run preview # Preview production build locally
+npx prettier --write .  # Format code (no npm script; Prettier configured in .prettierrc)
 ```
+**Note:** No ESLint, test, or dedicated typecheck scripts exist. Type-checking happens inside `npm run build` via `tsc -b`. No test runner is configured.
 
 ## Project structure
 ```
@@ -58,6 +62,7 @@ src/
 │   ├── marketing/       # Marketing components
 │   └── shared-assets/   # Reusable assets & illustrations
 ├── hooks/               # Custom React hooks
+├── lib/                 # supabase.ts, firebase.ts, db-sync.ts, db-logger.ts, requests.ts
 ├── pages/               # Route components (client-screen.tsx fans out client slugs)
 ├── providers/           # React context (theme-provider, router-provider)
 ├── styles/              # globals.css, theme.css (brand color vars), typography.css
@@ -71,8 +76,20 @@ src/
 - Utilities: `src/utils/cx.ts`, `src/utils/is-react-component.ts`; hooks in `src/hooks/`.
 - Styles: `src/styles/globals.css`, `theme.css` (edit `--color-brand-*` to rebrand), `typography.css`.
 
-## Persistence (Supabase)
-Editable page content persists to Supabase — never localStorage-only. Client = `src/lib/supabase.ts` (uses the anon/publishable key; never the `service_role`/secret key in client code). When adding any `insert`/`update`/`delete`, ensure the table has RLS policies covering BOTH the `anon` and `authenticated` roles (signed-in dashboard users are `authenticated`). The Supabase CLI is linked; schema lives in `supabase/migrations/`.
+## Persistence (Supabase + Firebase fallback)
+Editable page content persists to **Supabase first**, with **Firebase Firestore as a fallback** for Supabase outages.
+
+**Primary path (Supabase):** `src/lib/supabase.ts` — uses anon/publishable key (never `service_role`/secret in client code). When adding any `insert`/`update`/`delete`, ensure RLS policies cover BOTH `anon` and `authenticated` roles.
+
+**Fallback path (Firebase):** For read/write operations that must survive Supabase downtime, use `src/lib/db-sync.ts` instead of calling `supabase.from(...)` directly:
+- `readSopPage(slug)` — tries Supabase first, falls back to Firebase if down
+- `writeSopPage(slug, data)` — dual-writes to both Supabase AND Firebase (so data stays synced)
+- Firebase config is hardcoded in `src/lib/firebase.ts` (not `.env`-driven)
+- `src/lib/db-logger.ts` provides colored dev-console logging for fallback ops
+
+**Local offline dev:** Run `supabase start` (Docker) to spin up a local Supabase stack on ports 54321 (API) / 54322 (DB). Update `.env.local` to point `VITE_SUPABASE_URL` to `http://127.0.0.1:54321`.
+
+The Supabase CLI is linked; schema lives in `supabase/migrations/`.
 
 ## Deploy
 Netlify is connected to the GitHub repo (`AnhTuan-hgm/hgm-doc`) — pushing `main` auto-builds and deploys to `docs-hgm.netlify.app`. See the `/ship` skill for the full build → commit → push → verify flow.

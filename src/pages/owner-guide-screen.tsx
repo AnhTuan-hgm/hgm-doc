@@ -18,13 +18,14 @@ import { AnimatePresence, motion } from "motion/react";
 import { useTheme } from "@/providers/theme-provider";
 import { cx } from "@/utils/cx";
 import { supabase, type OwnerGuideMeta } from "@/lib/supabase";
+import { readSopPage, writeSopPage } from "@/lib/db-sync";
+import { dbLogger } from "@/lib/db-logger";
 
 // ── Types ─────────────────────────────────────────────────────────
 
 type LensPos = { x: number; y: number };
-type PMSTab = "guesty" | "hostaway" | "lodgify" | "hostfully" | "smoobu" | "ical";
 type SaveStatus = "idle" | "saving" | "saved" | "error" | "empty";
-type CredSection = "none" | "stripe" | "pms" | "hosting" | "supabase" | "domain" | "overview";
+type CredSection = "none" | "pms" | "netlify" | "hosting" | "supabase" | "resend" | "stripe" | "domain" | "cloudflare" | "overview";
 
 interface StepImage { id: string; src: string; lensPos?: LensPos }
 interface Instruction { text: string; image?: string; lensPos?: LensPos }
@@ -44,19 +45,16 @@ type Checklist = Record<string, boolean>;
 type Notes = Record<string, string>;
 interface OwnerData { credentials: Creds; checklist: Checklist; notes: Notes }
 
-/** Credential sections that have a fillable form. */
-const CRED_FORM_SECTIONS = ["pms", "hosting", "supabase", "stripe", "domain"];
-const SECTION_PREFIXES: Record<string, string[]> = {
-    stripe: ["stripe_"],
-    pms: ["guesty_", "hostaway_", "lodgify_", "hostfully_", "smoobu_", "ical_"],
-    hosting: ["netlify_", "vercel_"],
-    supabase: ["supabase_"],
-    domain: ["domain_"],
-};
+/**
+ * Credential sections that render the uniform "Account User name + Password" form.
+ * Includes the legacy section ids ("hosting", "stripe") used by guide content
+ * saved before the simplification, so existing client guides keep their forms.
+ */
+const CRED_FORM_SECTIONS = ["pms", "netlify", "hosting", "supabase", "resend", "stripe", "domain", "cloudflare"];
+
+/** Each service stores a `${section}_username` and `${section}_password`. */
 function sectionFilledIn(credentials: Creds, sec: string): boolean {
-    return Object.entries(credentials).some(
-        ([k, v]) => v && v.trim() !== "" && (SECTION_PREFIXES[sec] ?? []).some(p => k.startsWith(p)),
-    );
+    return !!(credentials[`${sec}_username`]?.trim() || credentials[`${sec}_password`]?.trim());
 }
 
 const CONTENT_KEY = "hgm_owner_content_v2";
@@ -76,10 +74,29 @@ function getOrCreateSession(): string {
 
 // ── Seed content ──────────────────────────────────────────────────
 
+/**
+ * Service steps added through the editor default to credSection "none", so they
+ * never render a credential form. Infer the real section from the step title so
+ * every service (incl. Resend / Cloudflare) shows the Account-login form.
+ */
+function inferSection(s: StepData): CredSection {
+    if (s.credSection && s.credSection !== "none") return s.credSection;
+    const t = (s.title ?? "").toLowerCase();
+    if (/resend/.test(t)) return "resend";
+    if (/cloudflare/.test(t)) return "cloudflare";
+    if (/netlify/.test(t)) return "netlify";
+    if (/supabase/.test(t)) return "supabase";
+    if (/stripe/.test(t)) return "stripe";
+    if (/\bpms\b|property management/.test(t)) return "pms";
+    if (/domain|registrar/.test(t)) return "domain";
+    return s.credSection ?? "none";
+}
+
 /** Convert legacy string instructions (and missing arrays) into the {text, image} shape. */
 function normalizeSteps(steps: StepData[]): StepData[] {
     return steps.map((s) => ({
         ...s,
+        credSection: inferSection(s),
         images: s.images ?? [],
         instructions: ((s.instructions ?? []) as (string | Instruction)[]).map((ins) =>
             typeof ins === "string" ? { text: ins } : { text: ins.text ?? "", image: ins.image, lensPos: ins.lensPos },
@@ -92,99 +109,110 @@ function seedContent(): StepData[] {
         {
             title: "Welcome & Roles",
             credSection: "none",
-            description: "This system is a custom booking portal that requires you to set up a few accounts. As the business owner, you will own all financial accounts, hosting, and database — not your developer. Developers should never own the financial accounts or hosting contracts for your business.",
+            description: "This guide collects the logins for the handful of accounts that power your booking website. You — the business owner — own every account: your PMS, hosting, database, email, domain, and DNS. Your developer is only given access to configure them, never ownership.",
             benefits: [
-                "Direct Payouts — Stripe sends payments directly to your bank account",
-                "Hosting Control — the website server is under your credit card and login",
-                "API Confidentiality — your credentials are encrypted and can be rotated at any time",
+                "You stay in control — every account is registered under your own name and email",
+                "Secure by design — your logins are stored privately and can be changed at any time",
+                "No lock-in — your developer can be swapped without ever losing an account",
             ],
             instructions: [
-                "Confirm roles and project roadmap — agree to register personal/business Stripe, PMS, and Netlify accounts under your own name",
-                "Locate domain registration accounts — ensure you have access to GoDaddy, Namecheap, or Google Domains",
+                "Confirm the accounts you'll need: PMS, Netlify, Supabase, Resend, your domain registrar, and Cloudflare",
+                "Make sure each account is registered under your own business email so you keep full ownership",
+                "Work through each step and enter the account user name and password so your developer can connect them",
             ],
             checklistLabels: [
-                ["Confirm roles and project roadmap", "Agree to register personal/business Stripe, PMS, and Netlify accounts"],
-                ["Locate domain registration accounts", "Ensure access to GoDaddy, Namecheap, or Google Domains"],
+                ["Confirm roles and accounts", "You'll own the PMS, Netlify, Supabase, Resend, domain, and Cloudflare accounts"],
+                ["Gather your logins", "You have the user name and password ready for each account"],
             ],
             images: [],
         },
         {
             title: "Property Management System (PMS)",
             credSection: "pms",
-            description: "Your PMS syncs listing availability, rates, and reservations across Airbnb, VRBO, Booking.com and your direct booking website. Select your platform below and enter your API credentials.",
+            description: "Your PMS (Guesty, Hostaway, Lodgify, Hostfully, Smoobu, etc.) syncs availability, rates, and reservations to your direct booking website. Enter the account username and password you use to log in.",
             instructions: [
-                "Log in to your PMS dashboard as the primary administrator",
-                "Navigate to Integrations or API Keys in the settings",
-                "Generate a new key named 'Website' and copy the credentials",
-                "Select your platform tab below and paste the credentials",
+                "Open the login page for your PMS provider",
+                "Enter the account user name (usually your email) and password you sign in with below",
+                "Save — your developer uses this to connect the integration",
             ],
             checklistLabels: [
-                ["Select your PMS platform and locate API credentials", "You know which system manages reservations and have access to settings"],
-                ["Enter and save PMS credentials", "API keys or calendar feeds entered and saved for developer configuration"],
+                ["Locate your PMS account login", "You know the account user name and password"],
+                ["Enter and save your PMS login", "User name and password saved"],
             ],
             images: [],
         },
         {
             title: "Netlify Hosting",
-            credSection: "hosting",
-            description: "Owning your Netlify workspace ensures you control the website code, assets, and deployment. This gives you full authority over the live website — independent of your developer.",
+            credSection: "netlify",
+            description: "Netlify hosts your website code and serves the live site. Enter the account username and password you use to sign in at app.netlify.com.",
             instructions: [
-                "Register at netlify.com with your business email — the free Starter plan is all you need",
-                "Create a team named after your property",
-                "Go to Team Settings → Members → Invite your developer as a Collaborator",
-                "Ask your developer to connect the code repository, then copy the credentials below from Site Settings",
+                "Open app.netlify.com and find the account you sign in with",
+                "Enter that user name (email) and password below",
+                "Save — your developer uses this to manage deployments",
             ],
             checklistLabels: [
-                ["Create your Netlify team account", "Your Netlify team workspace is active under your email"],
-                ["Enter and save Netlify credentials", "Site ID and Build Hook URL are copied and saved"],
+                ["Locate your Netlify account login", "You know the account user name and password"],
+                ["Enter and save your Netlify login", "User name and password saved"],
             ],
             images: [],
         },
         {
             title: "Supabase Database",
             credSection: "supabase",
-            description: "Supabase acts as the secure backend holding your property details, reservation logs, and listing photos. As the business owner, you should create and own this project for full security of your guest database.",
+            description: "Supabase is the secure backend that stores your property details, reservations, and listing photos. Enter the account username and password you use to sign in at supabase.com.",
             instructions: [
-                "Create a Supabase Account at database.supabase.com using your email or GitHub account",
-                "Create a New Project — name it your property name, set a secure database password, choose a region close to your property",
-                "Locate API Credentials — wait 1–2 minutes for provisioning, then go to Settings (gear icon) → API",
-                "Copy your Project URL and Anon API Key and paste them in the form below",
+                "Open supabase.com and find the account you sign in with",
+                "Enter that user name (email) and password below",
+                "Save — your developer uses this to manage your database",
             ],
             checklistLabels: [
-                ["Create your Supabase account and database project", "Supabase project is active and database is provisioned"],
-                ["Enter and save Supabase credentials", "Project URL and Anon API Key are saved"],
+                ["Locate your Supabase account login", "You know the account user name and password"],
+                ["Enter and save your Supabase login", "User name and password saved"],
             ],
             images: [],
         },
         {
-            title: "Stripe Payments",
-            credSection: "stripe",
-            description: "Stripe processes card checkouts, manages deposits, and transfers payouts directly to your business bank account. You need to register Stripe under your own name and connect your bank account before the booking website can go live.",
+            title: "Resend Email",
+            credSection: "resend",
+            description: "Resend sends the transactional emails for your site — booking confirmations, lead notifications, and receipts. Enter the account username and password you use to sign in at resend.com.",
             instructions: [
-                "Register your Account at stripe.com/register with your business details and bank account for payouts",
-                "Verify your identity — Stripe may request a government-issued ID for KYC compliance",
-                "Go to Developers → API keys — toggle Test Mode OFF for real bookings, or keep ON for testing",
-                "Paste your Stripe Credentials in the form below",
+                "Open resend.com and find the account you sign in with",
+                "Enter that user name (email) and password below",
+                "Save — your developer uses this to send emails from your domain",
             ],
             checklistLabels: [
-                ["Activate and verify your Stripe merchant profile", "Stripe activation emails verified and payouts enabled"],
-                ["Enter and save Stripe credentials", "Credentials input and saved securely"],
+                ["Locate your Resend account login", "You know the account user name and password"],
+                ["Enter and save your Resend login", "User name and password saved"],
             ],
             images: [],
         },
         {
-            title: "Domain Setup",
+            title: "Domain Registrar",
             credSection: "domain",
-            description: "Point your custom domain to your Netlify site by adding a CNAME record in your registrar's DNS settings. SSL is provisioned automatically by Netlify within minutes.",
+            description: "Your domain registrar is where your web address is registered (GoDaddy, Namecheap, Google Domains, etc.). Enter the account username and password you use to sign in there.",
             instructions: [
-                "Log in to your domain registrar (GoDaddy, Namecheap, Google Domains, Cloudflare, etc.)",
-                "Go to DNS settings and add a CNAME record: www → your-site.netlify.app",
-                "In Netlify → Site Settings → Domain management, click Add custom domain and enter your domain",
-                "Wait 10–30 minutes for DNS propagation — Netlify will auto-provision your SSL certificate",
+                "Open the login page for the registrar where your domain is registered",
+                "Enter the account user name (email) and password you sign in with below",
+                "Save — your developer uses this to point the domain to your site",
             ],
             checklistLabels: [
-                ["Add CNAME record in your domain registrar", "DNS record is pointing to your Netlify site"],
-                ["Verify custom domain is live with SSL", "Site is accessible on your custom domain with HTTPS"],
+                ["Locate your registrar account login", "You know the account user name and password"],
+                ["Enter and save your registrar login", "User name and password saved"],
+            ],
+            images: [],
+        },
+        {
+            title: "Cloudflare",
+            credSection: "cloudflare",
+            description: "Cloudflare manages your DNS and CDN — keeping the site fast and secure. Enter the account username and password you use to sign in at dash.cloudflare.com.",
+            instructions: [
+                "Open dash.cloudflare.com and find the account you sign in with",
+                "Enter that user name (email) and password below",
+                "Save — your developer uses this to manage DNS and security",
+            ],
+            checklistLabels: [
+                ["Locate your Cloudflare account login", "You know the account user name and password"],
+                ["Enter and save your Cloudflare login", "User name and password saved"],
             ],
             images: [],
         },
@@ -416,17 +444,6 @@ const SaveActions = ({ status, label, onSave, onClear }: {
     </div>
 );
 
-// ── PMS / Hosting tabs ────────────────────────────────────────────
-
-const PMS_TABS: { id: PMSTab; label: string }[] = [
-    { id: "guesty", label: "Guesty" },
-    { id: "hostaway", label: "Hostaway" },
-    { id: "lodgify", label: "Lodgify" },
-    { id: "hostfully", label: "Hostfully" },
-    { id: "smoobu", label: "Smoobu" },
-    { id: "ical", label: "iCal / Other" },
-];
-
 // ── Overview credential row ───────────────────────────────────────
 
 const OverviewRow = ({ label, value, locked }: { label: string; value: string; locked: boolean }) => (
@@ -459,13 +476,14 @@ const OverviewSection = ({ title, rows, locked }: { title: string; rows: { label
 // ── Sidebar ───────────────────────────────────────────────────────
 
 const CRED_SECTION_LABEL: Record<CredSection, string> = {
-    none: "", stripe: "Stripe", pms: "PMS", hosting: "Netlify", supabase: "Supabase", domain: "Domain", overview: "Overview",
+    none: "", pms: "PMS", netlify: "Netlify", hosting: "Netlify", supabase: "Supabase", resend: "Resend", stripe: "Stripe", domain: "Domain", cloudflare: "Cloudflare", overview: "Overview",
 };
 
 const Sidebar = ({
     steps, credentials, visited, currentStep, editing,
     onSelect, onMoveStep, onDeleteStep, onAddStep, onNavigateOverview,
     canShare, sharePassword, showSharePw, onToggleSharePw, onCopyShareLink, shareCopied,
+    canCreate, onCreate,
 }: {
     steps: StepData[];
     credentials: Creds;
@@ -484,6 +502,9 @@ const Sidebar = ({
     onToggleSharePw: () => void;
     onCopyShareLink: () => void;
     shareCopied: boolean;
+    /** "Create Owner Guide" action — team / template only. */
+    canCreate: boolean;
+    onCreate: () => void;
 }) => {
     const { theme, setTheme } = useTheme();
     const isDark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
@@ -634,11 +655,18 @@ const Sidebar = ({
                             {shareCopied ? "Link copied!" : "Copy share link"}
                         </button>
                     )}
+                    {canCreate && (
+                        <button type="button" onClick={onCreate}
+                            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-brand-solid px-3 py-2 text-[12px] font-semibold text-white transition hover:opacity-90">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+                            Create Owner Guide
+                        </button>
+                    )}
                     <button type="button" onClick={() => setTheme(isDark ? "light" : "dark")}
                         title={isDark ? "Switch to light mode" : "Switch to dark mode"}
                         className={cx(
                             "flex size-9 shrink-0 items-center justify-center rounded-lg border border-secondary bg-primary text-secondary transition duration-100 ease-linear hover:bg-secondary hover:text-primary",
-                            !canShare && "ml-auto",
+                            !canShare && !canCreate && "ml-auto",
                         )}>
                         {isDark
                             ? <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" /></svg>
@@ -677,20 +705,46 @@ const CreateGuideModal = ({ open, onClose, onCreated }: {
         // Link is auto-built from the client name with a fixed product suffix,
         // e.g. "FLOHOM" → flohom-aiwebsite.
         const slug = `${base}-${LINK_SUFFIX}`;
-        const { error: dbError } = await supabase.from("owner_guides").insert({
-            slug, client_name: name, share_password: password.trim() || null,
-        });
-        if (dbError) {
-            console.error("[owner_guides insert]", dbError);
-            setError("Could not create: " + dbError.message);
+
+        try {
+            // 1. Create owner_guides metadata (with timeout, non-blocking fallback)
+            const metaPromise = supabase.from("owner_guides").insert({
+                slug, client_name: name, share_password: password.trim() || null,
+            });
+            const metaTimeout = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error("Metadata save timed out")), 8000)
+            );
+            try {
+                await Promise.race([metaPromise, metaTimeout]);
+                dbLogger.success(`Guide metadata created`);
+            } catch (metaErr) {
+                console.warn("[owner_guides insert timeout/fail — continuing]", metaErr);
+                // Continue anyway — guide content is what matters
+            }
+
+            // 2. Copy master guide content to client slug (using fallback logic)
+            try {
+                const masterData = await readSopPage(GUIDE_CONTENT_SLUG);
+                if (masterData?.data) {
+                    await writeSopPage(slug, masterData.data);
+                    dbLogger.success(`Guide content copied to ${slug}`);
+                }
+            } catch (contentErr) {
+                console.warn("[copy guide content]", contentErr);
+                // Don't fail if content copy fails — guide can be empty initially
+            }
+
+            // 3. Unlock the new guide for the creator so the share-password gate is skipped.
+            try { sessionStorage.setItem(`og_unlock_${slug}`, "1"); } catch {}
+
             setSaving(false);
-            return;
+            reset();
+            onCreated(slug);
+        } catch (err) {
+            console.error("[create guide]", err);
+            setError("Could not create: " + (err instanceof Error ? err.message : "unknown error"));
+            setSaving(false);
         }
-        // Unlock the new guide for the creator so the share-password gate is skipped.
-        try { sessionStorage.setItem(`og_unlock_${slug}`, "1"); } catch {}
-        setSaving(false);
-        reset();
-        onCreated(slug);
     };
 
     return (
@@ -769,6 +823,8 @@ export const OwnerGuideScreen = () => {
     const [ownerData, setOwnerData] = useState<OwnerData>(emptyOwner);
     const [meta, setMeta] = useState<OwnerGuideMeta | null>(null);
     const [createOpen, setCreateOpen] = useState(false);
+    // Template hint toast — appears top-right ~2s after the master template loads.
+    const [showTemplateToast, setShowTemplateToast] = useState(false);
     const [showSharePw, setShowSharePw] = useState(false);
     const [shareCopied, setShareCopied] = useState(false);
     // Share-password gate: locked out until the client enters the password
@@ -783,7 +839,6 @@ export const OwnerGuideScreen = () => {
     const [loading, setLoading] = useState(true);
     const [currentStep, setCurrentStep] = useState(0);
     const [visited, setVisited] = useState<Set<number>>(new Set());
-    const [pmsTab, setPmsTab] = useState<PMSTab>("guesty");
     const [saveStatus, setSaveStatus] = useState<Record<string, SaveStatus>>({});
     const [overviewSaveStatus, setOverviewSaveStatus] = useState<SaveStatus>("idle");
     const [showComplete, setShowComplete] = useState(false);
@@ -805,7 +860,6 @@ export const OwnerGuideScreen = () => {
     useEffect(() => {
         dbLoad(sessionId).then(data => {
             setOwnerData(data);
-            if (data.credentials.pms_platform) setPmsTab(data.credentials.pms_platform as PMSTab);
             setLoading(false);
         });
     }, [sessionId]);
@@ -825,6 +879,13 @@ export const OwnerGuideScreen = () => {
                 if (row?.share_password && !unlocked) setGateOpen(true);
             });
     }, [slug]);
+
+    // Show the template hint toast 2 seconds after the master template opens.
+    useEffect(() => {
+        if (!isTemplate) return;
+        const t = setTimeout(() => setShowTemplateToast(true), 2000);
+        return () => clearTimeout(t);
+    }, [isTemplate]);
 
     // Auto-open the create modal when arriving via /owner-guide?create=1.
     useEffect(() => {
@@ -849,31 +910,30 @@ export const OwnerGuideScreen = () => {
         navigator.clipboard.writeText(url).then(() => { setShareCopied(true); setTimeout(() => setShareCopied(false), 2000); });
     };
 
-    // Shared guide content lives in Supabase so every client sees the team's edits.
+    // Shared guide content lives in Supabase (with Firebase fallback) so every client sees the team's edits.
     useEffect(() => {
-        supabase
-            .from("sop_pages")
-            .select("data")
-            .eq("slug", GUIDE_CONTENT_SLUG)
-            .maybeSingle()
-            .then(({ data, error }) => {
-                if (!error && Array.isArray(data?.data) && data.data.length) {
+        readSopPage(GUIDE_CONTENT_SLUG)
+            .then((data) => {
+                if (data?.data && Array.isArray(data.data) && data.data.length) {
                     const norm = normalizeSteps(data.data as StepData[]);
                     setSteps(norm);
                     saveContent(norm);
                 }
                 contentHydrated.current = true;
+            })
+            .catch((err) => {
+                dbLogger.error(`Failed to load guide content from both DBs`, err);
+                contentHydrated.current = true;
             });
     }, []);
 
-    // Debounced publish of guide content to Supabase after edits.
+    // Debounced publish of guide content to Supabase + Firebase after edits.
     useEffect(() => {
         if (!contentHydrated.current) return;
         const t = setTimeout(() => {
-            supabase
-                .from("sop_pages")
-                .upsert({ slug: GUIDE_CONTENT_SLUG, data: steps, updated_at: new Date().toISOString() }, { onConflict: "slug" })
-                .then(({ error }) => { if (error) console.error("[owner-guide content save]", error); });
+            writeSopPage(GUIDE_CONTENT_SLUG, steps)
+                .then(() => { dbLogger.success(`Guide content published`); })
+                .catch((err) => { dbLogger.error(`Failed to save guide content`, err); });
         }, 800);
         return () => clearTimeout(t);
     }, [steps]);
@@ -1086,28 +1146,11 @@ export const OwnerGuideScreen = () => {
                 onToggleSharePw={() => setShowSharePw(s => !s)}
                 onCopyShareLink={copyShareLink}
                 shareCopied={shareCopied}
+                canCreate={isTeam || isTemplate}
+                onCreate={() => setCreateOpen(true)}
             />
 
             <main ref={mainRef} className="flex-1 overflow-y-auto scroll-smooth">
-                {/* Template banner — prompts the team to spin up a client copy. */}
-                {isTemplate && (
-                    <div className="border-b border-brand/40 bg-brand-50 px-8 py-3.5 dark:bg-brand-950/30">
-                        <div className="mx-auto flex max-w-[760px] flex-wrap items-center justify-between gap-3">
-                            <div className="flex items-center gap-2.5">
-                                <span className="inline-flex items-center rounded-full bg-brand-600 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white">Template</span>
-                                <p className="text-[13px] font-medium text-brand-800 dark:text-brand-200">
-                                    This is the master template. Create a private copy to share with a client.
-                                </p>
-                            </div>
-                            <button type="button" onClick={() => setCreateOpen(true)}
-                                className="flex shrink-0 items-center gap-1.5 rounded-lg bg-brand-solid px-3.5 py-2 text-[13px] font-semibold text-white transition hover:opacity-90">
-                                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
-                                Create owner guide for the client
-                            </button>
-                        </div>
-                    </div>
-                )}
-
                 {/* Client guide header — name only; share controls live in the sidebar. */}
                 {!isTemplate && meta && (
                     <div className="border-b border-secondary bg-primary px-8 py-3.5">
@@ -1153,39 +1196,12 @@ export const OwnerGuideScreen = () => {
                                 </div>
                             ) : (
                                 <div className="flex flex-col gap-4">
-                                    <OverviewSection title="Stripe Payments" locked={locked} rows={[
-                                        { label: "Account ID", value: cred("stripe_account_id") },
-                                        { label: "Publishable Key", value: cred("stripe_publishable_key") },
-                                        { label: "Secret Key", value: cred("stripe_secret_key") },
-                                        { label: "Webhook Secret", value: cred("stripe_webhook_secret") },
-                                    ]} />
-                                    <OverviewSection title={`PMS / Calendar (${cred("pms_platform") || "not selected"})`} locked={locked} rows={[
-                                        { label: "Guesty Client ID", value: cred("guesty_client_id") },
-                                        { label: "Guesty Client Secret", value: cred("guesty_client_secret") },
-                                        { label: "Guesty Listing ID", value: cred("guesty_listing_id") },
-                                        { label: "Hostaway Account ID", value: cred("hostaway_account_id") },
-                                        { label: "Hostaway API Key", value: cred("hostaway_api_key") },
-                                        { label: "Lodgify API Key", value: cred("lodgify_api_key") },
-                                        { label: "Smoobu API Key", value: cred("smoobu_api_key") },
-                                        { label: "Airbnb iCal URL", value: cred("ical_airbnb") },
-                                        { label: "VRBO iCal URL", value: cred("ical_vrbo") },
-                                    ].filter(r => r.value)} />
-                                    <OverviewSection title="Netlify Hosting" locked={locked} rows={[
-                                        { label: "Site Domain", value: cred("netlify_domain") },
-                                        { label: "Site ID", value: cred("netlify_site_id") },
-                                        { label: "Build Hook URL", value: cred("netlify_build_hook") },
-                                        { label: "Vercel Domain", value: cred("vercel_domain") },
-                                        { label: "Vercel Project ID", value: cred("vercel_project_id") },
-                                    ].filter(r => r.value)} />
-                                    <OverviewSection title="Supabase Database" locked={locked} rows={[
-                                        { label: "Project URL", value: cred("supabase_project_url") },
-                                        { label: "Anon API Key", value: cred("supabase_anon_key") },
-                                    ]} />
-                                    <OverviewSection title="Domain" locked={locked} rows={[
-                                        { label: "Custom Domain", value: cred("domain_custom") },
-                                        { label: "Registrar", value: cred("domain_registrar") },
-                                        { label: "Registrar Email", value: cred("domain_email") },
-                                    ]} />
+                                    {steps.filter(s => CRED_FORM_SECTIONS.includes(s.credSection)).map((s, i) => (
+                                        <OverviewSection key={i} title={s.title} locked={locked} rows={[
+                                            { label: "Account User name", value: cred(`${s.credSection}_username`) },
+                                            { label: "Password", value: cred(`${s.credSection}_password`) },
+                                        ]} />
+                                    ))}
 
                                     <div className="mt-2 rounded-2xl border border-secondary bg-primary p-6 text-center">
                                         {locked ? (
@@ -1328,150 +1344,26 @@ export const OwnerGuideScreen = () => {
                                 </section>
                             )}
 
-                            {/* ── Credential forms ── */}
-                            {!loading && (
-                                <>
-                                    {/* PMS */}
-                                    {step.credSection === "pms" && (
-                                        <section className="mb-6 rounded-2xl border border-secondary bg-primary p-6">
-                                            <div className="mb-4 flex items-center justify-between gap-3">
-                                                <h2 className="text-[15px] font-bold text-primary">Select your PMS platform:</h2>
-                                                <StatusBadge sec="pms" />
-                                            </div>
-                                            <div className="mb-5 flex flex-wrap gap-2">
-                                                {PMS_TABS.map(t => (
-                                                    <button key={t.id} type="button"
-                                                        onClick={() => { setPmsTab(t.id); setCred("pms_platform", t.id); }}
-                                                        className={cx(
-                                                            "rounded-full border px-3.5 py-1.5 text-[13px] font-semibold transition duration-100 ease-linear",
-                                                            pmsTab === t.id ? "border-brand-600 bg-brand-50 text-brand-700 dark:bg-brand-950/40 dark:text-brand-300" : "border-secondary text-secondary hover:border-primary hover:text-primary",
-                                                        )}>
-                                                        {t.label}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                            {pmsTab === "guesty" && (
-                                                <div className="flex flex-col gap-4">
-                                                    <p className="rounded-lg bg-secondary px-4 py-3 text-[13px] text-tertiary">app.guesty.com → Integrations → Open API → Generate API Key → name it "Website". Copy the Client ID, Client Secret, and Listing ID.</p>
-                                                    <CredField label="API Base URL" placeholder="https://open-api.guesty.com" value={cred("guesty_base_url")} onChange={v => setCred("guesty_base_url", v)} />
-                                                    <CredField label="Client ID" value={cred("guesty_client_id")} onChange={v => setCred("guesty_client_id", v)} />
-                                                    <SecretField label="Client Secret" value={cred("guesty_client_secret")} onChange={v => setCred("guesty_client_secret", v)} />
-                                                    <CredField label="Listing ID" value={cred("guesty_listing_id")} onChange={v => setCred("guesty_listing_id", v)} />
-                                                    <SaveActions status={saveStatus["pms"] ?? "idle"} label="Guesty" onSave={() => doSave("pms")} onClear={() => doClear("pms", ["guesty_base_url", "guesty_client_id", "guesty_client_secret", "guesty_listing_id"])} />
-                                                </div>
-                                            )}
-                                            {pmsTab === "hostaway" && (
-                                                <div className="flex flex-col gap-4">
-                                                    <p className="rounded-lg bg-secondary px-4 py-3 text-[13px] text-tertiary">dashboard.hostaway.com → Settings → API Keys → Create New Key, name it "Website".</p>
-                                                    <CredField label="Account ID" value={cred("hostaway_account_id")} onChange={v => setCred("hostaway_account_id", v)} />
-                                                    <SecretField label="API Key" value={cred("hostaway_api_key")} onChange={v => setCred("hostaway_api_key", v)} />
-                                                    <CredField label="Listing ID" value={cred("hostaway_listing_id")} onChange={v => setCred("hostaway_listing_id", v)} />
-                                                    <SaveActions status={saveStatus["pms"] ?? "idle"} label="Hostaway" onSave={() => doSave("pms")} onClear={() => doClear("pms", ["hostaway_account_id", "hostaway_api_key", "hostaway_listing_id"])} />
-                                                </div>
-                                            )}
-                                            {pmsTab === "lodgify" && (
-                                                <div className="flex flex-col gap-4">
-                                                    <p className="rounded-lg bg-secondary px-4 py-3 text-[13px] text-tertiary">Lodgify → Account → API Access → Generate new API key.</p>
-                                                    <SecretField label="API Key" value={cred("lodgify_api_key")} onChange={v => setCred("lodgify_api_key", v)} />
-                                                    <CredField label="Property ID" value={cred("lodgify_property_id")} onChange={v => setCred("lodgify_property_id", v)} />
-                                                    <SaveActions status={saveStatus["pms"] ?? "idle"} label="Lodgify" onSave={() => doSave("pms")} onClear={() => doClear("pms", ["lodgify_api_key", "lodgify_property_id"])} />
-                                                </div>
-                                            )}
-                                            {pmsTab === "hostfully" && (
-                                                <div className="flex flex-col gap-4">
-                                                    <p className="rounded-lg bg-secondary px-4 py-3 text-[13px] text-tertiary">Hostfully → Agency Settings → API → Create new token.</p>
-                                                    <CredField label="Agency UID" value={cred("hostfully_agency_uid")} onChange={v => setCred("hostfully_agency_uid", v)} />
-                                                    <SecretField label="API Token" value={cred("hostfully_api_token")} onChange={v => setCred("hostfully_api_token", v)} />
-                                                    <CredField label="Property UID" value={cred("hostfully_property_uid")} onChange={v => setCred("hostfully_property_uid", v)} />
-                                                    <SaveActions status={saveStatus["pms"] ?? "idle"} label="Hostfully" onSave={() => doSave("pms")} onClear={() => doClear("pms", ["hostfully_agency_uid", "hostfully_api_token", "hostfully_property_uid"])} />
-                                                </div>
-                                            )}
-                                            {pmsTab === "smoobu" && (
-                                                <div className="flex flex-col gap-4">
-                                                    <p className="rounded-lg bg-secondary px-4 py-3 text-[13px] text-tertiary">Smoobu → Settings → API Keys.</p>
-                                                    <SecretField label="API Key" value={cred("smoobu_api_key")} onChange={v => setCred("smoobu_api_key", v)} />
-                                                    <CredField label="Apartment ID" value={cred("smoobu_apartment_id")} onChange={v => setCred("smoobu_apartment_id", v)} />
-                                                    <SaveActions status={saveStatus["pms"] ?? "idle"} label="Smoobu" onSave={() => doSave("pms")} onClear={() => doClear("pms", ["smoobu_api_key", "smoobu_apartment_id"])} />
-                                                </div>
-                                            )}
-                                            {pmsTab === "ical" && (
-                                                <div className="flex flex-col gap-4">
-                                                    <p className="rounded-lg bg-secondary px-4 py-3 text-[13px] text-tertiary">Airbnb: Calendar → Export Calendar. VRBO: Calendar → Import/Export.</p>
-                                                    <CredField label="Airbnb iCal URL" placeholder="https://www.airbnb.com/calendar/ical/..." value={cred("ical_airbnb")} onChange={v => setCred("ical_airbnb", v)} />
-                                                    <CredField label="VRBO iCal URL" placeholder="https://www.vrbo.com/icalendar/..." value={cred("ical_vrbo")} onChange={v => setCred("ical_vrbo", v)} />
-                                                    <CredField label="Other iCal URL #1" value={cred("ical_other1")} onChange={v => setCred("ical_other1", v)} />
-                                                    <CredField label="Other iCal URL #2" value={cred("ical_other2")} onChange={v => setCred("ical_other2", v)} />
-                                                    <SaveActions status={saveStatus["pms"] ?? "idle"} label="iCal Feeds" onSave={() => doSave("pms")} onClear={() => doClear("pms", ["ical_airbnb", "ical_vrbo", "ical_other1", "ical_other2"])} />
-                                                </div>
-                                            )}
-                                        </section>
-                                    )}
-
-                                    {/* Hosting (Netlify/Vercel) */}
-                                    {step.credSection === "hosting" && (
-                                        <section className="mb-6 rounded-2xl border border-secondary bg-primary p-6">
-                                            <div className="mb-4 flex items-center justify-between gap-3">
-                                                <h2 className="text-[15px] font-bold text-primary">Paste your hosting credentials:</h2>
-                                                <StatusBadge sec="hosting" />
-                                            </div>
-                                            <div className="flex flex-col gap-4">
-                                                <CredField label="Netlify Site Domain (e.g. site.netlify.app)" placeholder="your-site.netlify.app" value={cred("netlify_domain")} onChange={v => setCred("netlify_domain", v)} />
-                                                <CredField label="Netlify Site ID" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" value={cred("netlify_site_id")} onChange={v => setCred("netlify_site_id", v)} />
-                                                <SecretField label="Netlify Build Hook URL" placeholder="https://api.netlify.com/build_hooks/..." value={cred("netlify_build_hook")} onChange={v => setCred("netlify_build_hook", v)} />
-                                                <SaveActions status={saveStatus["hosting"] ?? "idle"} label="Netlify Info" onSave={() => doSave("hosting")} onClear={() => doClear("hosting", ["netlify_domain", "netlify_site_id", "netlify_build_hook"])} />
-                                            </div>
-                                        </section>
-                                    )}
-
-                                    {/* Supabase */}
-                                    {step.credSection === "supabase" && (
-                                        <section className="mb-6 rounded-2xl border border-secondary bg-primary p-6">
-                                            <div className="mb-4 flex items-center justify-between gap-3">
-                                                <h2 className="text-[15px] font-bold text-primary">Copy & Paste Credentials Below:</h2>
-                                                <StatusBadge sec="supabase" />
-                                            </div>
-                                            <div className="flex flex-col gap-4">
-                                                <CredField label="Supabase Project URL" placeholder="https://xxxxxxxxxxxx.supabase.co" value={cred("supabase_project_url")} onChange={v => setCred("supabase_project_url", v)} />
-                                                <SecretField label="Supabase Anon API Key" placeholder="eyJhbGciOiJIUzI1NiIs..." value={cred("supabase_anon_key")} onChange={v => setCred("supabase_anon_key", v)} />
-                                                <SaveActions status={saveStatus["supabase"] ?? "idle"} label="Supabase Credentials" onSave={() => doSave("supabase")} onClear={() => doClear("supabase", ["supabase_project_url", "supabase_anon_key"])} />
-                                            </div>
-                                        </section>
-                                    )}
-
-                                    {/* Stripe */}
-                                    {step.credSection === "stripe" && (
-                                        <section className="mb-6 rounded-2xl border border-secondary bg-primary p-6">
-                                            <div className="mb-4 flex items-center justify-between gap-3">
-                                                <h2 className="text-[15px] font-bold text-primary">Paste your Stripe Credentials here:</h2>
-                                                <StatusBadge sec="stripe" />
-                                            </div>
-                                            <div className="flex flex-col gap-4">
-                                                <CredField label="Account ID (e.g. acct_1Msz...)" placeholder="acct_1Msz..." value={cred("stripe_account_id")} onChange={v => setCred("stripe_account_id", v)} />
-                                                <CredField label="Publishable Key (pk_live_...)" placeholder="pk_live_..." value={cred("stripe_publishable_key")} onChange={v => setCred("stripe_publishable_key", v)} />
-                                                <SecretField label="Secret Key (sk_live_...)" placeholder="sk_live_..." value={cred("stripe_secret_key")} onChange={v => setCred("stripe_secret_key", v)} />
-                                                <SecretField label="Webhook Signing Secret (whsec_...)" placeholder="whsec_..." value={cred("stripe_webhook_secret")} onChange={v => setCred("stripe_webhook_secret", v)} />
-                                                <SaveActions status={saveStatus["stripe"] ?? "idle"} label="Stripe Credentials" onSave={() => doSave("stripe")} onClear={() => doClear("stripe", ["stripe_account_id", "stripe_publishable_key", "stripe_secret_key", "stripe_webhook_secret"])} />
-                                            </div>
-                                        </section>
-                                    )}
-
-                                    {/* Domain */}
-                                    {step.credSection === "domain" && (
-                                        <section className="mb-6 rounded-2xl border border-secondary bg-primary p-6">
-                                            <div className="mb-4 flex items-center justify-between gap-3">
-                                                <h2 className="text-[15px] font-bold text-primary">Save your domain details:</h2>
-                                                <StatusBadge sec="domain" />
-                                            </div>
-                                            <div className="flex flex-col gap-4">
-                                                <CredField label="Custom Domain (e.g. yourcabin.com)" placeholder="yourcabin.com" value={cred("domain_custom")} onChange={v => setCred("domain_custom", v)} />
-                                                <CredField label="Domain Registrar (e.g. GoDaddy, Namecheap)" placeholder="GoDaddy" value={cred("domain_registrar")} onChange={v => setCred("domain_registrar", v)} />
-                                                <CredField label="Registrar Login Email" placeholder="you@email.com" value={cred("domain_email")} onChange={v => setCred("domain_email", v)} />
-                                                <SaveActions status={saveStatus["domain"] ?? "idle"} label="Domain Info" onSave={() => doSave("domain")} onClear={() => doClear("domain", ["domain_custom", "domain_registrar", "domain_email"])} />
-                                            </div>
-                                        </section>
-                                    )}
-                                </>
-                            )}
+                            {/* ── Credential form — uniform Account User name + Password per service ── */}
+                            {!loading && CRED_FORM_SECTIONS.includes(step.credSection) && (() => {
+                                const sec = step.credSection;
+                                const uKey = `${sec}_username`;
+                                const pKey = `${sec}_password`;
+                                return (
+                                    <section className="mb-6 rounded-2xl border border-secondary bg-primary p-6">
+                                        <div className="mb-4 flex items-center justify-between gap-3">
+                                            <h2 className="text-[15px] font-bold text-primary">Enter your account login</h2>
+                                            <StatusBadge sec={sec} />
+                                        </div>
+                                        <div className="flex flex-col gap-4">
+                                            <p className="rounded-lg bg-secondary px-4 py-3 text-[13px] text-tertiary">Enter the account user name and password you use to sign in to this service.</p>
+                                            <CredField label="Account User name" placeholder="you@email.com" value={cred(uKey)} onChange={v => setCred(uKey, v)} />
+                                            <SecretField label="Password" placeholder="Account password" value={cred(pKey)} onChange={v => setCred(pKey, v)} />
+                                            <SaveActions status={saveStatus[sec] ?? "idle"} label="Login" onSave={() => doSave(sec)} onClear={() => doClear(sec, [uKey, pKey])} />
+                                        </div>
+                                    </section>
+                                );
+                            })()}
 
                         </>
                     )}
@@ -1515,6 +1407,30 @@ export const OwnerGuideScreen = () => {
                 </button>
             )}
 
+            {/* template hint toast — top-right, appears after 2s, dismissible */}
+            <AnimatePresence>
+                {isTemplate && showTemplateToast && (
+                    <motion.div
+                        className="fixed right-5 top-5 z-[55] w-[340px] max-w-[calc(100vw-2.5rem)] rounded-xl border border-secondary bg-primary p-4 shadow-lg ring-1 ring-black/5"
+                        initial={{ opacity: 0, y: -12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: 0.98 }}
+                        transition={{ type: "spring", stiffness: 320, damping: 26 }}>
+                        <div className="flex items-start gap-3">
+                            <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-600 dark:bg-brand-950/40">
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" /></svg>
+                            </span>
+                            <div className="flex-1">
+                                <p className="text-[13px] font-semibold text-primary">Master template</p>
+                                <p className="mt-0.5 text-[12.5px] leading-relaxed text-tertiary">This is the master template. Use <span className="font-semibold text-secondary">Create Owner Guide</span> in the sidebar to make a private copy to share with a client.</p>
+                            </div>
+                            <button type="button" onClick={() => setShowTemplateToast(false)} title="Dismiss"
+                                className="flex size-6 shrink-0 items-center justify-center rounded-md text-quaternary transition hover:bg-secondary hover:text-secondary">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+                            </button>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
             {/* completion modal */}
             <AnimatePresence>
                 {showComplete && (
@@ -1526,7 +1442,7 @@ export const OwnerGuideScreen = () => {
                             transition={{ type: "spring", stiffness: 320, damping: 26 }}>
                             <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-full bg-success-secondary text-4xl">🎉</div>
                             <h2 className="mb-2 text-[22px] font-bold text-primary">Onboarding Complete!</h2>
-                            <p className="mb-6 text-[14px] leading-relaxed text-tertiary">Your Stripe, PMS calendar API, and Netlify environments are connected under your secure ownership.</p>
+                            <p className="mb-6 text-[14px] leading-relaxed text-tertiary">Your PMS, Netlify, Supabase, Resend, domain, and Cloudflare logins are saved securely for your developer to configure.</p>
                             <button type="button" onClick={() => setShowComplete(false)}
                                 className="w-full rounded-xl bg-success-solid py-3 text-[15px] font-semibold text-white transition hover:opacity-90">
                                 Done
