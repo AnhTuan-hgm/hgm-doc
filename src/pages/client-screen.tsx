@@ -54,6 +54,8 @@ const LeadCaptureScreen = ({ slug }: { slug: string }) => {
             initialBeforeImg2={data?.before_img_2 ?? ""}
             initialAfterImg2={data?.after_img_2 ?? ""}
             initialFormOption={data?.form_option || undefined}
+            initialOptionBIntro={data?.option_b_intro || undefined}
+            initialOptionBSteps={data?.option_b_steps?.length ? data.option_b_steps : undefined}
         />
     );
 };

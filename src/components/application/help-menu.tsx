@@ -6,6 +6,7 @@ import { DocsRequestModal } from "@/components/application/docs-request-modal";
 import { Button } from "@/components/base/buttons/button";
 import { useAuthUser } from "@/hooks/use-auth-user";
 import { supabase } from "@/lib/supabase";
+import { compressImageFile } from "@/utils/compress-image";
 import { cx } from "@/utils/cx";
 
 const inputCls =
@@ -65,9 +66,7 @@ const BugReportModal = ({ open, onClose, reporter }: { open: boolean; onClose: (
     const handleImage = (e: ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
-        const reader = new FileReader();
-        reader.onload = () => setImage(reader.result as string);
-        reader.readAsDataURL(file);
+        void compressImageFile(file).then(setImage);
         e.target.value = "";
     };
 

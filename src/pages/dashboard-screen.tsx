@@ -9,6 +9,7 @@ import { SettingsDialog } from "@/pages/settings-screen";
 import { useAuthUser } from "@/hooks/use-auth-user";
 import { useEditShortcuts } from "@/hooks/use-edit-shortcuts";
 import { useTheme } from "@/providers/theme-provider";
+import { compressImageFile } from "@/utils/compress-image";
 import { cx } from "@/utils/cx";
 
 const PASSWORDS = ["ANHTUAN", "HGTEAM"];
@@ -1408,9 +1409,7 @@ const AddCardModal = ({ onClose, onSubmit, initial }: {
     const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
-        const reader = new FileReader();
-        reader.onload = () => setCover(reader.result as string);
-        reader.readAsDataURL(file);
+        void compressImageFile(file).then(setCover);
         e.target.value = "";
     };
 
@@ -1661,9 +1660,7 @@ const ClientModal = ({
     const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
-        const reader = new FileReader();
-        reader.onload = () => setCover(reader.result as string);
-        reader.readAsDataURL(file);
+        void compressImageFile(file).then(setCover);
         e.target.value = "";
     };
 

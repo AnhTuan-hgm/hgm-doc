@@ -7,6 +7,7 @@ import { TemplateScreen } from "@/pages/template-screen";
 import { DashboardScreen } from "@/pages/dashboard-screen";
 import { AiWebsiteSetupScreen } from "@/pages/ai-website-setup-screen";
 import { TemplateOneScreen } from "@/pages/template-one-screen";
+import { WelcomeEmailFlowOverviewScreen } from "@/pages/welcome-email-flow-overview-screen";
 import { OwnerGuideScreen } from "@/pages/owner-guide-screen";
 import { PopupPage } from "@/pages/popup-page";
 import { RequestsScreen } from "@/pages/requests-screen";
@@ -27,7 +28,7 @@ import "@/styles/globals.css";
 // floating toggle is hidden there to avoid duplicates. The account avatar is NOT
 // shown globally — it's a team-only settings shortcut that lives in the dashboard
 // rail, and it must never appear on client-facing pages (owner guides, popups, etc.).
-const PAGES_WITHOUT_FLOATING_CHROME = ["/designsystem", "/home2", "/dashboard", "/webteam/ai-website-setup", "/template-1", "/settings", "/roadmap"];
+const PAGES_WITHOUT_FLOATING_CHROME = ["/designsystem", "/home2", "/dashboard", "/webteam/ai-website-setup", "/template-1", "/welcome-email-flow-overview", "/settings", "/roadmap"];
 
 // The floating "?" help menu is a team tool. It renders ONLY on internal team
 // pages and is hidden on every client-facing page — all client slugs
@@ -44,6 +45,7 @@ const PAGES_WITH_HELP_MENU = [
     "/home2",
     "/template",
     "/template-1",
+    "/welcome-email-flow-overview",
     "/webteam/ai-website-setup",
 ];
 
@@ -74,6 +76,7 @@ createRoot(document.getElementById("root")!).render(
                         <Route path="/dashboard" element={<DashboardScreen />} />
                         <Route path="/webteam/ai-website-setup" element={<AiWebsiteSetupScreen />} />
                         <Route path="/template-1" element={<TemplateOneScreen />} />
+                        <Route path="/welcome-email-flow-overview" element={<WelcomeEmailFlowOverviewScreen />} />
                         <Route path="/owner-guide" element={<OwnerGuideScreen />} />
                         <Route path="/owner-guide/:slug" element={<OwnerGuideScreen />} />
                         <Route path="/popup" element={<PopupPage />} />

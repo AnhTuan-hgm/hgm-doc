@@ -49,6 +49,9 @@ Never use raw Tailwind palette utilities (`text-gray-900`, `bg-blue-700`, `borde
 ### Disabled states — `opacity-50`
 Use `disabled:cursor-not-allowed disabled:opacity-50`. Do NOT use the v7 pattern (`disabled:bg-disabled_subtle`, etc.).
 
+### Image uploads — always compress to WebP
+Every image-upload handler MUST go through `compressImageFile()` from `src/utils/compress-image.ts` (resizes to ≤1600px + WebP ~0.82 quality, JPEG fallback, SVG/GIF pass through) — never raw `FileReader.readAsDataURL` on the original file. Images are stored as base64 in Supabase, so uncompressed uploads bloat the DB and slow every page load.
+
 ### Components — React Aria foundation
 All UI is built on React Aria Components using the compound pattern (`Select.Item`, `Select.ComboBox`). Match existing component structure and add size/color variants. Reference: [.claude/rules/components.md](.claude/rules/components.md).
 

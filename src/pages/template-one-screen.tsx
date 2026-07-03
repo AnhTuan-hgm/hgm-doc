@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { IconRail, RailBottom } from "@/components/application/icon-rail";
 import { useAuthUser } from "@/hooks/use-auth-user";
 import { supabase } from "@/lib/supabase";
+import { compressImageFile } from "@/utils/compress-image";
 import { cx } from "@/utils/cx";
 
 /** The master template lives at /template-1; copies live at /{custom-slug} (stored in template_docs). */
@@ -377,9 +378,7 @@ const StepCard = ({
     const handleImage = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
-        const reader = new FileReader();
-        reader.onload = () => onUpdate(step.id, "image", reader.result as string);
-        reader.readAsDataURL(file);
+        void compressImageFile(file).then((img) => onUpdate(step.id, "image", img));
         e.target.value = "";
     };
 

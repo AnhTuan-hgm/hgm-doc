@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { IconRail, RailBottom } from "@/components/application/icon-rail";
 import { supabase } from "@/lib/supabase";
+import { compressImageFile } from "@/utils/compress-image";
 import { cx } from "@/utils/cx";
 
 const SOP_SLUG = "ai-website-setup";
@@ -411,9 +412,7 @@ const StepCard = ({
     const handleImage = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
-        const reader = new FileReader();
-        reader.onload = () => onUpdate(step.id, "image", reader.result as string);
-        reader.readAsDataURL(file);
+        void compressImageFile(file).then((img) => onUpdate(step.id, "image", img));
         e.target.value = "";
     };
 

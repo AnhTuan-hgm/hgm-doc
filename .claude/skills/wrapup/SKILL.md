@@ -21,16 +21,23 @@ Wrap up the working day: record what shipped on the Project Management page, get
    - PATCH the row back: `curl -X PATCH "$URL/rest/v1/sop_pages?slug=eq.roadmap" -H "apikey: $KEY" -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{"data": <updated json>, "updated_at": "<now ISO>"}'`
    - (Supabase only is fine here — Firebase is a fallback copy and re-syncs on the next in-app save.)
 
-4. **Merge to main & push.** If on a feature branch (e.g. `dev-AnhTuan`): `git checkout main && git pull && git merge <branch> && git push origin main`, then switch back to the feature branch. If already on `main`, just push. Pushing `main` triggers the GitHub Actions deploy (`.github/workflows/deploy.yml`) — do NOT run `netlify deploy` manually.
+4. **Update active project pages** — currently `/welcome-email-flow-overview` (Supabase row `sop_pages` slug `welcome-email-flow-overview`):
+   - Fetch the row and review what changed since the last session (new answers in Questions, new template content, checked To-dos).
+   - **Version control — snapshot BEFORE writing.** Copy the current `data` to a new row `welcome-email-flow-overview@<YYYY-MM-DDTHH-MM>` (POST to `sop_pages` with `on_conflict=slug`). Never edit or delete snapshot rows; never overwrite answered Questions or Timeline entries — append, don't rewrite, so discussion context is never lost.
+   - If the feature progressed today, append an entry to its `data.log` (same shape as the roadmap log) and tick any build To-dos that landed.
+   - PATCH the row back. If AnhTuan left new answers or content, acknowledge them in the sign-off so decisions don't slip by.
 
-5. **Verify the deploy.** Poll the Actions run for the pushed SHA until `conclusion: success`, then confirm Netlify state is `ready` and https://docs-hgm.netlify.app returns 200:
+5. **Merge to main & push.** If on a feature branch (e.g. `dev-AnhTuan`): `git checkout main && git pull && git merge <branch> && git push origin main`, then switch back to the feature branch. If already on `main`, just push. Pushing `main` triggers the GitHub Actions deploy (`.github/workflows/deploy.yml`) — do NOT run `netlify deploy` manually.
+
+6. **Verify the deploy.** Poll the Actions run for the pushed SHA until `conclusion: success`, then confirm Netlify state is `ready` and https://docs-hgm.netlify.app returns 200:
    ```bash
    netlify api listSiteDeploys --data '{"site_id":"228df6be-8804-40d5-bc3f-60b40db91306","per_page":1}' | jq '.[0].state'
    ```
    If the workflow fails, fetch the failing step's log and report it — don't retry blindly.
 
-6. **Sign off.** Report: what was logged to the Timeline, the deploy status + live URL, and anything left hanging for tomorrow (uncommitted files, failed checks, unanswered questions on /roadmap). Play the completion sound.
+7. **Sign off.** Report: what was logged to the Timeline (roadmap AND active project pages), the deploy status + live URL, and anything left hanging for tomorrow (uncommitted files, failed checks, unanswered questions on /roadmap or /welcome-email-flow-overview). Play the completion sound.
 
 ## Notes
 - Timeline seed data lives in `src/pages/roadmap-screen.tsx` (`DEFAULT_DATA`) but real content is the Supabase row — always edit the row, not the seed.
 - Never commit secrets; `.env.local` is gitignored.
+- Snapshot rows (`<slug>@<timestamp>`) are the version history for project pages — list them with `slug=like.<slug>@*`. To restore, copy a snapshot's `data` back onto the live slug (after snapshotting the current state first).

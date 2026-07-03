@@ -130,6 +130,8 @@ export interface LeadCapturePageData {
     promo_header: string;
     promo_desc: string;
     form_option?: string; // both | a | b — which Task-2 option(s) the client sees
+    option_b_intro?: string; // Option B intro paragraph (editable; **bold** markers)
+    option_b_steps?: string[]; // Option B step list (editable; **bold** markers)
     before_img_1?: string;
     after_img_1?: string;
     before_img_2?: string;

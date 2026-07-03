@@ -16,6 +16,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { useTheme } from "@/providers/theme-provider";
+import { compressImageFile } from "@/utils/compress-image";
 import { cx } from "@/utils/cx";
 import { supabase, type OwnerGuideMeta } from "@/lib/supabase";
 import { readSopPage, writeSopPage } from "@/lib/db-sync";
@@ -979,9 +980,7 @@ export const OwnerGuideScreen = () => {
     const handleInstructionImage = (si: number, ii: number, e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
-        const reader = new FileReader();
-        reader.onload = () => patchInstruction(si, ii, { image: reader.result as string });
-        reader.readAsDataURL(file);
+        void compressImageFile(file).then((img) => patchInstruction(si, ii, { image: img }));
         e.target.value = "";
     };
 
@@ -1069,9 +1068,7 @@ export const OwnerGuideScreen = () => {
     const handleImageFile = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
-        const reader = new FileReader();
-        reader.onload = () => addImage(currentStep, reader.result as string);
-        reader.readAsDataURL(file);
+        void compressImageFile(file).then((img) => addImage(currentStep, img));
         e.target.value = "";
     };
 

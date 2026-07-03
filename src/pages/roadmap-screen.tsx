@@ -23,6 +23,7 @@ import { Badge, BadgeWithDot } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
 import { useEditShortcuts } from "@/hooks/use-edit-shortcuts";
 import { readSopPage, writeSopPage } from "@/lib/db-sync";
+import { compressImageFile } from "@/utils/compress-image";
 import { cx } from "@/utils/cx";
 
 const ROADMAP_SLUG = "roadmap";
@@ -277,9 +278,7 @@ export const RoadmapScreen = () => {
     const handleQuestionImage = (id: string, e: ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
-        const reader = new FileReader();
-        reader.onload = () => updateQuestion(id, { image: reader.result as string });
-        reader.readAsDataURL(file);
+        void compressImageFile(file).then((img) => updateQuestion(id, { image: img }));
         e.target.value = "";
     };
 

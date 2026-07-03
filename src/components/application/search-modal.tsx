@@ -25,6 +25,7 @@ const STATIC_ITEMS: SearchItem[] = [
     { id: "s-metapixel", title: "Meta Pixel template", subtitle: "New client pixel page", path: "/metapixel", kind: "Template", icon: Share07 },
     { id: "s-popup", title: "Popup template", subtitle: "New lead-capture page", path: "/popup", kind: "Template", icon: Mail01 },
     { id: "s-template1", title: "Template 1", subtitle: "Copyable document template", path: "/template-1", kind: "Template", icon: Code02 },
+    { id: "s-emailflow", title: "Welcome Email Flow — Overview", subtitle: "AM email-flow builder project reference", path: "/welcome-email-flow-overview", kind: "Page", icon: Mail01 },
 ];
 
 export const SearchModal = ({ open, onClose }: { open: boolean; onClose: () => void }) => {

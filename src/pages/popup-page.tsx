@@ -5,6 +5,8 @@ import {
     ArrowRight,
     Browser,
     Check,
+    ChevronDown,
+    ChevronUp,
     Code02,
     CodeBrowser,
     Copy01,
@@ -16,6 +18,7 @@ import {
     MessageChatCircle,
     Plus,
     SearchSm,
+    Trash01,
     XClose,
 } from "@untitledui/icons";
 import { useNavigate, useSearchParams } from "react-router";
@@ -26,6 +29,7 @@ import { Tabs } from "@/components/application/tabs/tabs";
 import { Reveal } from "@/components/shared-assets/reveal";
 import { ImageLightbox } from "@/components/shared-assets/image-lightbox";
 import { useClipboard } from "@/hooks/use-clipboard";
+import { compressImageFile } from "@/utils/compress-image";
 import { cx } from "@/utils/cx";
 import { supabase } from "@/lib/supabase";
 
@@ -73,6 +77,17 @@ const DEFAULT_FORM_CODE = `<!-- HiddenGem Inline Form — paste into an HTML / e
 
 const DEFAULT_PROMO_HEADER = "Stay Longer, Save More";
 const DEFAULT_PROMO_DESC = "Book 2 nights or more and enjoy 15% off your stay — straight to your inbox.";
+
+// Option B (replace an existing form) — intro + steps are editable per client page.
+// **double asterisks** render bold, so edited text keeps the highlighted keywords.
+const DEFAULT_OPTION_B_INTRO =
+    "Already have a sign-up form on your site? You don't need a new 2-column section — just swap your current form for the code below.";
+const DEFAULT_OPTION_B_STEPS = [
+    "Remove your **current form** from the page.",
+    "Add a **code / HTML embed widget** where the form used to be.",
+    "Paste the code below into the widget, then **save and publish**.",
+    "Update the **heading and text** next to the form — copy the promotion text below.",
+];
 
 const STEPS = [
     { short: "Why", full: "Why add a popup" },
@@ -314,6 +329,18 @@ const CopyableField = ({
 
 /* ── Step list ────────────────────────────────────────────────────── */
 
+/** Render **bold** markers inside editable text as highlighted keywords. */
+const renderBold = (text: string): ReactNode =>
+    text.split(/\*\*(.+?)\*\*/g).map((part, i) =>
+        i % 2 === 1 ? (
+            <span key={i} className="font-semibold text-secondary">
+                {part}
+            </span>
+        ) : (
+            part
+        ),
+    );
+
 const Steps = ({ steps }: { steps: ReactNode[] }) => (
     <ol className="mt-5 flex flex-col gap-2.5">
         {steps.map((step, i) => (
@@ -395,9 +422,7 @@ const BeforeAfterSlider = ({
     const handleFile = (e: React.ChangeEvent<HTMLInputElement>, cb: (d: string) => void) => {
         const file = e.target.files?.[0];
         if (!file) return;
-        const reader = new FileReader();
-        reader.onload = () => cb(reader.result as string);
-        reader.readAsDataURL(file);
+        void compressImageFile(file).then(cb);
         e.target.value = "";
     };
 
@@ -484,6 +509,9 @@ export interface PopupPageProps {
     initialAfterImg2?: string;
     /** Which Task-2 option(s) to show the client: "both" | "a" | "b". */
     initialFormOption?: string;
+    /** Option B intro paragraph + step list (editable per client; **bold** markers supported). */
+    initialOptionBIntro?: string;
+    initialOptionBSteps?: string[];
 }
 
 export const PopupPage = ({
@@ -499,6 +527,8 @@ export const PopupPage = ({
     initialBeforeImg2 = "",
     initialAfterImg2 = "",
     initialFormOption = "both",
+    initialOptionBIntro = DEFAULT_OPTION_B_INTRO,
+    initialOptionBSteps = DEFAULT_OPTION_B_STEPS,
 }: PopupPageProps) => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
@@ -528,6 +558,8 @@ export const PopupPage = ({
     const [beforeImg, setBeforeImg] = useState(initialBeforeImg2);
     const [afterImg, setAfterImg] = useState(initialAfterImg2);
     const [formOption, setFormOption] = useState(initialFormOption);
+    const [optionBIntro, setOptionBIntro] = useState(initialOptionBIntro);
+    const [optionBSteps, setOptionBSteps] = useState<string[]>(initialOptionBSteps);
 
     // Which Task-2 option(s) are visible. When only one is shown, the framing
     // chrome (lead-in, option pills, "Or" divider) is suppressed for a clean read.
@@ -560,6 +592,8 @@ export const PopupPage = ({
                 before_img_2: beforeImg,
                 after_img_2: afterImg,
                 form_option: formOption,
+                option_b_intro: optionBIntro,
+                option_b_steps: optionBSteps,
             },
             { onConflict: "slug" },
         );
@@ -1054,28 +1088,132 @@ export const PopupPage = ({
                                     </div>
                                 )}
 
-                                <p className={cx("text-md text-tertiary", showBoth && "mt-3")}>
-                                    Already have a sign-up form on your site? You don't need a new 2-column section — just swap your
-                                    current form for the code below.
-                                </p>
-
-                                <Steps
-                                    steps={[
-                                        <>Remove your <span className="font-semibold text-secondary">current form</span> from the page.</>,
-                                        <>Add a <span className="font-semibold text-secondary">code / HTML embed widget</span> where the form used to be.</>,
-                                        <>Paste the code below into the widget, then <span className="font-semibold text-secondary">save and publish</span>.</>,
-                                    ]}
-                                />
-
-                                <div className="mt-6">
-                                    <CodeBlock
-                                        code={formCode}
-                                        copyId="form-code-replace"
-                                        copied={copied}
-                                        onCopy={copy}
-                                        editable={!isLocked}
-                                        onChange={setFormCode}
+                                {/* Intro — editable per client; **bold** markers highlight keywords */}
+                                {isLocked ? (
+                                    <p className={cx("text-md text-tertiary", showBoth && "mt-3")}>{renderBold(optionBIntro)}</p>
+                                ) : (
+                                    <textarea
+                                        value={optionBIntro}
+                                        rows={2}
+                                        onChange={(e) => setOptionBIntro(e.target.value)}
+                                        className={cx(
+                                            "w-full resize-y rounded-lg border border-secondary bg-primary px-3 py-2 text-md text-tertiary outline-none transition duration-100 ease-linear focus:border-brand focus:ring-1 focus:ring-brand",
+                                            showBoth && "mt-3",
+                                        )}
                                     />
+                                )}
+
+                                {/* Steps — editable list per client */}
+                                {isLocked ? (
+                                    <Steps steps={optionBSteps.map((s) => renderBold(s))} />
+                                ) : (
+                                    <div className="mt-5 flex flex-col gap-2.5">
+                                        {optionBSteps.map((step, i) => (
+                                            <div key={i} className="flex items-center gap-3">
+                                                <span className="flex size-5 shrink-0 items-center justify-center rounded-md bg-brand-50 text-xs font-semibold text-brand-700 tabular-nums">
+                                                    {i + 1}
+                                                </span>
+                                                <input
+                                                    type="text"
+                                                    value={step}
+                                                    onChange={(e) => setOptionBSteps((prev) => prev.map((s, j) => (j === i ? e.target.value : s)))}
+                                                    className="min-w-0 flex-1 rounded-lg border border-secondary bg-primary px-3 py-1.5 text-sm text-tertiary outline-none transition duration-100 ease-linear focus:border-brand focus:ring-1 focus:ring-brand"
+                                                />
+                                                <div className="flex shrink-0 items-center gap-1">
+                                                    <button
+                                                        type="button"
+                                                        title="Move up"
+                                                        disabled={i === 0}
+                                                        onClick={() =>
+                                                            setOptionBSteps((prev) => {
+                                                                const next = [...prev];
+                                                                [next[i - 1], next[i]] = [next[i], next[i - 1]];
+                                                                return next;
+                                                            })
+                                                        }
+                                                        className="flex size-7 items-center justify-center rounded-md text-fg-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-fg-secondary disabled:cursor-not-allowed disabled:opacity-50"
+                                                    >
+                                                        <ChevronUp className="size-4" aria-hidden="true" />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        title="Move down"
+                                                        disabled={i === optionBSteps.length - 1}
+                                                        onClick={() =>
+                                                            setOptionBSteps((prev) => {
+                                                                const next = [...prev];
+                                                                [next[i], next[i + 1]] = [next[i + 1], next[i]];
+                                                                return next;
+                                                            })
+                                                        }
+                                                        className="flex size-7 items-center justify-center rounded-md text-fg-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-fg-secondary disabled:cursor-not-allowed disabled:opacity-50"
+                                                    >
+                                                        <ChevronDown className="size-4" aria-hidden="true" />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        title="Remove step"
+                                                        onClick={() => setOptionBSteps((prev) => prev.filter((_, j) => j !== i))}
+                                                        className="flex size-7 items-center justify-center rounded-md text-fg-quaternary transition duration-100 ease-linear hover:bg-error-primary hover:text-fg-error-primary"
+                                                    >
+                                                        <Trash01 className="size-4" aria-hidden="true" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                        <button
+                                            type="button"
+                                            onClick={() => setOptionBSteps((prev) => [...prev, ""])}
+                                            className="flex w-fit items-center gap-1.5 text-sm font-semibold text-brand-secondary hover:underline"
+                                        >
+                                            <Plus className="size-4" aria-hidden="true" /> Add step
+                                        </button>
+                                        <p className="text-xs text-quaternary">Tip: wrap words in **double asterisks** to make them bold.</p>
+                                    </div>
+                                )}
+
+                                {/* Promotion text + code — same content as Option A, so either path stays in sync */}
+                                <div className="mt-6 grid gap-4 md:grid-cols-2">
+                                    <div className="flex flex-col rounded-xl p-5 ring-1 ring-secondary">
+                                        <span className="mb-4 inline-flex w-fit items-center rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-semibold text-brand-700">
+                                            Promotion text
+                                        </span>
+                                        <div className="flex flex-col gap-4">
+                                            <CopyableField
+                                                label="Heading"
+                                                value={promoHeader}
+                                                copyId="promo-header-replace"
+                                                copied={copied}
+                                                onCopy={copy}
+                                                editable={!isLocked}
+                                                onChange={setPromoHeader}
+                                            />
+                                            <CopyableField
+                                                label="Description"
+                                                value={promoDesc}
+                                                copyId="promo-desc-replace"
+                                                copied={copied}
+                                                onCopy={copy}
+                                                editable={!isLocked}
+                                                onChange={setPromoDesc}
+                                                multiline
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="flex flex-col rounded-xl p-5 ring-1 ring-secondary">
+                                        <span className="mb-4 inline-flex w-fit items-center rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-semibold text-brand-700">
+                                            Insert code
+                                        </span>
+                                        <CodeBlock
+                                            code={formCode}
+                                            copyId="form-code-replace"
+                                            copied={copied}
+                                            onCopy={copy}
+                                            editable={!isLocked}
+                                            onChange={setFormCode}
+                                        />
+                                    </div>
                                 </div>
                             </div>
                         )}

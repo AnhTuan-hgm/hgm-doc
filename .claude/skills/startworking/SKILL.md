@@ -28,9 +28,10 @@ Get the workspace ready and propose a plan for the day.
    - Fetch open requests & bug reports:
      `curl -s "$URL/rest/v1/docs_requests?status=eq.open&order=created_at.desc&select=title,priority,requester,created_at" -H "apikey: $KEY" -H "Authorization: Bearer $KEY"`
      → highlight anything titled `[Bug]` or priority high/urgent first.
+   - **Review active project pages** — currently `/welcome-email-flow-overview` (row `sop_pages` slug `welcome-email-flow-overview`): fetch `data` and diff against the newest snapshot row (`slug=like.welcome-email-flow-overview@*`, latest by slug). Surface anything AnhTuan changed since last session — newly answered Questions, pasted template content, edited sections — plus unchecked build To-dos. These are decisions to acknowledge and act on, never to overwrite.
    - Skim `git log --oneline -10` for where yesterday left off.
 
-6. **Suggest the day.** Present a short prioritized list (3–5 items): urgent bugs first, then in-progress roadmap work, then unfinished to-dos; note unanswered /roadmap Questions that block work. End with the dev URL (http://localhost:5180/roadmap) and ask which item to start on.
+6. **Suggest the day.** Present a short prioritized list (3–5 items): urgent bugs first, then in-progress roadmap work (including the welcome-email-flow project when it has new answers or unblocked to-dos), then unfinished to-dos; note unanswered Questions (on /roadmap or /welcome-email-flow-overview) that block work. End with the dev URL (http://localhost:5180/roadmap) and ask which item to start on.
 
 ## Notes
 - Don't kill dev servers from other projects — only manage hgm-doc's.
