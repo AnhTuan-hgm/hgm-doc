@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { IconRail, RailBottom } from "@/components/application/icon-rail";
+import { CollapsedTopBar, IconRail, NavCollapseButton, RailBottom, useNavCollapsed } from "@/components/application/icon-rail";
 import { supabase } from "@/lib/supabase";
 import { compressImageFile } from "@/utils/compress-image";
 import { cx } from "@/utils/cx";
@@ -665,7 +665,7 @@ const StepCard = ({
 
 const Sidebar = ({
     stages, selectedId, locked, editing,
-    onSelect, onAddStage, onDeleteStage, onMoveStage,
+    onSelect, onAddStage, onDeleteStage, onMoveStage, onCollapse,
 }: {
     stages: Stage[];
     selectedId: string | null;
@@ -675,12 +675,14 @@ const Sidebar = ({
     onAddStage: () => void;
     onDeleteStage: (id: string) => void;
     onMoveStage: (id: string, dir: -1 | 1) => void;
+    onCollapse?: () => void;
 }) => {
     return (
-    <aside className="flex h-dvh w-[300px] shrink-0 flex-col border-r border-secondary bg-primary">
+    <aside className="flex h-full w-[300px] shrink-0 flex-col border-r border-secondary bg-primary">
         {/* header */}
-        <div className="flex h-[73px] shrink-0 items-center border-b border-secondary px-5">
+        <div className="flex h-[73px] shrink-0 items-center justify-between border-b border-secondary px-5">
             <h2 className="text-md font-semibold text-primary">Web Team</h2>
+            {onCollapse && <NavCollapseButton onClick={onCollapse} />}
         </div>
 
         {/* stage list */}
@@ -777,6 +779,7 @@ const Sidebar = ({
 
 export const AiWebsiteSetupScreen = () => {
     const [state, setState] = useState<SOPState>(() => load());
+    const { collapsed: navCollapsed, toggle: toggleNav } = useNavCollapsed();
     const [saved, setSaved] = useState(false);
     const [saving, setSaving] = useState(false);
     const [saveError, setSaveError] = useState("");
@@ -944,8 +947,11 @@ export const AiWebsiteSetupScreen = () => {
     });
 
     return (
-        <div className="flex h-dvh overflow-hidden bg-secondary">
-            <IconRail activeDept="website" bottom={<RailBottom editing={editing} onToggleEditing={handleToggleLock} />} />
+        <div className="flex h-dvh flex-col overflow-hidden bg-secondary">
+            {navCollapsed && <CollapsedTopBar title="Web Team" onExpand={toggleNav} />}
+            <div className="flex min-h-0 flex-1">
+            {!navCollapsed && <IconRail activeDept="website" bottom={<RailBottom editing={editing} onToggleEditing={handleToggleLock} />} />}
+            {!navCollapsed && (
             <Sidebar
                 stages={stages}
                 selectedId={selectedId}
@@ -955,7 +961,9 @@ export const AiWebsiteSetupScreen = () => {
                 onAddStage={handleAddStage}
                 onDeleteStage={handleDeleteStage}
                 onMoveStage={handleMoveStage}
+                onCollapse={toggleNav}
             />
+            )}
 
             <main ref={mainRef} className="flex-1 overflow-y-auto">
                 <AnimatePresence mode="wait">
@@ -1132,6 +1140,7 @@ export const AiWebsiteSetupScreen = () => {
                 </AnimatePresence>
             </div>
 
+            </div>
         </div>
     );
 };

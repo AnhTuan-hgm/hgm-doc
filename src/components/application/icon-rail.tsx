@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
-import { BookOpen01, Briefcase01, Code02, Lock01, LockUnlocked01, Moon01, SearchSm, Sun, Users01 } from "@untitledui/icons";
+import { BookOpen01, Briefcase01, Code02, LayoutLeft, Lock01, LockUnlocked01, Moon01, SearchSm, Sun, Users01 } from "@untitledui/icons";
 import { useTheme } from "@/providers/theme-provider";
 import { SearchModal } from "@/components/application/search-modal";
 import { cx } from "@/utils/cx";
@@ -45,6 +45,46 @@ export const RailBottom = ({ editing, onToggleEditing }: { editing: boolean; onT
         </>
     );
 };
+
+/* ── Collapsible navigation (hide/show the icon rail + side menu) ──
+   Shared across all internal pages; the preference persists in localStorage
+   so a hidden nav stays hidden everywhere until expanded again. */
+
+const NAV_COLLAPSED_KEY = "hgm_nav_collapsed";
+
+export const useNavCollapsed = () => {
+    const [collapsed, setCollapsed] = useState(() => {
+        try { return localStorage.getItem(NAV_COLLAPSED_KEY) === "1"; } catch { return false; }
+    });
+    const toggle = () =>
+        setCollapsed((v) => {
+            const next = !v;
+            try { localStorage.setItem(NAV_COLLAPSED_KEY, next ? "1" : "0"); } catch { /* ignore */ }
+            return next;
+        });
+    return { collapsed, toggle };
+};
+
+/** Panel toggle — place in a side-menu header (hide) or the collapsed top bar (show). */
+export const NavCollapseButton = ({ onClick, label = "Hide menu" }: { onClick: () => void; label?: string }) => (
+    <button
+        type="button"
+        title={label}
+        onClick={onClick}
+        className="flex size-8 items-center justify-center rounded-lg text-fg-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-fg-secondary"
+    >
+        <LayoutLeft className="size-[18px]" aria-hidden="true" />
+    </button>
+);
+
+/** Slim replacement header shown while the rail + side menu are hidden. */
+export const CollapsedTopBar = ({ title, onExpand }: { title: string; onExpand: () => void }) => (
+    <div className="flex h-14 shrink-0 items-center gap-3 border-b border-secondary bg-primary pl-2 pr-4">
+        <img src="/hgm logo/Favicon ON LIGHT.svg" alt="HiddenGem" className="size-9" draggable={false} />
+        <h2 className="text-md font-semibold text-primary">{title}</h2>
+        <NavCollapseButton onClick={onExpand} label="Show menu" />
+    </div>
+);
 
 /** Department rail shown on every internal HiddenGem team page (not on client-facing pages). */
 export const RAIL_ITEMS = [

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowRight, Check, Copy01, Mail01, Plus, Trash01 } from "@untitledui/icons";
-import { IconRail, RailBottom } from "@/components/application/icon-rail";
+import { CollapsedTopBar, IconRail, NavCollapseButton, RailBottom, useNavCollapsed } from "@/components/application/icon-rail";
 import { supabase } from "@/lib/supabase";
 import { cx } from "@/utils/cx";
 
@@ -220,6 +220,7 @@ const SECTIONS = [
 export const WelcomeEmailFlowOverviewScreen = () => {
     const [data, setData] = useState<FlowData>(seed);
     const [editing, setEditing] = useState(false);
+    const { collapsed: navCollapsed, toggle: toggleNav } = useNavCollapsed();
     const [activeSection, setActiveSection] = useState(SECTIONS[0].id);
     const mainRef = useRef<HTMLElement>(null);
     const hydratedRef = useRef(false);
@@ -270,13 +271,17 @@ export const WelcomeEmailFlowOverviewScreen = () => {
     const rmLine = (list: "workflow" | "sidemenu", i: number) => update((d) => void d[list].splice(i, 1));
 
     return (
-        <div className="flex h-dvh overflow-hidden bg-secondary">
-            <IconRail activeDept="am" bottom={<RailBottom editing={editing} onToggleEditing={() => setEditing((e) => !e)} />} />
+        <div className="flex h-dvh flex-col overflow-hidden bg-secondary">
+            {navCollapsed && <CollapsedTopBar title="Welcome Email Flow" onExpand={toggleNav} />}
+            <div className="flex min-h-0 flex-1">
+            {!navCollapsed && <IconRail activeDept="am" bottom={<RailBottom editing={editing} onToggleEditing={() => setEditing((e) => !e)} />} />}
 
             {/* Section nav */}
-            <aside className="hidden h-dvh w-60 shrink-0 flex-col border-r border-secondary bg-primary md:flex">
-                <div className="flex h-[73px] shrink-0 items-center border-b border-secondary px-5">
+            {!navCollapsed && (
+            <aside className="hidden h-full w-60 shrink-0 flex-col border-r border-secondary bg-primary md:flex">
+                <div className="flex h-[73px] shrink-0 items-center justify-between border-b border-secondary px-5">
                     <h2 className="text-md font-semibold text-primary">Welcome Email Flow</h2>
+                    <NavCollapseButton onClick={toggleNav} />
                 </div>
                 <motion.nav
                     className="flex-1 overflow-y-auto px-3 py-4"
@@ -303,6 +308,7 @@ export const WelcomeEmailFlowOverviewScreen = () => {
                     ))}
                 </motion.nav>
             </aside>
+            )}
 
             {/* Content */}
             <main ref={mainRef} className="flex-1 overflow-y-auto">
@@ -591,6 +597,7 @@ export const WelcomeEmailFlowOverviewScreen = () => {
                     </section>
                 </div>
             </main>
+            </div>
         </div>
     );
 };

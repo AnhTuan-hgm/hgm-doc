@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { IconRail } from "@/components/application/icon-rail";
+import { CollapsedTopBar, IconRail, NavCollapseButton, useNavCollapsed } from "@/components/application/icon-rail";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowUpRight, Award01, BookOpen01, Briefcase01, Check, ChevronDown, Code02, Diamond01, Edit01, Grid01, Image01, LayoutAlt01, List, Lock01, LockUnlocked01, Mail01, MarkerPin01, MessageChatCircle, Plus, SearchSm, Share07, Star01, Trash01, Trophy01, Users01, XClose } from "@untitledui/icons";
 import { supabase, type ChatWidgetPageData, type ClientPageData, type ClientRecord, type LeadCapturePageData, type OverviewCard, type OwnerGuideMeta, type OverviewTab } from "@/lib/supabase";
@@ -300,6 +300,7 @@ const Sidebar = ({
     customTabIds,
     onAddTab,
     onDeleteTab,
+    onCollapse,
 }: {
     department: Department;
     tabs: DeptTab[];
@@ -310,6 +311,7 @@ const Sidebar = ({
     customTabIds: string[];
     onAddTab: (label: string) => void;
     onDeleteTab: (id: string) => void;
+    onCollapse?: () => void;
 }) => {
     const [adding, setAdding] = useState(false);
     const [newLabel, setNewLabel] = useState("");
@@ -321,10 +323,11 @@ const Sidebar = ({
     };
 
     return (
-    <aside className="flex h-dvh w-60 shrink-0 flex-col border-r border-secondary bg-primary">
+    <aside className="flex h-full w-60 shrink-0 flex-col border-r border-secondary bg-primary">
         {/* Department header */}
-        <div className="flex h-[73px] shrink-0 items-center border-b border-secondary px-5">
+        <div className="flex h-[73px] shrink-0 items-center justify-between border-b border-secondary px-5">
             <h2 className="text-md font-semibold text-primary">{department.header}</h2>
+            {onCollapse && <NavCollapseButton onClick={onCollapse} />}
         </div>
 
         {/* Nav */}
@@ -585,7 +588,7 @@ const MetaPixelContent = () => {
     });
 
     return (
-        <div className="flex h-dvh flex-1 flex-col overflow-hidden bg-secondary">
+        <div className="flex h-full flex-1 flex-col overflow-hidden bg-secondary">
             {/* Top bar */}
             <header className="flex h-[73px] shrink-0 items-center justify-between border-b border-secondary bg-primary px-6">
                 <div>
@@ -784,7 +787,7 @@ const OwnerGuidesContent = () => {
     });
 
     return (
-        <div className="flex h-dvh flex-1 flex-col overflow-hidden bg-secondary">
+        <div className="flex h-full flex-1 flex-col overflow-hidden bg-secondary">
             <header className="flex h-[73px] shrink-0 items-center justify-between border-b border-secondary bg-primary px-6">
                 <div>
                     <h1 className="text-md font-semibold text-primary">Owner Guides</h1>
@@ -971,7 +974,7 @@ const PopupsContent = () => {
     };
 
     return (
-        <div className="flex h-dvh flex-1 flex-col overflow-hidden bg-secondary">
+        <div className="flex h-full flex-1 flex-col overflow-hidden bg-secondary">
             <header className="flex h-[73px] shrink-0 items-center justify-between border-b border-secondary bg-primary px-6">
                 <div>
                     <h1 className="text-md font-semibold text-primary">Popup Pages</h1>
@@ -1166,7 +1169,7 @@ const ChatWidgetContent = () => {
     };
 
     return (
-        <div className="flex h-dvh flex-1 flex-col overflow-hidden bg-secondary">
+        <div className="flex h-full flex-1 flex-col overflow-hidden bg-secondary">
             <header className="flex h-[73px] shrink-0 items-center justify-between border-b border-secondary bg-primary px-6">
                 <div>
                     <h1 className="text-md font-semibold text-primary">Chat Widget Guides</h1>
@@ -1566,7 +1569,7 @@ const OverviewContent = ({ department, tab, editing, isOwner }: { department: De
     const sorted = [...cards].sort((a, b) => (a.starred === b.starred ? 0 : a.starred ? -1 : 1));
 
     return (
-        <div className="flex h-dvh flex-1 flex-col overflow-hidden bg-secondary">
+        <div className="flex h-full flex-1 flex-col overflow-hidden bg-secondary">
             <header className="flex h-[73px] shrink-0 items-center justify-between border-b border-secondary bg-primary px-6">
                 <div>
                     <h1 className="text-md font-semibold text-primary">Overview</h1>
@@ -1977,7 +1980,15 @@ const ClientCard = ({
     );
 };
 
-const ClientListContent = ({ editing }: { editing: boolean }) => {
+const ClientListContent = ({
+    editing,
+    navCollapsed = false,
+    onCollapse,
+}: {
+    editing: boolean;
+    navCollapsed?: boolean;
+    onCollapse?: () => void;
+}) => {
     const [clients, setClients] = useState<ClientRecord[]>([]);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState<ClientFilter>({ type: "tier", value: "tier-0" });
@@ -2097,9 +2108,11 @@ const ClientListContent = ({ editing }: { editing: boolean }) => {
     return (
         <>
             {/* Client List sidebar (tier + AM grouping) */}
-            <aside className="flex h-dvh w-60 shrink-0 flex-col border-r border-secondary bg-primary">
-                <div className="flex h-[73px] shrink-0 items-center border-b border-secondary px-5">
+            {!navCollapsed && (
+            <aside className="flex h-full w-60 shrink-0 flex-col border-r border-secondary bg-primary">
+                <div className="flex h-[73px] shrink-0 items-center justify-between border-b border-secondary px-5">
                     <h2 className="text-md font-semibold text-primary">Client List</h2>
+                    {onCollapse && <NavCollapseButton onClick={onCollapse} />}
                 </div>
                 <nav className="flex-1 overflow-y-auto px-3 py-4">
                     <motion.div
@@ -2138,9 +2151,10 @@ const ClientListContent = ({ editing }: { editing: boolean }) => {
                     </motion.div>
                 </nav>
             </aside>
+            )}
 
             {/* Main */}
-            <div className="flex h-dvh flex-1 flex-col overflow-hidden bg-secondary">
+            <div className="flex h-full flex-1 flex-col overflow-hidden bg-secondary">
                 <header className="flex h-[73px] shrink-0 items-center justify-between border-b border-secondary bg-primary px-6">
                     <div>
                         <h1 className="text-md font-semibold text-primary">{headerLabel}</h1>
@@ -2315,6 +2329,9 @@ const DashboardLayout = () => {
 
     // Shift+E toggles edit mode; Shift+S locks (dashboard edits already save on change).
     useEditShortcuts({ onToggle: () => setEditing((v) => !v), onSave: () => setEditing(false) });
+
+    // Hide/show the icon rail + side menu (persisted app-wide). Collapsed shows a slim top bar.
+    const { collapsed: navCollapsed, toggle: toggleNav } = useNavCollapsed();
     const [customTabs, setCustomTabs] = useState<OverviewTab[]>([]);
     const dept = DEPARTMENTS.find((d) => d.id === department) ?? DEPARTMENTS[0];
 
@@ -2368,27 +2385,36 @@ const DashboardLayout = () => {
     };
 
     return (
-        <div className="flex h-dvh overflow-hidden">
-            <IconRail
-                activeDept={department}
-                onSelectDept={selectDept}
-                bottom={<RailBottom editing={editing} onToggleEditing={() => setEditing((e) => !e)} />}
-            />
+        <div className="flex h-dvh flex-col overflow-hidden">
+            {/* Slim top bar when the rail + side menu are hidden */}
+            {navCollapsed && <CollapsedTopBar title={dept.header} onExpand={toggleNav} />}
+
+            <div className="flex min-h-0 flex-1">
+            {!navCollapsed && (
+                <IconRail
+                    activeDept={department}
+                    onSelectDept={selectDept}
+                    bottom={<RailBottom editing={editing} onToggleEditing={() => setEditing((e) => !e)} />}
+                />
+            )}
             {dept.kind === "clientlist" ? (
-                <ClientListContent editing={editing} />
+                <ClientListContent editing={editing} navCollapsed={navCollapsed} onCollapse={toggleNav} />
             ) : (
                 <>
-                    <Sidebar
-                        department={dept}
-                        tabs={tabs}
-                        activeSection={activeSection}
-                        onSelect={setActiveSection}
-                        editing={editing}
-                        canEditTabs={dept.kind === "cards"}
-                        customTabIds={customTabs.map((t) => t.id)}
-                        onAddTab={addTab}
-                        onDeleteTab={deleteTab}
-                    />
+                    {!navCollapsed && (
+                        <Sidebar
+                            department={dept}
+                            tabs={tabs}
+                            activeSection={activeSection}
+                            onSelect={setActiveSection}
+                            editing={editing}
+                            canEditTabs={dept.kind === "cards"}
+                            customTabIds={customTabs.map((t) => t.id)}
+                            onAddTab={addTab}
+                            onDeleteTab={deleteTab}
+                            onCollapse={toggleNav}
+                        />
+                    )}
                     {dept.kind === "docs"
                         ? activeSection === "popups"
                             ? <PopupsContent />
@@ -2400,6 +2426,7 @@ const DashboardLayout = () => {
                         : <OverviewContent key={dept.id + ":" + activeSection} department={dept} tab={activeSection} editing={editing} isOwner={isOwner} />}
                 </>
             )}
+            </div>
         </div>
     );
 };

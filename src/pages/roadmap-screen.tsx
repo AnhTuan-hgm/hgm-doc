@@ -18,7 +18,7 @@ import {
     Zap,
 } from "@untitledui/icons";
 import { Checkbox } from "@/components/base/checkbox/checkbox";
-import { IconRail, RailBottom } from "@/components/application/icon-rail";
+import { CollapsedTopBar, IconRail, NavCollapseButton, RailBottom, useNavCollapsed } from "@/components/application/icon-rail";
 import { Badge, BadgeWithDot } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
 import { useEditShortcuts } from "@/hooks/use-edit-shortcuts";
@@ -181,6 +181,7 @@ const inputCls =
 export const RoadmapScreen = () => {
     const [data, setData] = useState<RoadmapData>(DEFAULT_DATA);
     const [editing, setEditing] = useState(false);
+    const { collapsed: navCollapsed, toggle: toggleNav } = useNavCollapsed();
     const [loading, setLoading] = useState(true);
     const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
     const [activeSection, setActiveSection] = useState("overview");
@@ -304,13 +305,19 @@ export const RoadmapScreen = () => {
     const answeredCount = data.questions.filter((q) => q.answer?.trim()).length;
 
     return (
-        <div className="flex h-dvh overflow-hidden">
-            <IconRail activeDept="website" bottom={<RailBottom editing={editing} onToggleEditing={() => setEditing((e) => !e)} />} />
+        <div className="flex h-dvh flex-col overflow-hidden">
+            {navCollapsed && <CollapsedTopBar title="Project Management" onExpand={toggleNav} />}
+            <div className="flex min-h-0 flex-1">
+            {!navCollapsed && (
+                <IconRail activeDept="website" bottom={<RailBottom editing={editing} onToggleEditing={() => setEditing((e) => !e)} />} />
+            )}
 
             {/* Side menu */}
+            {!navCollapsed && (
             <aside className="flex w-[240px] shrink-0 flex-col border-r border-secondary bg-primary">
-                <div className="flex h-[73px] shrink-0 items-center border-b border-secondary px-5">
+                <div className="flex h-[73px] shrink-0 items-center justify-between border-b border-secondary px-5">
                     <h2 className="text-md font-semibold text-primary">Website</h2>
+                    <NavCollapseButton onClick={toggleNav} />
                 </div>
                 <motion.nav
                     className="flex flex-col gap-0.5 p-3"
@@ -341,6 +348,7 @@ export const RoadmapScreen = () => {
                     ))}
                 </motion.nav>
             </aside>
+            )}
 
             {/* Main content */}
             <main className="flex min-w-0 flex-1 flex-col bg-secondary">
@@ -1005,6 +1013,7 @@ export const RoadmapScreen = () => {
                     </motion.aside>
                 )}
             </AnimatePresence>
+            </div>
         </div>
     );
 };

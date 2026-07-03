@@ -7,9 +7,11 @@ import {
     ArrowUpRight,
     Check,
     Image01,
+    LayoutAlt01,
     LinkExternal01,
     Lock01,
     LockUnlocked01,
+    Mail01,
     MessageChatCircle,
     Plus,
     Trash01,
@@ -25,6 +27,8 @@ import { FeaturedIcon } from "@/components/foundations/featured-icon/featured-ic
 import { Instagram } from "@/components/foundations/social-icons";
 import { ChartTooltipContent } from "@/components/application/charts/charts-base";
 import { Reveal } from "@/components/shared-assets/reveal";
+import { WelcomeFlowSection } from "@/components/application/welcome-flow";
+import { useAuthUser } from "@/hooks/use-auth-user";
 import { cx } from "@/utils/cx";
 import { supabase, type DashboardContent } from "@/lib/supabase";
 
@@ -170,6 +174,11 @@ export const ClientDashboardPage = ({
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
 
+    // Team detection — the lock/create controls are only visible to signed-in
+    // @hiddengem.media members; clients see a clean read-only dashboard.
+    const { user } = useAuthUser();
+    const isTeam = !!user?.email && user.email.toLowerCase().endsWith("@hiddengem.media");
+
     // Editable content
     const [clientName, setClientName] = useState(initialClientName);
     const [clientWebsite, setClientWebsite] = useState(initialClientWebsite);
@@ -177,6 +186,14 @@ export const ClientDashboardPage = ({
 
     // Lock state
     const [isLocked, setIsLocked] = useState(true);
+
+    // Side-menu section (per-client dashboard side menu — see /welcome-email-flow-overview).
+    const SECTIONS = [
+        { id: "overview", label: "Client Overview", icon: LayoutAlt01 },
+        { id: "flow", label: "Welcome Flow Email", icon: Mail01 },
+        { id: "comms", label: "Communication Log", icon: MessageChatCircle, soon: true },
+    ] as const;
+    const [activeSection, setActiveSection] = useState<(typeof SECTIONS)[number]["id"]>("overview");
 
     // Unlock modal
     const [showUnlockModal, setShowUnlockModal] = useState(false);
@@ -340,14 +357,76 @@ export const ClientDashboardPage = ({
     const removeButton = "flex size-8 shrink-0 items-center justify-center rounded-lg text-fg-quaternary transition duration-100 ease-linear hover:bg-error-primary hover:text-fg-error-primary";
 
     return (
-        <main className="min-h-dvh bg-secondary px-4 py-8 md:px-8 md:py-14">
+        <main className="flex h-dvh flex-col overflow-hidden bg-secondary md:flex-row">
+            {/* ── Client side menu (no icon rail — client-facing) ── */}
+            <aside className="flex w-full shrink-0 flex-col border-b border-secondary bg-primary md:h-full md:w-64 md:border-b-0 md:border-r">
+                {/* Client identity */}
+                <div className="flex items-center gap-3 border-b border-secondary px-4 py-4 md:px-5">
+                    <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-secondary ring-1 ring-secondary">
+                        {content.logo_url ? (
+                            <img src={content.logo_url} alt={`${clientName || "Client"} logo`} className="size-full object-contain p-1" draggable={false} />
+                        ) : (
+                            <Image01 className="size-5 text-fg-quaternary" aria-hidden="true" />
+                        )}
+                    </div>
+                    <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-primary">{clientName || "Client Name"}</p>
+                        <BadgeWithDot color={statusColor(content.status)} size="sm" type="pill-color">
+                            {content.status}
+                        </BadgeWithDot>
+                    </div>
+                </div>
+
+                {/* Sections */}
+                <motion.nav
+                    className="flex gap-1 overflow-x-auto p-3 md:flex-1 md:flex-col md:gap-1.5 md:overflow-y-auto"
+                    initial="hidden"
+                    animate="show"
+                    variants={{ show: { transition: { staggerChildren: 0.05 } } }}
+                >
+                    {SECTIONS.map((s) => (
+                        <motion.button
+                            key={s.id}
+                            type="button"
+                            onClick={() => !("soon" in s && s.soon) && setActiveSection(s.id)}
+                            variants={{ hidden: { opacity: 0, x: -8 }, show: { opacity: 1, x: 0 } }}
+                            className={cx(
+                                "flex shrink-0 items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium whitespace-nowrap transition duration-100 ease-linear md:w-full",
+                                activeSection === s.id
+                                    ? "bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300"
+                                    : "soon" in s && s.soon
+                                      ? "cursor-not-allowed text-quaternary opacity-60"
+                                      : "text-secondary hover:bg-secondary hover:text-primary",
+                            )}
+                        >
+                            <s.icon className="size-4 shrink-0" aria-hidden="true" />
+                            <span className="flex-1">{s.label}</span>
+                            {"soon" in s && s.soon && <span className="text-[10px] font-semibold uppercase text-quaternary">Soon</span>}
+                        </motion.button>
+                    ))}
+                </motion.nav>
+
+                {/* Website link */}
+                {websiteHref && (
+                    <div className="hidden border-t border-secondary p-4 md:block">
+                        <Button href={websiteHref} target="_blank" rel="noopener noreferrer" color="secondary" size="sm" iconTrailing={LinkExternal01} className="w-full">
+                            Visit website
+                        </Button>
+                    </div>
+                )}
+            </aside>
+
+            {/* ── Main (scrolls) ── */}
+            <div className="min-w-0 flex-1 overflow-y-auto">
+            {/* The flow builder gets the full width while editing; everything else keeps the reading width. */}
+            <div className={cx("mx-auto w-full px-4 py-6 md:px-8 md:py-10", activeSection === "flow" && !isLocked ? "max-w-[1500px]" : "max-w-4xl")}>
             <motion.article
-                className="mx-auto max-w-5xl rounded-2xl bg-primary shadow-xl ring-1 ring-secondary md:rounded-3xl"
+                className="w-full rounded-2xl bg-primary shadow-xl ring-1 ring-secondary md:rounded-3xl"
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
             >
-                <div className="px-6 py-8 md:px-14 md:py-12">
+                <div className={cx("px-6 py-8", activeSection === "flow" && !isLocked ? "md:px-8 md:py-10" : "md:px-12 md:py-12")}>
                     {/* ── Template banner — prompts the team to spin up a client copy. ── */}
                     {isTemplate && (
                         <div className="mb-8 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-brand/40 bg-brand-50 px-4 py-3 dark:bg-brand-950/30">
@@ -370,7 +449,9 @@ export const ClientDashboardPage = ({
                         </div>
                     )}
 
-                    {/* ── Hero ── */}
+                    {/* ── Hero (Client Overview only — the side menu carries identity elsewhere) ── */}
+                    {activeSection === "overview" && (
+                    <>
                     <header className="flex flex-wrap items-center justify-between gap-4">
                         <div className="flex min-w-0 items-center gap-4">
                             {/* Logo */}
@@ -452,9 +533,20 @@ export const ClientDashboardPage = ({
                             </div>
                         </div>
                     )}
+                    </>
+                    )}
 
+                    {/* ── Section content (driven by the side menu) ── */}
+                    <div className="mt-10">
+                        <div className="min-w-0">
+                            {activeSection === "flow" && (
+                                <WelcomeFlowSection slug={slug} clientName={clientName} isLocked={isLocked} isTemplate={isTemplate} />
+                            )}
+
+                            {activeSection === "overview" && (
+                            <>
                     {/* ── Section 01 — Brand Kit ── */}
-                    <Reveal className="mt-14">
+                    <Reveal>
                         <SectionEyebrow number="01" />
                         <div className="flex flex-wrap items-end justify-between gap-3">
                             <SectionHeading>Brand Kit</SectionHeading>
@@ -947,6 +1039,10 @@ export const ClientDashboardPage = ({
                             </div>
                         </div>
                     </Reveal>
+                            </>
+                            )}
+                        </div>
+                    </div>
 
                     {/* ── Footer ── */}
                     <footer className="mt-14 flex justify-center border-t border-secondary pt-6">
@@ -957,8 +1053,11 @@ export const ClientDashboardPage = ({
                     </footer>
                 </div>
             </motion.article>
+            </div>
+            </div>
 
-            {/* ── Fixed bottom-right action buttons ── */}
+            {/* ── Fixed bottom-right action buttons — HGM team only (clients never see these) ── */}
+            {isTeam && (
             <div className="fixed bottom-5 right-5 z-40 flex flex-col items-center gap-2">
                 {/* Plus — only on the template page (/client-dashboard) */}
                 {isTemplate && (
@@ -986,6 +1085,7 @@ export const ClientDashboardPage = ({
                     )}
                 </button>
             </div>
+            )}
 
             {/* ═══════════════════════════════════════════════
                 Unlock Modal
