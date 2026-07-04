@@ -56,6 +56,19 @@ export interface ClientRecord {
     created_at?: string;
 }
 
+/** An entry in the private Prompt & Pattern Library (/prompt-library). */
+export interface PromptLibraryEntry {
+    id: string;
+    title: string;
+    type: "prompt" | "pattern";
+    category: string;
+    body: string;
+    when_to_use: string;
+    tags: string[];
+    created_at?: string;
+    updated_at?: string;
+}
+
 export interface OverviewTab {
     id: string;
     department: string;
@@ -111,6 +124,7 @@ export interface DashboardContent {
         months: { month: string; revenue: number; leads: number; appointments: number }[];
     };
     links: { title: string; description: string; url: string }[];
+    videos?: { id: string; title: string; url: string }[]; // Video guides (Loom link or uploaded mp4) — optional so older rows load unchanged
 }
 
 export interface DashboardPageData {

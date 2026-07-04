@@ -27,6 +27,7 @@ import { FeaturedIcon } from "@/components/foundations/featured-icon/featured-ic
 import { Instagram } from "@/components/foundations/social-icons";
 import { ChartTooltipContent } from "@/components/application/charts/charts-base";
 import { Reveal } from "@/components/shared-assets/reveal";
+import { VideoAttach, VideoEmbed } from "@/components/application/video-block";
 import { WelcomeFlowSection } from "@/components/application/welcome-flow";
 import { useAuthUser } from "@/hooks/use-auth-user";
 import { cx } from "@/utils/cx";
@@ -50,6 +51,7 @@ type Highlight = DashboardContent["instagram"]["highlights"][number];
 type GhlItem = DashboardContent["ghl"]["items"][number];
 type RevenueMonth = DashboardContent["revenue"]["months"][number];
 type QuickLink = DashboardContent["links"][number];
+type VideoGuide = NonNullable<DashboardContent["videos"]>[number];
 
 const STATUS_OPTIONS = ["Onboarding", "Active", "Paused"] as const;
 
@@ -109,6 +111,7 @@ const TEMPLATE_CONTENT: DashboardContent = {
         ],
     },
     links: defaultLinks("yourclient"),
+    videos: [],
 };
 
 /** Fresh content for a newly created client copy — no sample numbers. */
@@ -118,6 +121,7 @@ const createDefaultContent = (base: string): DashboardContent => ({
     revenue: { currency: "USD", months: [] },
     ghl: { ...TEMPLATE_CONTENT.ghl, items: DEFAULT_GHL_ITEMS.map((i) => ({ ...i })) },
     links: defaultLinks(base),
+    videos: [],
 });
 
 /** Merge a partial jsonb blob from the DB over the defaults so old rows never crash new sections. */
@@ -129,6 +133,7 @@ const mergeContent = (partial?: Partial<DashboardContent> | null): DashboardCont
     ghl: { ...TEMPLATE_CONTENT.ghl, ...partial?.ghl },
     revenue: { ...TEMPLATE_CONTENT.revenue, ...partial?.revenue },
     links: partial?.links ?? TEMPLATE_CONTENT.links,
+    videos: partial?.videos ?? [],
 });
 
 const SectionEyebrow = ({ number }: { number: string }) => (
@@ -195,6 +200,14 @@ export const ClientDashboardPage = ({
     ] as const;
     const [activeSection, setActiveSection] = useState<(typeof SECTIONS)[number]["id"]>("overview");
 
+    // Deep-link support: /client-dashboard#flow (or #overview) opens that side-menu
+    // section on load — used by the Welcome Email Flow overview page's "live builder" link.
+    useEffect(() => {
+        const h = window.location.hash.replace("#", "");
+        if (h && SECTIONS.some((s) => s.id === h)) setActiveSection(h as (typeof SECTIONS)[number]["id"]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     // Unlock modal
     const [showUnlockModal, setShowUnlockModal] = useState(false);
     const [unlockPassword, setUnlockPassword] = useState("");
@@ -248,6 +261,8 @@ export const ClientDashboardPage = ({
         patchRevenue({ months: content.revenue.months.map((m, j) => (j === i ? { ...m, ...patch } : m)) });
     const updateLink = (i: number, patch: Partial<QuickLink>) =>
         setContent((c) => ({ ...c, links: c.links.map((l, j) => (j === i ? { ...l, ...patch } : l)) }));
+    const updateVideo = (i: number, patch: Partial<VideoGuide>) =>
+        setContent((c) => ({ ...c, videos: (c.videos ?? []).map((v, j) => (j === i ? { ...v, ...patch } : v)) }));
 
     /* ── Derived metrics ── */
     const months = content.revenue.months;
@@ -272,6 +287,8 @@ export const ClientDashboardPage = ({
 
     const ghlDone = content.ghl.items.filter((i) => i.done).length;
     const ghlTotal = content.ghl.items.length;
+
+    const videoGuides = content.videos ?? [];
 
     const websiteHref = clientWebsite && (clientWebsite.startsWith("http") ? clientWebsite : `https://${clientWebsite}`);
 
@@ -1016,6 +1033,68 @@ export const ClientDashboardPage = ({
                             )}
                         </div>
                     </Reveal>
+
+                    {/* ── Section 06 — Video Guides ── */}
+                    {(!isLocked || videoGuides.some((v) => v.url)) && (
+                        <Reveal className="mt-14">
+                            <SectionEyebrow number="06" />
+                            <SectionHeading>Video Guides</SectionHeading>
+                            <p className="mt-3 text-md text-tertiary">
+                                Short walkthrough videos recorded for you by the HiddenGem team.
+                            </p>
+
+                            {isLocked ? (
+                                <div className="mt-6 grid gap-6 sm:grid-cols-2">
+                                    {videoGuides
+                                        .filter((v) => v.url)
+                                        .map((v) => (
+                                            <div key={v.id}>
+                                                <p className="text-sm font-semibold text-primary">{v.title}</p>
+                                                <VideoEmbed url={v.url} className="mt-3" />
+                                            </div>
+                                        ))}
+                                </div>
+                            ) : (
+                                <div className="mt-6 flex flex-col gap-4">
+                                    {videoGuides.map((v, i) => (
+                                        <div key={v.id} className="flex flex-col gap-1.5 rounded-xl p-4 ring-1 ring-secondary">
+                                            <div className="flex items-center gap-1.5">
+                                                <input
+                                                    type="text"
+                                                    placeholder="Video title"
+                                                    value={v.title}
+                                                    onChange={(e) => updateVideo(i, { title: e.target.value })}
+                                                    className={editInput("font-semibold")}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    title="Remove video"
+                                                    onClick={() => setContent((c) => ({ ...c, videos: (c.videos ?? []).filter((_, j) => j !== i) }))}
+                                                    className={removeButton}
+                                                >
+                                                    <Trash01 className="size-4" aria-hidden="true" />
+                                                </button>
+                                            </div>
+                                            <VideoAttach value={v.url || undefined} onChange={(url) => updateVideo(i, { url: url ?? "" })} />
+                                        </div>
+                                    ))}
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            setContent((c) => ({
+                                                ...c,
+                                                videos: [...(c.videos ?? []), { id: crypto.randomUUID(), title: "", url: "" }],
+                                            }))
+                                        }
+                                        className="flex min-h-28 flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-secondary text-sm font-medium text-tertiary transition duration-100 ease-linear hover:border-brand hover:text-brand-secondary"
+                                    >
+                                        <Plus className="size-5" aria-hidden="true" />
+                                        Add video
+                                    </button>
+                                </div>
+                            )}
+                        </Reveal>
+                    )}
 
                     {/* ── Still need support? ── */}
                     <Reveal className="mt-16">

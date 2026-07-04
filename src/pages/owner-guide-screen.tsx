@@ -15,6 +15,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
+import { VideoAttach, VideoEmbed } from "@/components/application/video-block";
 import { useTheme } from "@/providers/theme-provider";
 import { compressImageFile } from "@/utils/compress-image";
 import { cx } from "@/utils/cx";
@@ -39,6 +40,7 @@ interface StepData {
     benefits?: string[];
     checklistLabels: [string, string][];
     images: StepImage[];
+    video?: string;
     credSection: CredSection;
 }
 
@@ -1341,6 +1343,17 @@ export const OwnerGuideScreen = () => {
                                             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></svg>
                                             Add reference image
                                         </label>
+                                    )}
+                                </section>
+                            )}
+
+                            {/* tutorial video */}
+                            {(step.video || editing) && (
+                                <section className="mb-6">
+                                    {editing ? (
+                                        <VideoAttach value={step.video} onChange={(url) => updateField(currentStep, "video", url)} />
+                                    ) : (
+                                        step.video && <VideoEmbed url={step.video} className="mt-4" />
                                     )}
                                 </section>
                             )}

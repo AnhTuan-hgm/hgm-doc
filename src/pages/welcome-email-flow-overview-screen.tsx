@@ -1,9 +1,13 @@
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowRight, Check, Copy01, Mail01, Plus, Trash01 } from "@untitledui/icons";
+import { ArrowRight, ArrowUpRight, Check, ChevronDown, Copy01, Mail01, Plus, Trash01 } from "@untitledui/icons";
 import { CollapsedTopBar, IconRail, NavCollapseButton, RailBottom, useNavCollapsed } from "@/components/application/icon-rail";
+import { VideoAttach, VideoEmbed } from "@/components/application/video-block";
+import { useEditShortcuts } from "@/hooks/use-edit-shortcuts";
 import { supabase } from "@/lib/supabase";
 import { cx } from "@/utils/cx";
+import { HighlightPen, renderHighlights } from "@/utils/highlight";
 
 /**
  * Living reference page for the Welcome Email Flow builder project.
@@ -17,8 +21,8 @@ const SLUG = "welcome-email-flow-overview";
 
 type EmailTpl = { label: string; goal: string; subject: string; body: string };
 type Todo = { id: string; text: string; done: boolean };
-type QA = { id: string; question: string; answer: string };
-type LogEntry = { id: string; date: string; title: string; description: string };
+type QA = { id: string; question: string; answer: string; video?: string };
+type LogEntry = { id: string; date: string; title: string; description: string; video?: string };
 
 type FlowData = {
     overview: string;
@@ -140,7 +144,7 @@ const EditArea = ({
             )}
         />
     ) : value ? (
-        <p className={cx("whitespace-pre-wrap text-sm text-tertiary", mono && "font-mono text-xs leading-relaxed")}>{value}</p>
+        <p className={cx("whitespace-pre-wrap text-sm text-tertiary", mono && "font-mono text-xs leading-relaxed")}>{renderHighlights(value)}</p>
     ) : (
         <p className="text-sm italic text-quaternary">{placeholder ?? "Empty — unlock editing to fill this in."}</p>
     );
@@ -170,7 +174,7 @@ const EditLine = ({
             )}
         />
     ) : (
-        <span className={cx("text-sm text-secondary", !value && "italic text-quaternary", className)}>{value || placeholder}</span>
+        <span className={cx("text-sm text-secondary", !value && "italic text-quaternary", className)}>{value ? renderHighlights(value) : placeholder}</span>
     );
 
 const CopyBtn = ({ text, label = "Copy" }: { text: string; label?: string }) => {
@@ -204,6 +208,45 @@ const SectionHeader = ({ id, number, title, hint }: { id: string; number: string
     </div>
 );
 
+/** A single question card — reused for both Open and Resolved/History lists. */
+const QuestionCard = ({
+    q,
+    editing,
+    resolved,
+    onQuestion,
+    onAnswer,
+    onVideo,
+    onRemove,
+}: {
+    q: QA;
+    editing: boolean;
+    resolved?: boolean;
+    onQuestion: (v: string) => void;
+    onAnswer: (v: string) => void;
+    onVideo: (v: string | undefined) => void;
+    onRemove: () => void;
+}) => (
+    <div className={cx("rounded-2xl p-5 ring-1 ring-secondary", resolved ? "bg-secondary" : "bg-primary")}>
+        <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 flex-1 items-start gap-2">
+                {resolved && <Check className="mt-0.5 size-4 shrink-0 text-fg-success-primary" aria-hidden="true" />}
+                <div className="min-w-0 flex-1">
+                    <EditLine value={q.question} editing={editing} onChange={onQuestion} placeholder="Question…" className="font-medium text-primary" />
+                </div>
+            </div>
+            {editing && (
+                <button type="button" title="Remove question" onClick={onRemove} className="shrink-0 text-fg-quaternary hover:text-fg-error-secondary">
+                    <Trash01 className="size-4" />
+                </button>
+            )}
+        </div>
+        <div className={cx("mt-3 border-l-2 pl-3", resolved ? "border-success" : "border-brand")}>
+            <EditArea value={q.answer} editing={editing} onChange={onAnswer} placeholder="Unanswered — type the decision here." rows={2} />
+        </div>
+        {editing ? <VideoAttach value={q.video} onChange={onVideo} className="mt-3" /> : q.video && <VideoEmbed url={q.video} className="mt-3" />}
+    </div>
+);
+
 /* ── Page ────────────────────────────────────────────────────────── */
 
 const SECTIONS = [
@@ -222,8 +265,26 @@ export const WelcomeEmailFlowOverviewScreen = () => {
     const [editing, setEditing] = useState(false);
     const { collapsed: navCollapsed, toggle: toggleNav } = useNavCollapsed();
     const [activeSection, setActiveSection] = useState(SECTIONS[0].id);
+    const [showResolved, setShowResolved] = useState(false);
+    const navigate = useNavigate();
     const mainRef = useRef<HTMLElement>(null);
     const hydratedRef = useRef(false);
+
+    // Shift+E toggles edit mode; Shift+S saves immediately and locks — same
+    // shortcuts as /roadmap (the hook reads fresh callbacks each render, so
+    // `data` here is always current).
+    useEditShortcuts({
+        onToggle: () => setEditing((e) => !e),
+        onSave: () => {
+            supabase
+                .from("sop_pages")
+                .upsert({ slug: SLUG, data, updated_at: new Date().toISOString() }, { onConflict: "slug" })
+                .then(({ error }) => {
+                    if (error) console.error("[welcome-flow save]", error);
+                });
+            setEditing(false);
+        },
+    });
 
     // Load the saved row; fall back to the seed for a fresh page.
     useEffect(() => {
@@ -270,8 +331,22 @@ export const WelcomeEmailFlowOverviewScreen = () => {
     const addLine = (list: "workflow" | "sidemenu") => update((d) => void d[list].push(""));
     const rmLine = (list: "workflow" | "sidemenu", i: number) => update((d) => void d[list].splice(i, 1));
 
+    /* questions — edited by id so the open / resolved split stays stable across renders */
+    const setQuestion = (id: string, patch: Partial<QA>) =>
+        update((d) => {
+            const q = d.questions.find((x) => x.id === id);
+            if (q) Object.assign(q, patch);
+        });
+    const rmQuestion = (id: string) => update((d) => void (d.questions = d.questions.filter((x) => x.id !== id)));
+    const addQuestion = () => update((d) => void d.questions.push({ id: uid(), question: "", answer: "" }));
+
+    const isAnswered = (q: QA) => !!(q.answer || "").trim();
+    const openQuestions = data.questions.filter((q) => !isAnswered(q));
+    const resolvedQuestions = data.questions.filter(isAnswered);
+
     return (
-        <div className="flex h-dvh flex-col overflow-hidden bg-secondary">
+        <div data-highlight-scope className="flex h-dvh flex-col overflow-hidden bg-secondary">
+            <HighlightPen enabled={editing} />
             {navCollapsed && <CollapsedTopBar title="Welcome Email Flow" onExpand={toggleNav} />}
             <div className="flex min-h-0 flex-1">
             {!navCollapsed && <IconRail activeDept="am" bottom={<RailBottom editing={editing} onToggleEditing={() => setEditing((e) => !e)} />} />}
@@ -322,6 +397,20 @@ export const WelcomeEmailFlowOverviewScreen = () => {
                                     Living reference for the AM email-flow builder. Decisions, templates and progress live here — Claude reads this page when
                                     working on the feature.
                                 </p>
+                                <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => navigate("/client-dashboard#flow")}
+                                        className="inline-flex items-center gap-2 rounded-lg bg-brand-solid px-4 py-2.5 text-sm font-semibold text-white shadow-xs transition duration-100 ease-linear hover:bg-brand-solid_hover"
+                                    >
+                                        <Mail01 className="size-4" aria-hidden="true" />
+                                        Open the live builder
+                                        <ArrowUpRight className="size-4" aria-hidden="true" />
+                                    </button>
+                                    <span className="text-xs text-tertiary">
+                                        Opens the master client dashboard → “Welcome Flow Email” in the side menu.
+                                    </span>
+                                </div>
                             </div>
                             <span
                                 className={cx(
@@ -378,7 +467,7 @@ export const WelcomeEmailFlowOverviewScreen = () => {
                                                     className="w-24 rounded-md border border-secondary bg-primary px-1.5 py-0.5 text-center text-[11px] text-secondary outline-none focus:border-brand"
                                                 />
                                             ) : (
-                                                <span className="whitespace-nowrap rounded-full bg-secondary px-2 py-0.5 text-[11px] font-medium text-tertiary">{data.waits[i]}</span>
+                                                <span className="whitespace-nowrap rounded-full bg-secondary px-2 py-0.5 text-[11px] font-medium text-tertiary">{renderHighlights(data.waits[i])}</span>
                                             )}
                                         </div>
                                     )}
@@ -549,34 +638,87 @@ export const WelcomeEmailFlowOverviewScreen = () => {
 
                     {/* 07 Questions */}
                     <section>
-                        <SectionHeader id="s-questions" number="07" title="Open Questions" hint="Answer inline — decisions live here so nothing gets lost in chat." />
+                        <SectionHeader
+                            id="s-questions"
+                            number="07"
+                            title="Open Questions"
+                            hint="Answer inline — decisions live here so nothing gets lost in chat. Answered questions move to Resolved / History below (nothing is deleted)."
+                        />
                         <div className="mt-4 flex flex-col gap-4">
-                            {data.questions.map((q, i) => (
-                                <div key={q.id} className="rounded-2xl bg-primary p-5 ring-1 ring-secondary">
-                                    <div className="flex items-start justify-between gap-3">
-                                        <div className="min-w-0 flex-1">
-                                            <EditLine value={q.question} editing={editing} onChange={(v) => update((d) => void (d.questions[i].question = v))} placeholder="Question…" className="font-medium text-primary" />
-                                        </div>
-                                        {editing && (
-                                            <button type="button" title="Remove question" onClick={() => update((d) => void d.questions.splice(i, 1))} className="shrink-0 text-fg-quaternary hover:text-fg-error-secondary">
-                                                <Trash01 className="size-4" />
-                                            </button>
-                                        )}
-                                    </div>
-                                    <div className="mt-3 border-l-2 border-brand pl-3">
-                                        <EditArea value={q.answer} editing={editing} onChange={(v) => update((d) => void (d.questions[i].answer = v))} placeholder="Unanswered — type the decision here." rows={2} />
-                                    </div>
-                                </div>
-                            ))}
+                            {openQuestions.length === 0 ? (
+                                <p className="rounded-2xl bg-primary p-5 text-sm italic text-quaternary ring-1 ring-secondary">
+                                    No open questions right now — everything's been answered.
+                                </p>
+                            ) : (
+                                openQuestions.map((q) => (
+                                    <QuestionCard
+                                        key={q.id}
+                                        q={q}
+                                        editing={editing}
+                                        onQuestion={(v) => setQuestion(q.id, { question: v })}
+                                        onAnswer={(v) => setQuestion(q.id, { answer: v })}
+                                        onVideo={(v) => setQuestion(q.id, { video: v })}
+                                        onRemove={() => rmQuestion(q.id)}
+                                    />
+                                ))
+                            )}
                         </div>
                         {editing && (
                             <button
                                 type="button"
-                                onClick={() => update((d) => void d.questions.push({ id: uid(), question: "", answer: "" }))}
+                                onClick={addQuestion}
                                 className="mt-3 flex items-center gap-1.5 text-sm font-semibold text-brand-secondary hover:underline"
                             >
                                 <Plus className="size-4" /> Add question
                             </button>
+                        )}
+
+                        {/* Resolved / History — answered questions collapse here so the open list stays focused. */}
+                        {resolvedQuestions.length > 0 && (
+                            <div className="mt-6">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowResolved((s) => !s)}
+                                    aria-expanded={showResolved || editing}
+                                    className="flex w-full items-center gap-2.5 rounded-xl bg-secondary px-4 py-3 text-left text-sm font-semibold text-secondary transition duration-100 ease-linear hover:bg-secondary_hover"
+                                >
+                                    <ChevronDown
+                                        className={cx("size-4 shrink-0 text-fg-quaternary transition-transform duration-200", (showResolved || editing) && "rotate-180")}
+                                        aria-hidden="true"
+                                    />
+                                    <span className="flex-1">Resolved / History</span>
+                                    <span className="rounded-full bg-primary px-2 py-0.5 text-xs font-semibold text-tertiary tabular-nums ring-1 ring-secondary">
+                                        {resolvedQuestions.length}
+                                    </span>
+                                </button>
+                                <AnimatePresence initial={false}>
+                                    {(showResolved || editing) && (
+                                        <motion.div
+                                            key="resolved"
+                                            initial={{ height: 0, opacity: 0 }}
+                                            animate={{ height: "auto", opacity: 1 }}
+                                            exit={{ height: 0, opacity: 0 }}
+                                            transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                                            className="overflow-hidden"
+                                        >
+                                            <div className="mt-3 flex flex-col gap-4">
+                                                {resolvedQuestions.map((q) => (
+                                                    <QuestionCard
+                                                        key={q.id}
+                                                        q={q}
+                                                        editing={editing}
+                                                        resolved
+                                                        onQuestion={(v) => setQuestion(q.id, { question: v })}
+                                                        onAnswer={(v) => setQuestion(q.id, { answer: v })}
+                                                        onVideo={(v) => setQuestion(q.id, { video: v })}
+                                                        onRemove={() => rmQuestion(q.id)}
+                                                    />
+                                                ))}
+                                            </div>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
+                            </div>
                         )}
                     </section>
 
@@ -588,8 +730,9 @@ export const WelcomeEmailFlowOverviewScreen = () => {
                                 {data.log.map((e) => (
                                     <motion.div key={e.id} layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl bg-primary p-5 ring-1 ring-secondary">
                                         <p className="text-xs font-semibold uppercase tracking-wide text-quaternary">{e.date}</p>
-                                        <p className="mt-1 text-sm font-semibold text-primary">{e.title}</p>
-                                        <p className="mt-1 text-sm text-tertiary">{e.description}</p>
+                                        <p className="mt-1 text-sm font-semibold text-primary">{renderHighlights(e.title)}</p>
+                                        <p className="mt-1 text-sm text-tertiary">{renderHighlights(e.description)}</p>
+                                        {e.video && <VideoEmbed url={e.video} className="mt-3" />}
                                     </motion.div>
                                 ))}
                             </AnimatePresence>

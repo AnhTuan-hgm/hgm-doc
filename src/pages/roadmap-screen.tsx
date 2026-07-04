@@ -19,12 +19,14 @@ import {
 } from "@untitledui/icons";
 import { Checkbox } from "@/components/base/checkbox/checkbox";
 import { CollapsedTopBar, IconRail, NavCollapseButton, RailBottom, useNavCollapsed } from "@/components/application/icon-rail";
+import { VideoAttach, VideoEmbed } from "@/components/application/video-block";
 import { Badge, BadgeWithDot } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
 import { useEditShortcuts } from "@/hooks/use-edit-shortcuts";
 import { readSopPage, writeSopPage } from "@/lib/db-sync";
 import { compressImageFile } from "@/utils/compress-image";
 import { cx } from "@/utils/cx";
+import { HighlightPen, renderHighlights } from "@/utils/highlight";
 
 const ROADMAP_SLUG = "roadmap";
 
@@ -45,6 +47,8 @@ interface LogEntry {
     description: string;
     /** Optional URL showing the shipped result. */
     link?: string;
+    /** Optional video URL (Loom link or uploaded mp4). */
+    video?: string;
 }
 
 interface TodoItem {
@@ -59,6 +63,8 @@ interface QuestionItem {
     answer: string;
     /** Optional screenshot/attachment, stored as a data URL (same pattern as owner-guide images). */
     image?: string;
+    /** Optional video URL (Loom link or uploaded mp4). */
+    video?: string;
 }
 
 interface FeatureItem {
@@ -305,7 +311,8 @@ export const RoadmapScreen = () => {
     const answeredCount = data.questions.filter((q) => q.answer?.trim()).length;
 
     return (
-        <div className="flex h-dvh flex-col overflow-hidden">
+        <div data-highlight-scope className="flex h-dvh flex-col overflow-hidden">
+            <HighlightPen enabled={editing} />
             {navCollapsed && <CollapsedTopBar title="Project Management" onExpand={toggleNav} />}
             <div className="flex min-h-0 flex-1">
             {!navCollapsed && (
@@ -390,7 +397,7 @@ export const RoadmapScreen = () => {
                                         onChange={(e) => updateOverview({ paragraph: e.target.value })}
                                     />
                                 ) : (
-                                    <p className="text-sm leading-6 whitespace-pre-line text-tertiary">{data.overview.paragraph}</p>
+                                    <p className="text-sm leading-6 whitespace-pre-line text-tertiary">{renderHighlights(data.overview.paragraph)}</p>
                                 )}
                             </div>
 
@@ -487,7 +494,7 @@ export const RoadmapScreen = () => {
                                                                     f.approval === "approved" ? "text-quaternary line-through" : "text-secondary",
                                                                 )}
                                                             >
-                                                                {f.text || "Untitled"}
+                                                                {f.text ? renderHighlights(f.text) : "Untitled"}
                                                             </span>
                                                             <ChevronRight
                                                                 className="mt-0.5 size-4 shrink-0 text-fg-quaternary opacity-0 transition duration-100 ease-linear group-hover:opacity-100"
@@ -552,7 +559,7 @@ export const RoadmapScreen = () => {
                                             </>
                                         ) : (
                                             <p className={cx("text-sm leading-6", todo.done ? "text-quaternary line-through" : "text-secondary")}>
-                                                {todo.text || "Untitled"}
+                                                {todo.text ? renderHighlights(todo.text) : "Untitled"}
                                             </p>
                                         )}
                                     </div>
@@ -627,6 +634,7 @@ export const RoadmapScreen = () => {
                                                             Add image
                                                         </label>
                                                     )}
+                                                    <VideoAttach value={q.video} onChange={(v) => updateQuestion(q.id, { video: v })} />
                                                 </div>
                                                 <button
                                                     type="button"
@@ -640,12 +648,13 @@ export const RoadmapScreen = () => {
                                         ) : (
                                             <>
                                                 <h3 className="text-sm font-semibold text-primary">
-                                                    {i + 1}. {q.question || "Untitled question"}
+                                                    {i + 1}. {q.question ? renderHighlights(q.question) : "Untitled question"}
                                                 </h3>
                                                 <p className={cx("mt-1.5 text-sm", q.answer ? "text-tertiary" : "text-placeholder italic")}>
-                                                    {q.answer || "No answer yet — unlock to answer"}
+                                                    {q.answer ? renderHighlights(q.answer) : "No answer yet — unlock to answer"}
                                                 </p>
                                                 {q.image && <img src={q.image} alt="Attached" className="mt-3 max-h-64 rounded-lg border border-secondary" />}
+                                                {q.video && <VideoEmbed url={q.video} className="mt-3" />}
                                             </>
                                         )}
                                     </div>
@@ -721,8 +730,8 @@ export const RoadmapScreen = () => {
                                                             </div>
                                                         ) : (
                                                             <>
-                                                                <h3 className="text-sm font-semibold text-primary">{item.title || "Untitled"}</h3>
-                                                                {item.description && <p className="mt-1 text-sm text-tertiary">{item.description}</p>}
+                                                                <h3 className="text-sm font-semibold text-primary">{item.title ? renderHighlights(item.title) : "Untitled"}</h3>
+                                                                {item.description && <p className="mt-1 text-sm text-tertiary">{renderHighlights(item.description)}</p>}
                                                             </>
                                                         )}
                                                     </div>
@@ -798,6 +807,7 @@ export const RoadmapScreen = () => {
                                                                     placeholder="Link to the result (optional) — https://…"
                                                                     onChange={(e) => updateEntry(entry.id, { link: e.target.value })}
                                                                 />
+                                                                <VideoAttach value={entry.video} onChange={(v) => updateEntry(entry.id, { video: v })} />
                                                             </div>
                                                             <button
                                                                 type="button"
@@ -812,8 +822,9 @@ export const RoadmapScreen = () => {
                                                         <div className="flex items-start gap-3">
                                                             <CheckCircle className="mt-0.5 size-4 shrink-0 text-fg-success-primary" aria-hidden="true" />
                                                             <div>
-                                                                <h4 className="text-sm font-semibold text-primary">{entry.title || "Untitled"}</h4>
-                                                                {entry.description && <p className="mt-1 text-sm text-tertiary">{entry.description}</p>}
+                                                                <h4 className="text-sm font-semibold text-primary">{entry.title ? renderHighlights(entry.title) : "Untitled"}</h4>
+                                                                {entry.description && <p className="mt-1 text-sm text-tertiary">{renderHighlights(entry.description)}</p>}
+                                                                {entry.video && <VideoEmbed url={entry.video} className="mt-2" />}
                                                                 {entry.link?.trim() && (
                                                                     <Button
                                                                         href={entry.link}
@@ -894,7 +905,7 @@ export const RoadmapScreen = () => {
                                         />
                                     ) : (
                                         <p className={cx("mt-1.5 text-sm leading-6", featureDetail.about ? "text-secondary" : "text-placeholder italic")}>
-                                            {featureDetail.about || "No description yet — unlock to edit"}
+                                            {featureDetail.about ? renderHighlights(featureDetail.about) : "No description yet — unlock to edit"}
                                         </p>
                                     )}
                                 </div>
@@ -944,7 +955,7 @@ export const RoadmapScreen = () => {
                                                 featureDetail.ideation ? "text-secondary" : "text-placeholder italic",
                                             )}
                                         >
-                                            {featureDetail.ideation || "Nothing yet"}
+                                            {featureDetail.ideation ? renderHighlights(featureDetail.ideation) : "Nothing yet"}
                                         </p>
                                     )}
                                 </div>
@@ -965,7 +976,7 @@ export const RoadmapScreen = () => {
                                                 featureDetail.result ? "text-secondary" : "text-placeholder italic",
                                             )}
                                         >
-                                            {featureDetail.result || "Nothing yet"}
+                                            {featureDetail.result ? renderHighlights(featureDetail.result) : "Nothing yet"}
                                         </p>
                                     )}
                                 </div>
