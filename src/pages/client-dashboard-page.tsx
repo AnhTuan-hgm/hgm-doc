@@ -27,6 +27,7 @@ import { FeaturedIcon } from "@/components/foundations/featured-icon/featured-ic
 import { Instagram } from "@/components/foundations/social-icons";
 import { ChartTooltipContent } from "@/components/application/charts/charts-base";
 import { Reveal } from "@/components/shared-assets/reveal";
+import { AppShell } from "@/components/application/icon-rail";
 import { VideoAttach, VideoEmbed } from "@/components/application/video-block";
 import { WelcomeFlowSection } from "@/components/application/welcome-flow";
 import { useAuthUser } from "@/hooks/use-auth-user";
@@ -327,7 +328,8 @@ export const ClientDashboardPage = ({
     /* ── Create flow ── */
     const handlePlusClick = () => {
         setShowPlusModal(true);
-        setPlusStep("password");
+        // Signed-in @hiddengem.media users are already authenticated — skip the password gate.
+        setPlusStep(isTeam ? "details" : "password");
         setPlusPassword("");
         setPlusPasswordError(false);
         setNewClientName("");
@@ -374,7 +376,7 @@ export const ClientDashboardPage = ({
     const removeButton = "flex size-8 shrink-0 items-center justify-center rounded-lg text-fg-quaternary transition duration-100 ease-linear hover:bg-error-primary hover:text-fg-error-primary";
 
     return (
-        <main className="flex h-dvh flex-col overflow-hidden bg-secondary md:flex-row">
+        <AppShell className="flex flex-col md:flex-row">
             {/* ── Client side menu (no icon rail — client-facing) ── */}
             <aside className="flex w-full shrink-0 flex-col border-b border-secondary bg-primary md:h-full md:w-64 md:border-b-0 md:border-r">
                 {/* Client identity */}
@@ -1362,6 +1364,6 @@ export const ClientDashboardPage = ({
                     </div>
                 </div>
             )}
-        </main>
+        </AppShell>
     );
 };

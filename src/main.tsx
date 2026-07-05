@@ -16,6 +16,8 @@ import { DesignSystemScreen } from "@/pages/design-system-screen";
 import { HomeTwoScreen } from "@/pages/home-two-screen";
 import { ClientScreen } from "@/pages/client-screen";
 import { ChatWidgetScreen } from "@/pages/chat-widget-screen";
+import { ChatWidgetOverviewScreen } from "@/pages/chat-widget-overview-screen";
+import { ClientDashboardOverviewScreen } from "@/pages/client-dashboard-overview-screen";
 import { SettingsScreen } from "@/pages/settings-screen";
 import { RoadmapScreen } from "@/pages/roadmap-screen";
 import { ThemeToggle } from "@/components/base/theme-toggle/theme-toggle";
@@ -29,7 +31,7 @@ import "@/styles/globals.css";
 // floating toggle is hidden there to avoid duplicates. The account avatar is NOT
 // shown globally — it's a team-only settings shortcut that lives in the dashboard
 // rail, and it must never appear on client-facing pages (owner guides, popups, etc.).
-const PAGES_WITHOUT_FLOATING_CHROME = ["/designsystem", "/home2", "/dashboard", "/webteam/ai-website-setup", "/template-1", "/welcome-email-flow-overview", "/prompt-library", "/settings", "/roadmap"];
+const PAGES_WITHOUT_FLOATING_CHROME = ["/designsystem", "/home2", "/dashboard", "/webteam/ai-website-setup", "/template-1", "/welcome-email-flow-overview", "/prompt-library", "/settings", "/roadmap", "/chat-widget-overview", "/client-dashboard-overview"];
 
 // The floating "?" help menu is a team tool. It renders ONLY on internal team
 // pages and is hidden on every client-facing page — all client slugs
@@ -48,6 +50,8 @@ const PAGES_WITH_HELP_MENU = [
     "/template-1",
     "/welcome-email-flow-overview",
     "/prompt-library",
+    "/chat-widget-overview",
+    "/client-dashboard-overview",
     "/webteam/ai-website-setup",
 ];
 
@@ -89,6 +93,8 @@ createRoot(document.getElementById("root")!).render(
                         <Route path="/settings" element={<SettingsScreen />} />
                         <Route path="/roadmap" element={<RoadmapScreen />} />
                         <Route path="/chat-widget" element={<ChatWidgetScreen isTemplate />} />
+                        <Route path="/chat-widget-overview" element={<ChatWidgetOverviewScreen />} />
+                        <Route path="/client-dashboard-overview" element={<ClientDashboardOverviewScreen />} />
                         <Route path="/:clientSlug" element={<ClientScreen />} />
                         <Route path="*" element={<NotFound />} />
                     </Routes>

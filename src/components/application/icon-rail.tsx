@@ -1,8 +1,8 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
-import { BookOpen01, Briefcase01, Code02, LayoutLeft, Lock01, LockUnlocked01, Moon01, SearchSm, Sun, Users01 } from "@untitledui/icons";
+import { BookOpen01, Briefcase01, ChevronLeft, ChevronRight, Code02, LayoutLeft, Lock01, LockUnlocked01, Moon01, Sun, Users01 } from "@untitledui/icons";
 import { useTheme } from "@/providers/theme-provider";
-import { SearchModal } from "@/components/application/search-modal";
+import { SearchBar } from "@/components/application/search-modal";
 import { cx } from "@/utils/cx";
 
 /**
@@ -77,6 +77,74 @@ export const NavCollapseButton = ({ onClick, label = "Hide menu" }: { onClick: (
     </button>
 );
 
+/**
+ * Floating app shell — wraps a page's side menu + content in one rounded card
+ * sitting on the page canvas, like a native macOS window (Finder, System
+ * Settings): margin around the edges, one continuous rounded shape instead of
+ * a flush square panel touching the browser edges.
+ *
+ * The department icon rail is deliberately kept OUTSIDE the rounded card (pass
+ * it as `rail`) — folding it in made the whole shell read as one busy block.
+ * It renders as a bare strip directly on the canvas (no background, no card
+ * margins): when a rail is present the shell drops its left padding and the
+ * rail sits flush against the viewport edge, left of the card.
+ *
+ * `className` carries the card's own inner layout (e.g. "flex flex-col" so a
+ * CollapsedTopBar can stack above the row, or "flex md:flex-row" for a
+ * side-menu-only client page) — AppShell only owns the canvas + card chrome.
+ */
+export const AppShell = ({
+    children,
+    rail,
+    className,
+    highlightScope,
+}: {
+    children: ReactNode;
+    /** The department icon rail (or any left-of-shell rail) — rendered outside the rounded card. */
+    rail?: ReactNode;
+    className?: string;
+    /** Marks the card as the highlight-pen's field scope (see utils/highlight.tsx). */
+    highlightScope?: boolean;
+}) => {
+    const navigate = useNavigate();
+    return (
+    <div className={cx("flex h-dvh gap-2.5 overflow-hidden bg-tertiary p-2.5 sm:gap-3 sm:p-3", rail && "pl-0 sm:pl-0")}>
+        {rail}
+        <div className="flex min-h-0 flex-1 flex-col gap-2.5 sm:gap-3">
+            {/* Global search + back/forward — only on pages with the department rail.
+                Row height matches the rail's favicon header (73px) so the two line up. */}
+            {rail && (
+                <div className="flex h-[73px] shrink-0 items-center gap-1 px-1">
+                    <button
+                        type="button"
+                        onClick={() => navigate(-1)}
+                        title="Back"
+                        className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-fg-quaternary ring-1 ring-secondary transition duration-100 ease-linear hover:bg-secondary hover:text-fg-secondary"
+                    >
+                        <ChevronLeft className="size-4" aria-hidden="true" />
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => navigate(1)}
+                        title="Forward"
+                        className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-fg-quaternary ring-1 ring-secondary transition duration-100 ease-linear hover:bg-secondary hover:text-fg-secondary"
+                    >
+                        <ChevronRight className="size-4" aria-hidden="true" />
+                    </button>
+                    <SearchBar />
+                </div>
+            )}
+            <div
+                {...(highlightScope ? { "data-highlight-scope": true } : {})}
+                className={cx("min-h-0 flex-1 overflow-hidden rounded-2xl shadow-xl ring-1 ring-secondary", className)}
+            >
+                {children}
+            </div>
+        </div>
+    </div>
+    );
+};
+
 /** Slim replacement header shown while the rail + side menu are hidden. */
 export const CollapsedTopBar = ({ title, onExpand }: { title: string; onExpand: () => void }) => (
     <div className="flex h-14 shrink-0 items-center gap-3 border-b border-secondary bg-primary pl-2 pr-4">
@@ -107,21 +175,6 @@ export const IconRail = ({
     bottom?: ReactNode;
 }) => {
     const navigate = useNavigate();
-    const [searchOpen, setSearchOpen] = useState(false);
-
-    // Global shortcut: Shift + F opens search (ignored while typing in a field).
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            const el = document.activeElement as HTMLElement | null;
-            const typing = !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
-            if (e.shiftKey && (e.key === "F" || e.key === "f") && !typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
-                e.preventDefault();
-                setSearchOpen(true);
-            }
-        };
-        window.addEventListener("keydown", onKey);
-        return () => window.removeEventListener("keydown", onKey);
-    }, []);
 
     const handle = (id: string) => {
         if (onSelectDept) onSelectDept(id);
@@ -129,10 +182,9 @@ export const IconRail = ({
     };
 
     return (
-        <>
-        <aside className="flex h-dvh w-[88px] shrink-0 flex-col items-center border-r border-secondary bg-secondary pb-4">
+        <aside className="flex h-full w-[88px] shrink-0 flex-col items-center pb-4">
             {/* Favicon — same header height as the side menu + main content headers */}
-            <div className="flex h-[73px] w-full shrink-0 items-center justify-center border-b border-secondary">
+            <div className="flex h-[73px] w-full shrink-0 items-center justify-center">
                 <img
                     src="/hgm logo/Favicon ON LIGHT.svg"
                     alt="HiddenGem"
@@ -140,19 +192,6 @@ export const IconRail = ({
                     draggable={false}
                 />
             </div>
-
-            {/* Search — sits above the departments with a distinct elevated chip. */}
-            <button
-                type="button"
-                onClick={() => setSearchOpen(true)}
-                title="Search (Shift + F)"
-                className="group mt-4 flex w-full flex-col items-center gap-1 px-1"
-            >
-                <span className="flex size-11 items-center justify-center rounded-xl bg-primary text-fg-secondary shadow-xs ring-1 ring-secondary transition duration-100 ease-linear group-hover:bg-brand-50 group-hover:text-brand-700 group-hover:ring-brand dark:group-hover:bg-brand-950/50 dark:group-hover:text-brand-300">
-                    <SearchSm className="size-5" aria-hidden="true" />
-                </span>
-                <span className="text-[11px] font-semibold text-tertiary">Search</span>
-            </button>
 
             <span className="mt-4 h-px w-8 bg-border-secondary" />
 
@@ -186,8 +225,5 @@ export const IconRail = ({
 
             {bottom}
         </aside>
-
-        <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
-        </>
     );
 };

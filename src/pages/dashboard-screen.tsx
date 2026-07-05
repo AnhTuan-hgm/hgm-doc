@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { CollapsedTopBar, IconRail, NavCollapseButton, useNavCollapsed } from "@/components/application/icon-rail";
+import { AppShell, CollapsedTopBar, IconRail, NavCollapseButton, useNavCollapsed } from "@/components/application/icon-rail";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowUpRight, Award01, BookOpen01, Briefcase01, Check, ChevronDown, Code02, Diamond01, Edit01, Grid01, Image01, LayoutAlt01, List, Lock01, LockUnlocked01, Mail01, MarkerPin01, MessageChatCircle, Plus, SearchSm, Share07, Star01, Trash01, Trophy01, Users01, XClose } from "@untitledui/icons";
+import { ArrowUpRight, Award01, BookOpen01, Briefcase01, Check, ChevronDown, ClipboardCheck, Code02, Diamond01, Edit01, FolderClosed, Grid01, Image01, LayoutAlt01, List, Lock01, LockUnlocked01, Mail01, MarkerPin01, MessageChatCircle, Plus, SearchSm, Share07, Star01, Trash01, Trophy01, Users01, XClose } from "@untitledui/icons";
 import { supabase, type ChatWidgetPageData, type ClientPageData, type ClientRecord, type LeadCapturePageData, type OverviewCard, type OwnerGuideMeta, type OverviewTab } from "@/lib/supabase";
 import { Avatar } from "@/components/base/avatar/avatar";
 import { SettingsDialog } from "@/pages/settings-screen";
@@ -210,10 +210,11 @@ const DEPARTMENTS: Department[] = [
         sectionLabel: "Create Docs",
         kind: "docs",
         tabs: [
-            { id: "meta-pixel", label: "Meta Pixel", icon: Share07 },
-            { id: "popups", label: "Popups", icon: Mail01 },
-            { id: "chat-widget", label: "Chat Widget", icon: MessageChatCircle },
+            { id: "project-logs", label: "Project Logs", icon: ClipboardCheck },
             { id: "owner-guides", label: "Owner Guides", icon: BookOpen01 },
+            { id: "popups", label: "Popups", icon: Mail01 },
+            { id: "meta-pixel", label: "Meta Pixel", icon: Share07 },
+            { id: "chat-widget", label: "Chat Widget", icon: MessageChatCircle },
         ],
     },
 ];
@@ -1275,30 +1276,51 @@ function gradientFor(title: string): string {
     return `linear-gradient(135deg, hsl(${h} 55% 55%), hsl(${h2} 60% 42%))`;
 }
 
-const OverviewCard = ({
-    card,
-    index,
+/** Big colorful "folder" tile (Spotify Browse-style) — used for both the Docs
+    overview cards and the Client list grid. Title lives inside the tile over
+    a bottom scrim so it reads on any cover photo or gradient; while unlocked,
+    clicking the title renames it in place instead of opening the full editor. */
+const FolderTile = ({
+    title,
+    description,
+    coverUrl,
     editing,
-    isOwner,
-    onStar,
-    onDelete,
-    onEdit,
-    onToggleLock,
+    wide,
+    index,
+    icon: Icon = FolderClosed,
+    onOpen,
+    onRename,
+    topLeft,
+    topRight,
 }: {
-    card: OverviewCard;
-    index: number;
+    title: string;
+    description?: string;
+    coverUrl?: string;
     editing: boolean;
-    isOwner: boolean;
-    onStar: (id: string, starred: boolean) => void;
-    onDelete: (id: string) => void;
-    onEdit: (card: OverviewCard) => void;
-    onToggleLock: (id: string, locked: boolean) => void;
+    wide?: boolean;
+    /** Grid position — staggers the entrance animation. */
+    index: number;
+    /** Decorative icon shown when there's no cover photo — pick one that matches what the tile links to. */
+    icon?: typeof Share07;
+    onOpen: () => void;
+    onRename: (title: string) => void;
+    /** Always-visible badge (e.g. "Protected"), top-left. */
+    topLeft?: React.ReactNode;
+    /** Star / edit / delete controls, top-right. */
+    topRight?: React.ReactNode;
 }) => {
-    const navigate = useNavigate();
-    const open = () => {
-        const { external, to } = resolveLink(card.link);
-        if (external) window.open(to, "_blank", "noopener,noreferrer");
-        else navigate(to);
+    const [renaming, setRenaming] = useState(false);
+    const [draftTitle, setDraftTitle] = useState(title);
+
+    const startRename = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        setDraftTitle(title);
+        setRenaming(true);
+    };
+    const submitRename = () => {
+        setRenaming(false);
+        const trimmed = draftTitle.trim();
+        if (trimmed && trimmed !== title) onRename(trimmed);
     };
 
     return (
@@ -1309,88 +1331,167 @@ const OverviewCard = ({
             exit={{ opacity: 0, scale: 0.96 }}
             transition={{ duration: 0.35, delay: Math.min(index * 0.05, 0.4), ease: [0.22, 1, 0.36, 1] }}
             whileHover={{ y: -4 }}
-            onClick={open}
-            className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl bg-primary ring-1 ring-secondary transition-shadow duration-200 hover:shadow-xl"
+            onClick={onOpen}
+            className={cx(
+                "group relative aspect-[16/10] w-full cursor-pointer overflow-hidden rounded-2xl shadow-sm ring-1 ring-secondary transition-shadow duration-200 hover:shadow-xl",
+                wide && "sm:col-span-2 sm:aspect-[33/10]",
+            )}
         >
-            {/* Cover */}
-            <div className="relative aspect-[16/10] w-full overflow-hidden">
-                {card.cover_url ? (
-                    <img src={card.cover_url} alt={card.title} className="size-full object-cover transition duration-300 group-hover:scale-105" draggable={false} />
+            {/* Background — uploaded cover photo, or a deterministic gradient "folder" tile */}
+            {coverUrl ? (
+                <img src={coverUrl} alt={title} className="absolute inset-0 size-full object-cover transition duration-300 group-hover:scale-105" draggable={false} />
+            ) : (
+                <>
+                    <div className="absolute inset-0 transition duration-300 group-hover:scale-105" style={{ background: gradientFor(title) }} />
+                    <Icon className="pointer-events-none absolute -bottom-4 -right-4 size-28 rotate-6 text-white/15" aria-hidden="true" />
+                </>
+            )}
+            {/* Scrim so the title stays legible over any photo or gradient */}
+            <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+
+            {topLeft && <div className="absolute left-3 top-3">{topLeft}</div>}
+            {topRight && <div className="absolute right-3 top-3 flex items-center gap-2">{topRight}</div>}
+
+            {/* Title + description, bottom-left, inline-renameable while unlocked */}
+            <div className="absolute inset-x-0 bottom-0 p-4">
+                {renaming ? (
+                    <input
+                        type="text"
+                        value={draftTitle}
+                        onChange={(e) => setDraftTitle(e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => {
+                            if (e.key === "Enter") { e.preventDefault(); submitRename(); }
+                            else if (e.key === "Escape") { e.preventDefault(); setRenaming(false); }
+                        }}
+                        onBlur={submitRename}
+                        ref={(el) => el?.focus({ preventScroll: true })}
+                        className="w-full rounded-lg border border-brand bg-primary px-2 py-1 text-sm font-semibold text-primary outline-none"
+                    />
                 ) : (
-                    <div className="flex size-full items-center justify-center transition duration-300 group-hover:scale-105" style={{ background: gradientFor(card.title) }}>
-                        <span className="text-4xl font-bold text-white/90">{card.title.charAt(0).toUpperCase()}</span>
-                    </div>
-                )}
-
-                {/* Star (always shows if starred; toggle on hover in edit mode) */}
-                {(card.starred || editing) && (
-                    <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); onStar(card.id, !card.starred); }}
-                        title={card.starred ? "Unstar" : "Star"}
-                        className={cx(
-                            "absolute right-3 top-3 flex size-8 items-center justify-center rounded-full backdrop-blur transition duration-100 ease-linear",
-                            card.starred ? "bg-black/40 text-yellow-300" : "bg-black/40 text-white opacity-0 group-hover:opacity-100",
-                        )}
+                    <h3
+                        onClick={editing ? startRename : undefined}
+                        title={editing ? "Click to rename" : undefined}
+                        className={cx("truncate text-lg font-bold text-white drop-shadow-sm", editing && "cursor-text hover:underline")}
                     >
-                        <Star01 className={cx("size-4", card.starred && "fill-current")} />
-                    </button>
+                        {title}
+                    </h3>
                 )}
-
-                {/* Edit / protect / delete (edit mode) */}
-                {editing && (
-                    <div className="absolute left-3 top-3 flex items-center gap-2 opacity-0 transition duration-100 ease-linear group-hover:opacity-100">
-                        <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); onEdit(card); }}
-                            title="Edit card"
-                            className="flex size-8 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur transition duration-100 ease-linear hover:bg-brand-solid"
-                        >
-                            <Edit01 className="size-4" />
-                        </button>
-                        {isOwner && (
-                            <button
-                                type="button"
-                                onClick={(e) => { e.stopPropagation(); onToggleLock(card.id, !card.locked); }}
-                                title={card.locked ? "Protected — only you can delete. Click to unprotect." : "Protect this card (only you can delete it)"}
-                                className="flex size-8 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur transition duration-100 ease-linear hover:bg-brand-solid"
-                            >
-                                {card.locked ? <Lock01 className="size-4" /> : <LockUnlocked01 className="size-4" />}
-                            </button>
-                        )}
-                        {(isOwner || !card.locked) && (
-                            <button
-                                type="button"
-                                onClick={(e) => { e.stopPropagation(); onDelete(card.id); }}
-                                title="Delete card"
-                                className="flex size-8 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur transition duration-100 ease-linear hover:bg-error-solid"
-                            >
-                                <Trash01 className="size-4" />
-                            </button>
-                        )}
-                    </div>
-                )}
-
-                {/* Protected badge — visible to everyone so it's clear it can't be deleted by others */}
-                {card.locked && (
-                    <span className="absolute bottom-3 left-3 flex items-center gap-1 rounded-full bg-black/45 px-2.5 py-0.5 text-[11px] font-semibold text-white backdrop-blur">
-                        <Lock01 className="size-3" aria-hidden="true" /> Protected
-                    </span>
-                )}
-            </div>
-
-            {/* Body */}
-            <div className="flex flex-1 items-start gap-3 p-4">
-                <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg bg-secondary ring-1 ring-secondary">
-                    <img src="/hgm logo/Favicon ON LIGHT.svg" alt="" className="size-6 dark:hidden" draggable={false} />
-                    <img src="/hgm logo/Favicon ON Dark.svg" alt="" className="hidden size-6 dark:block" draggable={false} />
-                </span>
-                <div className="min-w-0">
-                    <h3 className="truncate text-sm font-semibold text-primary">{card.title}</h3>
-                    <p className="mt-0.5 line-clamp-2 text-sm text-tertiary">{card.description}</p>
-                </div>
+                {description && <p className="mt-0.5 line-clamp-1 text-xs text-white/80">{description}</p>}
             </div>
         </motion.div>
+    );
+};
+
+/** Decorative folder-tile icon that matches what a card actually links to, instead of a generic folder. */
+function iconForOverviewCard(card: OverviewCard): typeof Share07 {
+    const text = `${card.link} ${card.title}`.toLowerCase();
+    if (text.includes("chat")) return MessageChatCircle;
+    if (text.includes("email") || text.includes("mail")) return Mail01;
+    if (text.includes("dashboard")) return LayoutAlt01;
+    if (text.includes("pixel")) return Share07;
+    if (text.includes("popup") || text.includes("lead")) return Mail01;
+    if (text.includes("guide")) return BookOpen01;
+    if (text.includes("roadmap") || text.includes("project") || text.includes("log")) return ClipboardCheck;
+    return FolderClosed;
+}
+
+const OverviewCard = ({
+    card,
+    index,
+    editing,
+    isOwner,
+    onStar,
+    onDelete,
+    onEdit,
+    onToggleLock,
+    onRename,
+}: {
+    card: OverviewCard;
+    index: number;
+    editing: boolean;
+    isOwner: boolean;
+    onStar: (id: string, starred: boolean) => void;
+    onDelete: (id: string) => void;
+    onEdit: (card: OverviewCard) => void;
+    onToggleLock: (id: string, locked: boolean) => void;
+    onRename: (id: string, title: string) => void;
+}) => {
+    const navigate = useNavigate();
+    const open = () => {
+        const { external, to } = resolveLink(card.link);
+        if (external) window.open(to, "_blank", "noopener,noreferrer");
+        else navigate(to);
+    };
+
+    return (
+        <FolderTile
+            title={card.title}
+            description={card.description}
+            coverUrl={card.cover_url}
+            editing={editing}
+            wide={card.starred}
+            index={index}
+            icon={iconForOverviewCard(card)}
+            onOpen={open}
+            onRename={(title) => onRename(card.id, title)}
+            topLeft={
+                card.locked && (
+                    <span className="flex items-center gap-1 rounded-full bg-black/45 px-2.5 py-0.5 text-[11px] font-semibold text-white backdrop-blur">
+                        <Lock01 className="size-3" aria-hidden="true" /> Protected
+                    </span>
+                )
+            }
+            topRight={
+                <>
+                    {(card.starred || editing) && (
+                        <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); onStar(card.id, !card.starred); }}
+                            title={card.starred ? "Unstar" : "Star"}
+                            className={cx(
+                                "flex size-8 items-center justify-center rounded-full backdrop-blur transition duration-100 ease-linear",
+                                card.starred ? "bg-black/40 text-yellow-300" : "bg-black/40 text-white opacity-0 group-hover:opacity-100",
+                            )}
+                        >
+                            <Star01 className={cx("size-4", card.starred && "fill-current")} />
+                        </button>
+                    )}
+                    {editing && (
+                        <>
+                            <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); onEdit(card); }}
+                                title="Edit card"
+                                className="flex size-8 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur transition duration-100 ease-linear hover:bg-brand-solid"
+                            >
+                                <Edit01 className="size-4" />
+                            </button>
+                            {isOwner && (
+                                <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); onToggleLock(card.id, !card.locked); }}
+                                    title={card.locked ? "Protected — only you can delete. Click to unprotect." : "Protect this card (only you can delete it)"}
+                                    className="flex size-8 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur transition duration-100 ease-linear hover:bg-brand-solid"
+                                >
+                                    {card.locked ? <Lock01 className="size-4" /> : <LockUnlocked01 className="size-4" />}
+                                </button>
+                            )}
+                            {(isOwner || !card.locked) && (
+                                <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); onDelete(card.id); }}
+                                    title="Delete card"
+                                    className="flex size-8 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur transition duration-100 ease-linear hover:bg-error-solid"
+                                >
+                                    <Trash01 className="size-4" />
+                                </button>
+                            )}
+                        </>
+                    )}
+                </>
+            }
+        />
     );
 };
 
@@ -1533,6 +1634,11 @@ const OverviewContent = ({ department, tab, editing, isOwner }: { department: De
         await supabase.from("overview_cards").update({ locked }).eq("id", id);
     };
 
+    const handleRename = async (id: string, title: string) => {
+        setCards((prev) => prev.map((c) => (c.id === id ? { ...c, title } : c)));
+        await supabase.from("overview_cards").update({ title }).eq("id", id);
+    };
+
     const handleCreate = async (c: { title: string; description: string; link: string; cover: string }) => {
         const id = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
         const row: OverviewCard = {
@@ -1590,7 +1696,7 @@ const OverviewContent = ({ department, tab, editing, isOwner }: { department: De
                         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
                             <AnimatePresence mode="popLayout">
                                 {sorted.map((card, i) => (
-                                    <OverviewCard key={card.id} card={card} index={i} editing={editing} isOwner={isOwner} onStar={handleStar} onDelete={handleDelete} onEdit={setEditCard} onToggleLock={handleToggleLock} />
+                                    <OverviewCard key={card.id} card={card} index={i} editing={editing} isOwner={isOwner} onStar={handleStar} onDelete={handleDelete} onEdit={setEditCard} onToggleLock={handleToggleLock} onRename={handleRename} />
                                 ))}
                             </AnimatePresence>
 
@@ -1788,6 +1894,7 @@ const ClientCard = ({
     onStar,
     onDelete,
     onEdit,
+    onRename,
 }: {
     client: ClientRecord;
     index: number;
@@ -1796,6 +1903,7 @@ const ClientCard = ({
     onStar: (id: string, starred: boolean) => void;
     onDelete: (id: string) => void;
     onEdit: (client: ClientRecord) => void;
+    onRename: (id: string, name: string) => void;
 }) => {
     const navigate = useNavigate();
     const open = () => {
@@ -1892,91 +2000,61 @@ const ClientCard = ({
         );
     }
 
-    return (
-        <motion.div
-            layout
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.96 }}
-            transition={{ duration: 0.35, delay: Math.min(index * 0.05, 0.4), ease: [0.22, 1, 0.36, 1] }}
-            whileHover={clickable ? { y: -4 } : undefined}
-            onClick={open}
-            className={cx(
-                "group relative flex flex-col overflow-hidden rounded-2xl bg-primary ring-1 ring-secondary transition-shadow duration-200",
-                clickable && "cursor-pointer hover:shadow-xl",
-            )}
-        >
-            {/* Cover */}
-            <div className="relative aspect-[16/10] w-full overflow-hidden">
-                {client.cover_url ? (
-                    <img src={client.cover_url} alt={client.name} className="size-full object-cover transition duration-300 group-hover:scale-105" draggable={false} />
-                ) : (
-                    <div className="flex size-full items-center justify-center transition duration-300 group-hover:scale-105" style={{ background: gradientFor(client.name || "Client") }}>
-                        <span className="text-4xl font-bold text-white/90">{(client.name || "C").charAt(0).toUpperCase()}</span>
-                    </div>
-                )}
+    const description = [client.location, client.am && `Assigned to ${client.am}`].filter(Boolean).join(" · ");
 
-                {/* Tier badge */}
-                <span className="absolute left-3 top-3 rounded-full bg-black/45 px-2.5 py-0.5 text-[11px] font-semibold text-white backdrop-blur">
+    return (
+        <FolderTile
+            title={client.name || "Untitled client"}
+            description={description}
+            coverUrl={client.cover_url}
+            editing={editing}
+            index={index}
+            icon={TIERS.find((t) => t.id === client.tier)?.icon}
+            onOpen={open}
+            onRename={(name) => onRename(client.id, name)}
+            topLeft={
+                <span className="rounded-full bg-black/45 px-2.5 py-0.5 text-[11px] font-semibold text-white backdrop-blur">
                     {tierLabel(client.tier)}
                 </span>
-
-                {/* Star */}
-                {(client.starred || editing) && (
-                    <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); onStar(client.id, !client.starred); }}
-                        title={client.starred ? "Unstar" : "Star"}
-                        className={cx(
-                            "absolute right-3 top-3 flex size-8 items-center justify-center rounded-full backdrop-blur transition duration-100 ease-linear",
-                            client.starred ? "bg-black/40 text-yellow-300" : "bg-black/40 text-white opacity-0 group-hover:opacity-100",
-                        )}
-                    >
-                        <Star01 className={cx("size-4", client.starred && "fill-current")} />
-                    </button>
-                )}
-
-                {/* Edit + delete (edit mode) */}
-                {editing && (
-                    <div className="absolute bottom-3 right-3 flex items-center gap-2 opacity-0 transition duration-100 ease-linear group-hover:opacity-100">
+            }
+            topRight={
+                <>
+                    {(client.starred || editing) && (
                         <button
                             type="button"
-                            onClick={(e) => { e.stopPropagation(); onEdit(client); }}
-                            title="Edit client"
-                            className="flex size-8 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur transition duration-100 ease-linear hover:bg-brand-solid"
+                            onClick={(e) => { e.stopPropagation(); onStar(client.id, !client.starred); }}
+                            title={client.starred ? "Unstar" : "Star"}
+                            className={cx(
+                                "flex size-8 items-center justify-center rounded-full backdrop-blur transition duration-100 ease-linear",
+                                client.starred ? "bg-black/40 text-yellow-300" : "bg-black/40 text-white opacity-0 group-hover:opacity-100",
+                            )}
                         >
-                            <Edit01 className="size-4" />
+                            <Star01 className={cx("size-4", client.starred && "fill-current")} />
                         </button>
-                        <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); onDelete(client.id); }}
-                            title="Delete client"
-                            className="flex size-8 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur transition duration-100 ease-linear hover:bg-error-solid"
-                        >
-                            <Trash01 className="size-4" />
-                        </button>
-                    </div>
-                )}
-            </div>
-
-            {/* Body */}
-            <div className="flex flex-1 items-start gap-3 p-4">
-                <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg bg-secondary ring-1 ring-secondary">
-                    <img src="/hgm logo/Favicon ON LIGHT.svg" alt="" className="size-6 dark:hidden" draggable={false} />
-                    <img src="/hgm logo/Favicon ON Dark.svg" alt="" className="hidden size-6 dark:block" draggable={false} />
-                </span>
-                <div className="min-w-0">
-                    <h3 className="truncate text-sm font-semibold text-primary">{client.name || "Untitled client"}</h3>
-                    {client.location && (
-                        <p className="mt-0.5 flex items-center gap-1 text-sm text-tertiary">
-                            <MarkerPin01 className="size-3.5 shrink-0" aria-hidden="true" />
-                            <span className="truncate">{client.location}</span>
-                        </p>
                     )}
-                    {client.am && <p className="mt-0.5 truncate text-xs text-quaternary">Assigned to {client.am}</p>}
-                </div>
-            </div>
-        </motion.div>
+                    {editing && (
+                        <>
+                            <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); onEdit(client); }}
+                                title="Edit client"
+                                className="flex size-8 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur transition duration-100 ease-linear hover:bg-brand-solid"
+                            >
+                                <Edit01 className="size-4" />
+                            </button>
+                            <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); onDelete(client.id); }}
+                                title="Delete client"
+                                className="flex size-8 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur transition duration-100 ease-linear hover:bg-error-solid"
+                            >
+                                <Trash01 className="size-4" />
+                            </button>
+                        </>
+                    )}
+                </>
+            }
+        />
     );
 };
 
@@ -2055,6 +2133,11 @@ const ClientListContent = ({
     const handleDelete = async (id: string) => {
         setClients((prev) => prev.filter((c) => c.id !== id));
         await supabase.from("clients").delete().eq("id", id);
+    };
+
+    const handleRename = async (id: string, name: string) => {
+        setClients((prev) => prev.map((c) => (c.id === id ? { ...c, name } : c)));
+        await supabase.from("clients").update({ name }).eq("id", id);
     };
 
     const handleCreate = async (data: Omit<ClientRecord, "id" | "created_at">) => {
@@ -2254,6 +2337,7 @@ const ClientListContent = ({
                                             onStar={handleStar}
                                             onDelete={handleDelete}
                                             onEdit={(c) => setModal({ mode: "edit", client: c })}
+                                            onRename={handleRename}
                                         />
                                     ))}
                                 </AnimatePresence>
@@ -2312,15 +2396,22 @@ const ClientListContent = ({
 /* ── Dashboard layout ─────────────────────────────────────────────── */
 
 const DashboardLayout = () => {
-    const [searchParams] = useSearchParams();
+    const [searchParams, setSearchParams] = useSearchParams();
     const initialDeptId = (() => {
         const p = searchParams.get("dept");
         return p && DEPARTMENTS.some((d) => d.id === p) ? p : "clients";
     })();
     const [department, setDepartment] = useState(initialDeptId);
-    const [activeSection, setActiveSection] = useState(
-        () => (DEPARTMENTS.find((d) => d.id === initialDeptId) ?? DEPARTMENTS[0]).tabs[0]?.id ?? "",
-    );
+    const [activeSection, setActiveSection] = useState(() => {
+        const d = DEPARTMENTS.find((x) => x.id === initialDeptId) ?? DEPARTMENTS[0];
+        const fallback = d.tabs[0]?.id ?? "";
+        // Restore the tab from the URL so the browser Back button lands on the same
+        // section. Static tabs are validated; a card-department custom tab id is
+        // accepted optimistically and matches once overview_tabs load.
+        const t = searchParams.get("tab");
+        if (t && (d.tabs.some((x) => x.id === t) || d.kind === "cards")) return t;
+        return fallback;
+    });
     const [editing, setEditing] = useState(false);
     // Anyone on the team can edit; a per-card lock (below) protects specific cards
     // so only the owner can delete them.
@@ -2334,6 +2425,18 @@ const DashboardLayout = () => {
     const { collapsed: navCollapsed, toggle: toggleNav } = useNavCollapsed();
     const [customTabs, setCustomTabs] = useState<OverviewTab[]>([]);
     const dept = DEPARTMENTS.find((d) => d.id === department) ?? DEPARTMENTS[0];
+
+    // Keep the URL query in sync with the current department + tab so the browser
+    // Back button restores this exact view (e.g. returning from a card's linked
+    // page) instead of the department we first arrived on. replace: true keeps
+    // every in-page switch out of the history stack.
+    useEffect(() => {
+        const next = new URLSearchParams(searchParams);
+        next.set("dept", department);
+        if (activeSection) next.set("tab", activeSection);
+        else next.delete("tab");
+        if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+    }, [department, activeSection]);
 
     // Load custom tabs for card departments.
     useEffect(() => {
@@ -2385,18 +2488,22 @@ const DashboardLayout = () => {
     };
 
     return (
-        <div className="flex h-dvh flex-col overflow-hidden">
+        <AppShell
+            className="flex flex-col"
+            rail={
+                !navCollapsed && (
+                    <IconRail
+                        activeDept={department}
+                        onSelectDept={selectDept}
+                        bottom={<RailBottom editing={editing} onToggleEditing={() => setEditing((e) => !e)} />}
+                    />
+                )
+            }
+        >
             {/* Slim top bar when the rail + side menu are hidden */}
             {navCollapsed && <CollapsedTopBar title={dept.header} onExpand={toggleNav} />}
 
             <div className="flex min-h-0 flex-1">
-            {!navCollapsed && (
-                <IconRail
-                    activeDept={department}
-                    onSelectDept={selectDept}
-                    bottom={<RailBottom editing={editing} onToggleEditing={() => setEditing((e) => !e)} />}
-                />
-            )}
             {dept.kind === "clientlist" ? (
                 <ClientListContent editing={editing} navCollapsed={navCollapsed} onCollapse={toggleNav} />
             ) : (
@@ -2422,12 +2529,14 @@ const DashboardLayout = () => {
                                 ? <ChatWidgetContent />
                                 : activeSection === "owner-guides"
                                     ? <OwnerGuidesContent />
-                                    : <MetaPixelContent />
+                                    : activeSection === "project-logs"
+                                        ? <OverviewContent key={dept.id + ":" + activeSection} department={dept} tab={activeSection} editing={editing} isOwner={isOwner} />
+                                        : <MetaPixelContent />
                         : <OverviewContent key={dept.id + ":" + activeSection} department={dept} tab={activeSection} editing={editing} isOwner={isOwner} />}
                 </>
             )}
             </div>
-        </div>
+        </AppShell>
     );
 };
 

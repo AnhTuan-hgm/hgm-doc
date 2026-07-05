@@ -14,6 +14,9 @@ VALUES (
 ON CONFLICT (id) DO NOTHING;
 
 -- Read: anyone with the page URL can stream the video.
+-- DROP + CREATE (not "CREATE POLICY IF NOT EXISTS" — Postgres has no such syntax)
+-- so this migration can be re-run safely (e.g. rebuilding the DB from scratch).
+DROP POLICY IF EXISTS "videos public read" ON storage.objects;
 CREATE POLICY "videos public read" ON storage.objects
     FOR SELECT TO anon, authenticated
     USING (bucket_id = 'videos');
@@ -21,6 +24,7 @@ CREATE POLICY "videos public read" ON storage.objects
 -- Insert: page editing runs on the anon key (same posture as the content tables),
 -- so uploads must be allowed for both roles. The bucket's size + mime limits above
 -- still apply server-side.
+DROP POLICY IF EXISTS "videos upload" ON storage.objects;
 CREATE POLICY "videos upload" ON storage.objects
     FOR INSERT TO anon, authenticated
     WITH CHECK (bucket_id = 'videos');

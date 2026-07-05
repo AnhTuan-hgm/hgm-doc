@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Check, Code02, Copy01, Edit01, Lightbulb02, Moon01, Plus, SearchSm, Stars01, Sun, Tag01, Trash01, XClose } from "@untitledui/icons";
-import { CollapsedTopBar, IconRail, NavCollapseButton, useNavCollapsed } from "@/components/application/icon-rail";
+import { AppShell, CollapsedTopBar, IconRail, NavCollapseButton, useNavCollapsed } from "@/components/application/icon-rail";
 import { useAuthUser } from "@/hooks/use-auth-user";
 import { useTheme } from "@/providers/theme-provider";
 import { supabase, type PromptLibraryEntry } from "@/lib/supabase";
@@ -381,11 +381,9 @@ export const PromptLibraryScreen = () => {
     if (!isOwner) return <PrivateGate signedIn={!!user} />;
 
     return (
-        <div className="flex h-dvh flex-col overflow-hidden bg-secondary">
+        <AppShell className="flex flex-col" rail={!navCollapsed && <IconRail activeDept="" />}>
             {navCollapsed && <CollapsedTopBar title="Prompt Library" onExpand={toggleNav} />}
             <div className="flex min-h-0 flex-1">
-                {!navCollapsed && <IconRail activeDept="" />}
-
                 {/* Filter sidebar */}
                 {!navCollapsed && (
                     <aside className="flex h-full w-64 shrink-0 flex-col border-r border-secondary bg-primary">
@@ -544,6 +542,6 @@ export const PromptLibraryScreen = () => {
             <AnimatePresence>
                 {modal && <EntryModal initial={modal.entry} categories={categories} onClose={() => setModal(null)} onSave={handleSave} />}
             </AnimatePresence>
-        </div>
+        </AppShell>
     );
 };

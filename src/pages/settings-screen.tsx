@@ -230,6 +230,22 @@ export const SettingsPanel = ({ onCancel, sticky = false }: { onCancel: () => vo
                             </button>
                         );
                     })}
+
+                    {/* Log out — an account action, kept apart from the Cancel/Save pair
+                        so it can't be hit by mistake while saving. Quiet by default,
+                        destructive coloring only on hover. */}
+                    {user && (
+                        <div className="ml-auto md:ml-0 md:mt-4 md:border-t md:border-secondary md:pt-4">
+                            <button
+                                type="button"
+                                onClick={handleLogout}
+                                className="group flex w-full items-center gap-3 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-secondary transition duration-100 ease-linear hover:bg-error-primary hover:text-error-primary"
+                            >
+                                <LogOut01 className="size-5 text-fg-quaternary transition duration-100 ease-linear group-hover:text-fg-error-secondary" aria-hidden="true" />
+                                Log out
+                            </button>
+                        </div>
+                    )}
                 </nav>
 
                 {/* Content */}
@@ -240,11 +256,6 @@ export const SettingsPanel = ({ onCancel, sticky = false }: { onCancel: () => vo
                             <p className="text-sm text-tertiary">Manage your workspace, profile, and notifications.</p>
                         </div>
                         <div className="flex gap-3">
-                            {user && (
-                                <Button color="secondary-destructive" size="md" iconLeading={LogOut01} onClick={handleLogout}>
-                                    Log out
-                                </Button>
-                            )}
                             <Button color="secondary" size="md" onClick={onCancel}>
                                 Cancel
                             </Button>

@@ -5,10 +5,12 @@ import {
     CheckCircle,
     CheckDone01,
     ChevronRight,
+    ClipboardCheck,
     Flag05,
     HelpCircle,
     Hourglass01,
     Image01,
+    LayoutAlt01,
     LinkExternal01,
     Plus,
     Rocket01,
@@ -18,7 +20,8 @@ import {
     Zap,
 } from "@untitledui/icons";
 import { Checkbox } from "@/components/base/checkbox/checkbox";
-import { CollapsedTopBar, IconRail, NavCollapseButton, RailBottom, useNavCollapsed } from "@/components/application/icon-rail";
+import { AppShell, CollapsedTopBar, IconRail, NavCollapseButton, RailBottom, useNavCollapsed } from "@/components/application/icon-rail";
+import { PageBanner } from "@/components/application/page-banner";
 import { VideoAttach, VideoEmbed } from "@/components/application/video-block";
 import { Badge, BadgeWithDot } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
@@ -89,6 +92,7 @@ interface OverviewData {
 
 interface RoadmapData {
     overview: OverviewData;
+    bannerUrl?: string;
     roadmap: RoadmapItem[];
     log: LogEntry[];
     todos: TodoItem[];
@@ -300,6 +304,30 @@ export const RoadmapScreen = () => {
         container.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
     };
 
+    // Scroll-spy: as the page scrolls, highlight the side-menu item for the section
+    // currently in view (the last heading above the top ~40% of the pane; at the
+    // very bottom the final section wins so it's reachable even when short).
+    useEffect(() => {
+        const main = mainRef.current;
+        if (!main) return;
+        const onScroll = () => {
+            let current = SECTIONS[0].id;
+            if (main.scrollTop + main.clientHeight >= main.scrollHeight - 8) {
+                current = SECTIONS[SECTIONS.length - 1].id;
+            } else {
+                const mainTop = main.getBoundingClientRect().top;
+                for (const s of SECTIONS) {
+                    const el = document.getElementById(`roadmap-section-${s.id}`);
+                    if (el && el.getBoundingClientRect().top - mainTop <= main.clientHeight * 0.4) current = s.id;
+                }
+            }
+            setActiveSection(current);
+        };
+        main.addEventListener("scroll", onScroll, { passive: true });
+        onScroll();
+        return () => main.removeEventListener("scroll", onScroll);
+    }, []);
+
     // Timeline grouped by date, newest first
     const sortedLog = [...data.log].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
     const logByDate = sortedLog.reduce<Record<string, LogEntry[]>>((acc, en) => {
@@ -311,19 +339,21 @@ export const RoadmapScreen = () => {
     const answeredCount = data.questions.filter((q) => q.answer?.trim()).length;
 
     return (
-        <div data-highlight-scope className="flex h-dvh flex-col overflow-hidden">
+        <AppShell
+            highlightScope
+            className="flex flex-col"
+            rail={!navCollapsed && (
+                <IconRail activeDept="docs" bottom={<RailBottom editing={editing} onToggleEditing={() => setEditing((e) => !e)} />} />
+            )}
+        >
             <HighlightPen enabled={editing} />
             {navCollapsed && <CollapsedTopBar title="Project Management" onExpand={toggleNav} />}
             <div className="flex min-h-0 flex-1">
-            {!navCollapsed && (
-                <IconRail activeDept="website" bottom={<RailBottom editing={editing} onToggleEditing={() => setEditing((e) => !e)} />} />
-            )}
-
             {/* Side menu */}
             {!navCollapsed && (
             <aside className="flex w-[240px] shrink-0 flex-col border-r border-secondary bg-primary">
                 <div className="flex h-[73px] shrink-0 items-center justify-between border-b border-secondary px-5">
-                    <h2 className="text-md font-semibold text-primary">Website</h2>
+                    <h2 className="text-md font-semibold text-primary">Project Management</h2>
                     <NavCollapseButton onClick={toggleNav} />
                 </div>
                 <motion.nav
@@ -359,21 +389,26 @@ export const RoadmapScreen = () => {
 
             {/* Main content */}
             <main className="flex min-w-0 flex-1 flex-col bg-secondary">
-                <header className="flex h-[73px] shrink-0 items-center justify-between border-b border-secondary bg-primary px-6">
-                    <div>
-                        <h1 className="text-md font-semibold text-primary">Project Management</h1>
-                        <p className="text-sm text-tertiary">
-                            {loading ? "Loading…" : `${shippedCount} update${shippedCount !== 1 ? "s" : ""} shipped`}
-                        </p>
-                    </div>
-                    {saveState !== "idle" && (
-                        <Badge size="md" type="pill-color" color={saveState === "error" ? "error" : saveState === "saving" ? "gray" : "success"}>
-                            {saveState === "saving" ? "Saving…" : saveState === "error" ? "Save failed" : "Saved"}
-                        </Badge>
-                    )}
-                </header>
-
                 <div ref={mainRef} className="flex-1 overflow-y-auto">
+                    <PageBanner
+                        breadcrumb={[
+                            { label: "Dashboard", to: "/dashboard", icon: LayoutAlt01 },
+                            { label: "Project Logs", to: "/dashboard?dept=docs&tab=project-logs", icon: ClipboardCheck },
+                            { label: "Project Management" },
+                        ]}
+                        title="Project Management"
+                        subtitle={loading ? "Loading…" : `${shippedCount} update${shippedCount !== 1 ? "s" : ""} shipped`}
+                        imageUrl={data.bannerUrl}
+                        editing={editing}
+                        onImageChange={(url) => persist({ ...data, bannerUrl: url || undefined })}
+                        actions={
+                            saveState !== "idle" ? (
+                                <Badge size="md" type="pill-color" color={saveState === "error" ? "error" : saveState === "saving" ? "gray" : "success"}>
+                                    {saveState === "saving" ? "Saving…" : saveState === "error" ? "Save failed" : "Saved"}
+                                </Badge>
+                            ) : undefined
+                        }
+                    />
                     <div className="mx-auto w-full max-w-3xl px-6 py-10">
                         {/* ——— Project Overview ——— */}
                         <motion.section
@@ -1025,6 +1060,6 @@ export const RoadmapScreen = () => {
                 )}
             </AnimatePresence>
             </div>
-        </div>
+        </AppShell>
     );
 };

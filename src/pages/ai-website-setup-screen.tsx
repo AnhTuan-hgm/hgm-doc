@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { CollapsedTopBar, IconRail, NavCollapseButton, RailBottom, useNavCollapsed } from "@/components/application/icon-rail";
+import { AppShell, CollapsedTopBar, IconRail, NavCollapseButton, RailBottom, useNavCollapsed } from "@/components/application/icon-rail";
 import { supabase } from "@/lib/supabase";
 import { compressImageFile } from "@/utils/compress-image";
 import { cx } from "@/utils/cx";
@@ -947,10 +947,12 @@ export const AiWebsiteSetupScreen = () => {
     });
 
     return (
-        <div className="flex h-dvh flex-col overflow-hidden bg-secondary">
+        <AppShell
+            className="flex flex-col"
+            rail={!navCollapsed && <IconRail activeDept="website" bottom={<RailBottom editing={editing} onToggleEditing={handleToggleLock} />} />}
+        >
             {navCollapsed && <CollapsedTopBar title="Web Team" onExpand={toggleNav} />}
             <div className="flex min-h-0 flex-1">
-            {!navCollapsed && <IconRail activeDept="website" bottom={<RailBottom editing={editing} onToggleEditing={handleToggleLock} />} />}
             {!navCollapsed && (
             <Sidebar
                 stages={stages}
@@ -1141,6 +1143,6 @@ export const AiWebsiteSetupScreen = () => {
             </div>
 
             </div>
-        </div>
+        </AppShell>
     );
 };

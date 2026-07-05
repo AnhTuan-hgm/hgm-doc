@@ -15,6 +15,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
+import { AppShell } from "@/components/application/icon-rail";
 import { VideoAttach, VideoEmbed } from "@/components/application/video-block";
 import { useTheme } from "@/providers/theme-provider";
 import { compressImageFile } from "@/utils/compress-image";
@@ -529,7 +530,7 @@ const Sidebar = ({
     const overviewIdx = steps.findIndex(s => s.credSection === "overview");
 
     return (
-        <aside className="flex h-dvh w-[280px] shrink-0 flex-col border-r border-secondary bg-primary">
+        <aside className="flex h-full w-[280px] shrink-0 flex-col border-r border-secondary bg-primary">
             {/* header */}
             <div className="flex items-center border-b border-secondary px-5 py-4">
                 <img src={isDark ? "/hgm logo/LOGO ON Dark.svg" : "/hgm logo/Logo ON LIGHT.svg"}
@@ -1136,7 +1137,7 @@ export const OwnerGuideScreen = () => {
     const filledForms = formSteps.filter(s => sectionFilledIn(ownerData.credentials, s.credSection)).length;
 
     return (
-        <div className="flex h-dvh overflow-hidden bg-secondary">
+        <AppShell className="flex">
             <Sidebar
                 steps={steps} credentials={ownerData.credentials} visited={visited}
                 currentStep={currentStep} editing={editing}
@@ -1499,6 +1500,6 @@ export const OwnerGuideScreen = () => {
                     </motion.div>
                 )}
             </AnimatePresence>
-        </div>
+        </AppShell>
     );
 };

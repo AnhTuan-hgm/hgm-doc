@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { CollapsedTopBar, IconRail, NavCollapseButton, RailBottom, useNavCollapsed } from "@/components/application/icon-rail";
+import { AppShell, CollapsedTopBar, IconRail, NavCollapseButton, RailBottom, useNavCollapsed } from "@/components/application/icon-rail";
 import { useAuthUser } from "@/hooks/use-auth-user";
 import { supabase } from "@/lib/supabase";
 import { compressImageFile } from "@/utils/compress-image";
@@ -987,10 +987,12 @@ export const TemplateOneScreen = ({
     });
 
     return (
-        <div className="flex h-dvh flex-col overflow-hidden bg-secondary">
+        <AppShell
+            className="flex flex-col"
+            rail={!navCollapsed && <IconRail activeDept="" bottom={<RailBottom editing={editing} onToggleEditing={handleToggleLock} />} />}
+        >
             {navCollapsed && <CollapsedTopBar title="Web Team" onExpand={toggleNav} />}
             <div className="flex min-h-0 flex-1">
-            {!navCollapsed && <IconRail activeDept="" bottom={<RailBottom editing={editing} onToggleEditing={handleToggleLock} />} />}
             {!navCollapsed && (
             <Sidebar
                 stages={stages}
@@ -1308,6 +1310,6 @@ export const TemplateOneScreen = ({
             </AnimatePresence>
 
             </div>
-        </div>
+        </AppShell>
     );
 };
