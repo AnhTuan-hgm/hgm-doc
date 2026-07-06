@@ -15,18 +15,25 @@ import { createClient } from "@supabase/supabase-js";
 
 const SYSTEM_PROMPT = `You are the internal AI assistant for HiddenGem Media's team documentation site (hgm-doc). You help the team find their own content: client pages, shareable templates (Meta Pixel, Popup/Lead Capture, Chat Widget, Host Onboarding Form, Owner Guide, Client Dashboard), saved prompts/patterns, and the client roster.
 
-Use the search_site_content tool whenever the user asks for a template, a client's page, or a saved prompt/pattern — e.g. "give me the template for popups" or "find John's dashboard". Always search before saying something doesn't exist.
+Structural facts you already know (never need a search for these, they're fixed):
+- Client tiers: Tier 0, Tier 1, Tier 2, Mastermind — every client belongs to exactly one.
+- Team departments (the icon rail): Clients, Website, AM, Docs.
+- Shareable templates: Meta Pixel, Popup/Lead Capture, Chat Widget, Host Onboarding Form, Owner Guide, Client Dashboard.
+If asked to enumerate/define one of these (e.g. "what tiers exist"), answer directly from this list — don't search, and don't say you don't know.
 
-When you get results back, answer concisely and include the relevant link(s) as plain paths (e.g. /acme-hostonboarding) — the app will render them as clickable links. If nothing matches, say so plainly and suggest the person rephrase (e.g. try the client's name only). Never invent slugs, links, or content that wasn't returned by the tool.`;
+Use the search_site_content tool for anything that requires looking at actual saved data: a specific client's page, a saved prompt/pattern, or the client roster filtered by tier — e.g. "give me the template for popups", "find John's dashboard", "list Tier 0 clients". Always search before saying something doesn't exist.
+
+When you get results back, answer concisely and include the relevant link(s) as plain paths (e.g. /acme-hostonboarding) — the app will render them as clickable links. If a search genuinely comes back empty, say so plainly and suggest a rephrase — but only for things that actually require a search; never claim not to know one of the structural facts above.`;
 
 const SEARCH_TOOL: Anthropic.Tool = {
     name: "search_site_content",
     description:
-        "Search this app's own Supabase data — client pages (Meta Pixel, Popup, Chat Widget, Host Onboarding Form, Client Dashboard, Owner Guide), the Prompt & Pattern Library, and the client roster — by a free-text query. Use for any request naming a client, business, template, or prompt/pattern topic.",
+        "Search this app's own Supabase data — client pages (Meta Pixel, Popup, Chat Widget, Host Onboarding Form, Client Dashboard, Owner Guide), the Prompt & Pattern Library, and the client roster — by a free-text query, optionally filtered to one client tier. Use for any request naming a client, business, template, or prompt/pattern topic, or asking to list clients in a given tier.",
     input_schema: {
         type: "object",
         properties: {
-            query: { type: "string", description: "Search text — a client/business name, or a template/prompt/pattern keyword." },
+            query: { type: "string", description: "Search text — a client/business name, or a template/prompt/pattern keyword. Pass an empty string if you only want to filter the roster by tier." },
+            tier: { type: "string", enum: ["tier-0", "tier-1", "tier-2", "mastermind"], description: "Optional — restrict the client roster results to this tier only." },
         },
         required: ["query"],
     },
@@ -41,8 +48,11 @@ interface SearchResult {
     url: string | null;
 }
 
-async function searchSiteContent(supabaseAdmin: ReturnType<typeof createClient>, query: string): Promise<SearchResult[]> {
+async function searchSiteContent(supabaseAdmin: ReturnType<typeof createClient>, query: string, tier?: string): Promise<SearchResult[]> {
     const like = `%${query}%`;
+    let clientsQuery = supabaseAdmin.from("clients").select("name,tier,am,location,link");
+    clientsQuery = tier ? clientsQuery.eq("tier", tier).limit(20) : clientsQuery.ilike("name", like).limit(5);
+
     const [prompts, clientPages, chatwidgets, leadcaptures, hostonb, dashboards, ownerguides, clients] = await Promise.all([
         supabaseAdmin.from("prompt_library").select("title,type,category,body,when_to_use").or(`title.ilike.${like},category.ilike.${like}`).limit(5),
         supabaseAdmin.from("client_pages").select("slug,client_name").ilike("client_name", like).limit(5),
@@ -51,7 +61,7 @@ async function searchSiteContent(supabaseAdmin: ReturnType<typeof createClient>,
         supabaseAdmin.from("host_onboarding_pages").select("slug,client_name").ilike("client_name", like).limit(5),
         supabaseAdmin.from("dashboard_pages").select("slug,client_name").ilike("client_name", like).limit(5),
         supabaseAdmin.from("owner_guides").select("slug,client_name").ilike("client_name", like).limit(5),
-        supabaseAdmin.from("clients").select("name,tier,am,location,link").ilike("name", like).limit(5),
+        clientsQuery,
     ]);
 
     const results: SearchResult[] = [];
@@ -115,11 +125,11 @@ export default async (req: Request) => {
             }
 
             const toolResults = await Promise.all(
-                toolUses.map(async (toolUse) => ({
-                    type: "tool_result" as const,
-                    tool_use_id: toolUse.id,
-                    content: JSON.stringify(await searchSiteContent(supabaseAdmin, (toolUse.input as { query: string }).query)),
-                })),
+                toolUses.map(async (toolUse) => {
+                    const input = toolUse.input as { query: string; tier?: string };
+                    const results = await searchSiteContent(supabaseAdmin, input.query, input.tier);
+                    return { type: "tool_result" as const, tool_use_id: toolUse.id, content: JSON.stringify(results) };
+                }),
             );
             conversation = [
                 ...conversation,
