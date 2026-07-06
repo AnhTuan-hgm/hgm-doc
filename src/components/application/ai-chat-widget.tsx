@@ -94,15 +94,18 @@ export const AiChatWidget = () => {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ messages: next.map((m) => ({ role: m.role, content: m.content })) }),
             });
-            const json = await res.json();
+            let json: { reply?: string; error?: string };
+            try {
+                json = await res.json();
+            } catch {
+                // Non-JSON response — almost always means the function isn't being served
+                // (e.g. plain `npm run dev` instead of `netlify dev`), not a real API error.
+                throw new Error("Couldn't reach the AI assistant — if you're testing locally, run `netlify dev` (not `npm run dev`) so the function is served.");
+            }
             if (!res.ok) throw new Error(json.error || "Something went wrong.");
-            setMessages((m) => [...m, { role: "assistant", content: json.reply }]);
+            setMessages((m) => [...m, { role: "assistant", content: json.reply ?? "" }]);
         } catch (err) {
-            setError(
-                err instanceof Error && err.message
-                    ? err.message
-                    : "Couldn't reach the AI assistant — if you're testing locally, run `netlify dev` instead of `npm run dev` so the function is served.",
-            );
+            setError(err instanceof Error ? err.message : "Something went wrong.");
         } finally {
             setLoading(false);
         }

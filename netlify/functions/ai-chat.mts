@@ -102,8 +102,11 @@ export default async (req: Request) => {
                 messages: conversation,
             });
 
-            const toolUse = response.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
-            if (!toolUse || response.stop_reason !== "tool_use") {
+            // Claude can issue multiple tool_use blocks in one turn (parallel calls) — every
+            // one of them needs a matching tool_result in the very next message, or the API
+            // rejects the next request with "tool_use ids were found without tool_result".
+            const toolUses = response.content.filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
+            if (toolUses.length === 0 || response.stop_reason !== "tool_use") {
                 finalText = response.content
                     .filter((b): b is Anthropic.TextBlock => b.type === "text")
                     .map((b) => b.text)
@@ -111,11 +114,17 @@ export default async (req: Request) => {
                 break;
             }
 
-            const results = await searchSiteContent(supabaseAdmin, (toolUse.input as { query: string }).query);
+            const toolResults = await Promise.all(
+                toolUses.map(async (toolUse) => ({
+                    type: "tool_result" as const,
+                    tool_use_id: toolUse.id,
+                    content: JSON.stringify(await searchSiteContent(supabaseAdmin, (toolUse.input as { query: string }).query)),
+                })),
+            );
             conversation = [
                 ...conversation,
                 { role: "assistant", content: response.content },
-                { role: "user", content: [{ type: "tool_result", tool_use_id: toolUse.id, content: JSON.stringify(results) }] },
+                { role: "user", content: toolResults },
             ];
         }
     } catch (err) {
