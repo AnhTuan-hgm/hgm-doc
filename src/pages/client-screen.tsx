@@ -4,9 +4,10 @@ import { PixelPage } from "./pixel-page";
 import { PopupPage } from "./popup-page";
 import { ChatWidgetScreen } from "./chat-widget-screen";
 import { ClientDashboardPage } from "./client-dashboard-page";
+import { HostOnboardingFormPage } from "./host-onboarding-form-page";
 import { TemplateOneScreen } from "./template-one-screen";
 import { NotFound } from "./not-found";
-import { supabase, type ChatWidgetPageData, type ClientPageData, type DashboardPageData, type LeadCapturePageData } from "@/lib/supabase";
+import { supabase, type ChatWidgetPageData, type ClientPageData, type DashboardPageData, type HostOnboardingPageData, type LeadCapturePageData } from "@/lib/supabase";
 
 const Spinner = () => (
     <main className="flex min-h-dvh items-center justify-center bg-secondary">
@@ -96,6 +97,42 @@ const ChatWidgetClientScreen = ({ slug }: { slug: string }) => {
     );
 };
 
+/* Host Onboarding Forms live at /{name}-hostonboarding and load from host_onboarding_pages. */
+const HostOnboardingClientScreen = ({ slug }: { slug: string }) => {
+    const [data, setData] = useState<HostOnboardingPageData | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [notFound, setNotFound] = useState(false);
+
+    useEffect(() => {
+        setLoading(true);
+        setData(null);
+        setNotFound(false);
+        supabase
+            .from("host_onboarding_pages")
+            .select("*")
+            .eq("slug", slug)
+            .single()
+            .then(({ data: row, error }) => {
+                if (!error && row) setData(row as HostOnboardingPageData);
+                else setNotFound(true);
+                setLoading(false);
+            });
+    }, [slug]);
+
+    if (loading) return <Spinner />;
+    if (notFound) return <NotFound />;
+
+    return (
+        <HostOnboardingFormPage
+            key={slug}
+            slug={slug}
+            initialClientName={data?.client_name ?? ""}
+            initialClientWebsite={data?.client_website ?? ""}
+            initialData={data?.data}
+        />
+    );
+};
+
 /* Client dashboards live at /{name}-dashboard and load from dashboard_pages.
    The bare "/client-dashboard" slug is the master template (no DB row needed). */
 const ClientDashboardScreen = ({ slug }: { slug: string }) => {
@@ -153,6 +190,10 @@ export const ClientScreen = () => {
 
     if (clientSlug?.endsWith("-dashboard")) {
         return <ClientDashboardScreen slug={clientSlug} />;
+    }
+
+    if (clientSlug?.endsWith("-hostonboarding")) {
+        return <HostOnboardingClientScreen slug={clientSlug} />;
     }
 
     return <PixelScreen clientSlug={clientSlug} />;

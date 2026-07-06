@@ -5,11 +5,13 @@ import { supabase } from "@/lib/supabase";
 import { cx } from "@/utils/cx";
 
 /**
- * Video support for guide/project pages — one value, two sources:
+ * Video support for guide/project pages — one value, three sources:
  *
- *  1. Loom link  → embedded inline player (loom.com/embed iframe). Zero storage
- *     cost; the viewer never leaves our page.
- *  2. mp4 upload → Supabase Storage bucket "videos" (≤ 50 MB), played with a
+ *  1. Loom link    → embedded inline player (loom.com/embed iframe). Zero
+ *     storage cost; the viewer never leaves our page.
+ *  2. YouTube link → embedded inline player (youtube.com/embed iframe). Same
+ *     zero-storage-cost deal as Loom.
+ *  3. mp4 upload   → Supabase Storage bucket "videos" (≤ 50 MB), played with a
  *     native <video> tag. Only the public URL is stored in page content —
  *     video bytes NEVER go into table rows (unlike images, they're too big
  *     for base64, and browsers can't practically re-encode video client-side).
@@ -22,27 +24,30 @@ import { cx } from "@/utils/cx";
  */
 
 const LOOM_RE = /^https?:\/\/(?:www\.)?loom\.com\/(?:share|embed)\/([a-f0-9]{16,64})\b/i;
+const YOUTUBE_RE = /^https?:\/\/(?:(?:www|m)\.)?(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{11})\b/i;
 const FILE_RE = /^https:\/\/\S+\.(mp4|webm|mov)(\?\S*)?$/i;
 const STORAGE_RE = /^https:\/\/\S+\/storage\/v1\/object\/public\/videos\//i;
 
-export type ParsedVideo = { kind: "loom"; embed: string } | { kind: "file"; src: string };
+export type ParsedVideo = { kind: "loom"; embed: string } | { kind: "youtube"; embed: string } | { kind: "file"; src: string };
 
-/** Strictly parse a video URL — only Loom embeds and https video files pass. */
+/** Strictly parse a video URL — only Loom/YouTube embeds and https video files pass. */
 export function parseVideoUrl(raw: string | undefined | null): ParsedVideo | null {
     const url = (raw ?? "").trim();
     if (!url) return null;
-    const loom = LOOM_RE.exec(url);
     // Rebuild the iframe src from the captured id only — never embed arbitrary URLs.
+    const loom = LOOM_RE.exec(url);
     if (loom) return { kind: "loom", embed: `https://www.loom.com/embed/${loom[1]}` };
+    const youtube = YOUTUBE_RE.exec(url);
+    if (youtube) return { kind: "youtube", embed: `https://www.youtube.com/embed/${youtube[1]}` };
     if (STORAGE_RE.test(url) || FILE_RE.test(url)) return { kind: "file", src: url };
     return null;
 }
 
-/** Inline player — Loom iframe or native <video>. Renders nothing for invalid URLs. */
+/** Inline player — Loom/YouTube iframe or native <video>. Renders nothing for invalid URLs. */
 export const VideoEmbed = ({ url, className }: { url: string; className?: string }) => {
     const parsed = parseVideoUrl(url);
     if (!parsed) return null;
-    if (parsed.kind === "loom") {
+    if (parsed.kind === "loom" || parsed.kind === "youtube") {
         return (
             <div className={cx("aspect-video w-full overflow-hidden rounded-xl bg-primary-solid ring-1 ring-secondary", className)}>
                 <iframe
@@ -98,7 +103,7 @@ export const VideoAttach = ({
 
     const attachLink = () => {
         if (!parseVideoUrl(link)) {
-            setError("That doesn't look like a Loom or video link (mp4/webm/mov).");
+            setError("That doesn't look like a Loom, YouTube, or video link (mp4/webm/mov).");
             return;
         }
         setError(null);
@@ -149,7 +154,7 @@ export const VideoAttach = ({
                     <input
                         type="text"
                         value={link}
-                        placeholder="Paste a Loom or video link…"
+                        placeholder="Paste a Loom, YouTube, or video link…"
                         onChange={(e) => setLink(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && attachLink()}
                         className="min-w-0 flex-1 bg-transparent text-xs text-primary placeholder:text-placeholder outline-none"
@@ -175,7 +180,7 @@ export const VideoAttach = ({
                     {busy ? "Uploading…" : "Upload video"}
                 </label>
             </div>
-            <p className="text-[11px] text-quaternary">Loom links play right on the page (recommended) · uploads up to 50 MB.</p>
+            <p className="text-[11px] text-quaternary">Loom and YouTube links play right on the page (recommended) · uploads up to 50 MB.</p>
             {error && <p className="text-xs text-error-primary">{error}</p>}
         </div>
     );

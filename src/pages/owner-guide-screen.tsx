@@ -32,7 +32,7 @@ type SaveStatus = "idle" | "saving" | "saved" | "error" | "empty";
 type CredSection = "none" | "pms" | "netlify" | "hosting" | "supabase" | "resend" | "stripe" | "domain" | "cloudflare" | "overview";
 
 interface StepImage { id: string; src: string; lensPos?: LensPos }
-interface Instruction { text: string; image?: string; lensPos?: LensPos }
+interface Instruction { id?: string; text: string; image?: string; lensPos?: LensPos; locked?: boolean }
 
 interface StepData {
     title: string;
@@ -104,7 +104,9 @@ function normalizeSteps(steps: StepData[]): StepData[] {
         credSection: inferSection(s),
         images: s.images ?? [],
         instructions: ((s.instructions ?? []) as (string | Instruction)[]).map((ins) =>
-            typeof ins === "string" ? { text: ins } : { text: ins.text ?? "", image: ins.image, lensPos: ins.lensPos },
+            typeof ins === "string"
+                ? { id: uid(), text: ins }
+                : { id: ins.id ?? uid(), text: ins.text ?? "", image: ins.image, lensPos: ins.lensPos, locked: ins.locked },
         ),
     }));
 }
@@ -396,6 +398,116 @@ const ImageMagnifier = ({ src, editing, lensPos, onLensPosChange, onRemove }: {
     );
 };
 
+/** One "step-by-step instruction" row — reordered via up/down arrows (not drag,
+    which felt glitchy for this list). */
+const InstructionRow = ({
+    ins,
+    index,
+    isFirst,
+    isLast,
+    editing,
+    onChangeText,
+    onDelete,
+    onToggleLock,
+    onMoveUp,
+    onMoveDown,
+    onImageChange,
+    onLensPosChange,
+    onRemoveImage,
+}: {
+    ins: Instruction;
+    index: number;
+    isFirst: boolean;
+    isLast: boolean;
+    editing: boolean;
+    onChangeText: (val: string) => void;
+    onDelete: () => void;
+    onToggleLock: () => void;
+    onMoveUp: () => void;
+    onMoveDown: () => void;
+    onImageChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+    onLensPosChange: (p: LensPos) => void;
+    onRemoveImage: () => void;
+}) => {
+    return (
+        <div className="rounded-xl border border-secondary bg-primary px-4 py-3.5">
+            <div className="flex items-start gap-3.5">
+                {editing && (
+                    <div className="mt-0.5 flex shrink-0 flex-col">
+                        <button type="button"
+                            title="Move up"
+                            disabled={isFirst}
+                            onClick={onMoveUp}
+                            className="flex size-6 items-center justify-center rounded-md text-fg-quaternary transition hover:bg-primary_hover hover:text-fg-secondary disabled:cursor-not-allowed disabled:opacity-30">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 15l-6-6-6 6" /></svg>
+                        </button>
+                        <button type="button"
+                            title="Move down"
+                            disabled={isLast}
+                            onClick={onMoveDown}
+                            className="flex size-6 items-center justify-center rounded-md text-fg-quaternary transition hover:bg-primary_hover hover:text-fg-secondary disabled:cursor-not-allowed disabled:opacity-30">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
+                        </button>
+                    </div>
+                )}
+                <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-brand-100 text-[12px] font-bold text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">
+                    {index + 1}
+                </span>
+                {editing ? (
+                    <textarea value={ins.text}
+                        onChange={e => onChangeText(e.target.value)}
+                        rows={2} className="flex-1 resize-y bg-transparent text-[14px] leading-relaxed text-secondary outline-none"
+                    />
+                ) : (
+                    <p className="flex-1 text-[14px] leading-relaxed text-secondary">{ins.text}</p>
+                )}
+                {editing && (
+                    <button type="button"
+                        title={ins.locked ? "Unlock instruction (allow delete)" : "Lock instruction (protect from delete)"}
+                        onClick={onToggleLock}
+                        className={cx(
+                            "mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md transition",
+                            ins.locked ? "text-brand-600 hover:bg-brand-50 dark:text-brand-400" : "text-fg-quaternary hover:bg-primary_hover hover:text-fg-secondary",
+                        )}>
+                        {ins.locked ? (
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="10" width="16" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
+                        ) : (
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="10" width="16" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 7.5-2" /></svg>
+                        )}
+                    </button>
+                )}
+                {editing && !ins.locked && (
+                    <button type="button"
+                        title="Delete instruction"
+                        onClick={onDelete}
+                        className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md text-fg-quaternary transition hover:bg-error-primary hover:text-fg-error-primary">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /></svg>
+                    </button>
+                )}
+            </div>
+
+            {/* Per-instruction reference image with magnify circle */}
+            {ins.image ? (
+                <div className="mt-3 pl-[76px]">
+                    <ImageMagnifier
+                        src={ins.image}
+                        editing={editing}
+                        lensPos={ins.lensPos}
+                        onLensPosChange={onLensPosChange}
+                        onRemove={onRemoveImage}
+                    />
+                </div>
+            ) : editing ? (
+                <label className="mt-3 ml-[76px] flex w-fit cursor-pointer items-center gap-2 rounded-lg border border-dashed border-primary px-3 py-1.5 text-[12px] font-medium text-tertiary transition hover:border-brand hover:text-brand-700">
+                    <input type="file" accept="image/*" className="hidden" onChange={onImageChange} />
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></svg>
+                    Add image
+                </label>
+            ) : null}
+        </div>
+    );
+};
+
 // ── Credential field helpers ──────────────────────────────────────
 
 const CredField = ({ label, placeholder, value, onChange }: {
@@ -460,15 +572,28 @@ const OverviewRow = ({ label, value, locked }: { label: string; value: string; l
     </div>
 );
 
-const OverviewSection = ({ title, rows, locked }: { title: string; rows: { label: string; value: string }[]; locked: boolean }) => {
+const OverviewSection = ({ num, title, label, rows, locked }: { num: number; title: string; label?: string; rows: { label: string; value: string }[]; locked: boolean }) => {
     const hasAny = rows.some(r => r.value);
     return (
-        <div className="rounded-xl border border-secondary bg-primary overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 bg-secondary">
-                <p className="text-[12px] font-bold uppercase tracking-[0.08em] text-secondary">{title}</p>
+        <div className="overflow-hidden rounded-2xl border border-secondary bg-primary shadow-xs">
+            <div className="flex items-center gap-3 border-b border-secondary px-4 py-3">
+                {/* step number badge — matches the numbered sidebar so it's easy to cross-check */}
+                <span className={cx(
+                    "flex size-8 shrink-0 items-center justify-center rounded-full text-[13px] font-bold tabular-nums ring-1 ring-inset transition",
+                    hasAny ? "bg-success-secondary text-success-primary ring-success-primary/20" : "bg-secondary text-quaternary ring-secondary",
+                )}>
+                    {num}
+                </span>
+                <div className="min-w-0 flex-1">
+                    <p className="truncate text-[14px] font-semibold text-primary">{label || title}</p>
+                    {label && <p className="truncate text-[11px] text-quaternary">{title}</p>}
+                </div>
                 {hasAny
-                    ? <span className="rounded-full bg-success-secondary px-2 py-0.5 text-[10px] font-semibold text-success-primary">Submitted</span>
-                    : <span className="rounded-full bg-tertiary px-2 py-0.5 text-[10px] font-semibold text-quaternary">Empty</span>
+                    ? <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-success-secondary px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-success-primary">
+                        <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+                        Submitted
+                    </span>
+                    : <span className="shrink-0 rounded-full bg-tertiary px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-quaternary">Empty</span>
                 }
             </div>
             <div className="px-4">
@@ -586,7 +711,7 @@ const Sidebar = ({
                                         ? <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" /></svg>
                                         : status === "done"
                                             ? <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6L9 17l-5-5" /></svg>
-                                            : i + 1
+                                            : i
                                     }
                                 </span>
                                 <div className="flex-1 min-w-0">
@@ -980,6 +1105,33 @@ export const OwnerGuideScreen = () => {
         });
     };
 
+    const deleteInstruction = (si: number, ii: number) => {
+        setSteps(prev => {
+            const step = prev[si];
+            if (step.instructions[ii]?.locked) return prev; // protected — unlock before deleting
+            const next = prev.map((s, i) => i !== si ? s : { ...s, instructions: s.instructions.filter((_, j) => j !== ii) });
+            saveContent(next);
+            return next;
+        });
+    };
+
+    const toggleInstructionLock = (si: number, ii: number) => {
+        patchInstruction(si, ii, { locked: !steps[si].instructions[ii]?.locked });
+    };
+
+    const moveInstruction = (si: number, ii: number, dir: -1 | 1) => {
+        setSteps(prev => {
+            const list = prev[si].instructions;
+            const target = ii + dir;
+            if (target < 0 || target >= list.length) return prev;
+            const reordered = [...list];
+            [reordered[ii], reordered[target]] = [reordered[target], reordered[ii]];
+            const next = prev.map((s, i) => i !== si ? s : { ...s, instructions: reordered });
+            saveContent(next);
+            return next;
+        });
+    };
+
     const handleInstructionImage = (si: number, ii: number, e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -1200,12 +1352,15 @@ export const OwnerGuideScreen = () => {
                                 </div>
                             ) : (
                                 <div className="flex flex-col gap-4">
-                                    {steps.filter(s => CRED_FORM_SECTIONS.includes(s.credSection)).map((s, i) => (
-                                        <OverviewSection key={i} title={s.title} locked={locked} rows={[
-                                            { label: "Account User name", value: cred(`${s.credSection}_username`) },
-                                            { label: "Password", value: cred(`${s.credSection}_password`) },
-                                        ]} />
-                                    ))}
+                                    {steps
+                                        .map((s, idx) => ({ s, num: idx })) // zero-indexed to match the sidebar (Welcome = 0, PMS = 1, …)
+                                        .filter(({ s }) => CRED_FORM_SECTIONS.includes(s.credSection))
+                                        .map(({ s, num }) => (
+                                            <OverviewSection key={s.credSection} num={num} title={s.title} label={CRED_SECTION_LABEL[s.credSection]} locked={locked} rows={[
+                                                { label: "Account User name", value: cred(`${s.credSection}_username`) },
+                                                { label: "Password", value: cred(`${s.credSection}_password`) },
+                                            ]} />
+                                        ))}
 
                                     <div className="mt-2 rounded-2xl border border-secondary bg-primary p-6 text-center">
                                         {locked ? (
@@ -1278,44 +1433,26 @@ export const OwnerGuideScreen = () => {
                                     <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-quaternary">Step-by-Step Instructions</h2>
                                     <div className="flex flex-col gap-3">
                                         {step.instructions.map((ins, i) => (
-                                            <div key={i} className="rounded-xl border border-secondary bg-primary px-4 py-3.5">
-                                                <div className="flex items-start gap-3.5">
-                                                    <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-brand-100 text-[12px] font-bold text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">
-                                                        {i + 1}
-                                                    </span>
-                                                    {editing ? (
-                                                        <textarea value={ins.text}
-                                                            onChange={e => updateInstruction(currentStep, i, e.target.value)}
-                                                            rows={2} className="flex-1 resize-y bg-transparent text-[14px] leading-relaxed text-secondary outline-none"
-                                                        />
-                                                    ) : (
-                                                        <p className="flex-1 text-[14px] leading-relaxed text-secondary">{ins.text}</p>
-                                                    )}
-                                                </div>
-
-                                                {/* Per-instruction reference image with magnify circle */}
-                                                {ins.image ? (
-                                                    <div className="mt-3 pl-[38px]">
-                                                        <ImageMagnifier
-                                                            src={ins.image}
-                                                            editing={editing}
-                                                            lensPos={ins.lensPos}
-                                                            onLensPosChange={p => patchInstruction(currentStep, i, { lensPos: p })}
-                                                            onRemove={() => patchInstruction(currentStep, i, { image: undefined, lensPos: undefined })}
-                                                        />
-                                                    </div>
-                                                ) : editing ? (
-                                                    <label className="mt-3 ml-[38px] flex w-fit cursor-pointer items-center gap-2 rounded-lg border border-dashed border-primary px-3 py-1.5 text-[12px] font-medium text-tertiary transition hover:border-brand hover:text-brand-700">
-                                                        <input type="file" accept="image/*" className="hidden" onChange={e => handleInstructionImage(currentStep, i, e)} />
-                                                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></svg>
-                                                        Add image
-                                                    </label>
-                                                ) : null}
-                                            </div>
+                                            <InstructionRow
+                                                key={ins.id ?? i}
+                                                ins={ins}
+                                                index={i}
+                                                isFirst={i === 0}
+                                                isLast={i === step.instructions.length - 1}
+                                                editing={editing}
+                                                onChangeText={(val) => updateInstruction(currentStep, i, val)}
+                                                onDelete={() => deleteInstruction(currentStep, i)}
+                                                onToggleLock={() => toggleInstructionLock(currentStep, i)}
+                                                onMoveUp={() => moveInstruction(currentStep, i, -1)}
+                                                onMoveDown={() => moveInstruction(currentStep, i, 1)}
+                                                onImageChange={(e) => handleInstructionImage(currentStep, i, e)}
+                                                onLensPosChange={(p) => patchInstruction(currentStep, i, { lensPos: p })}
+                                                onRemoveImage={() => patchInstruction(currentStep, i, { image: undefined, lensPos: undefined })}
+                                            />
                                         ))}
                                         {editing && (
                                             <button type="button"
-                                                onClick={() => updateField(currentStep, "instructions", [...step.instructions, { text: "New instruction" }])}
+                                                onClick={() => updateField(currentStep, "instructions", [...step.instructions, { id: uid(), text: "New instruction" }])}
                                                 className="flex items-center gap-2 rounded-xl border border-dashed border-primary py-2.5 text-[13px] font-medium text-tertiary transition hover:border-brand hover:text-brand-700">
                                                 <span className="flex-1 text-center">+ Add instruction</span>
                                             </button>
@@ -1384,7 +1521,7 @@ export const OwnerGuideScreen = () => {
                     )}
 
                     {/* back / next */}
-                    <div className="flex items-center justify-between">
+                    <div className="mt-6 flex items-center justify-between">
                         <button type="button" onClick={() => navigate(currentStep - 1)} disabled={currentStep === 0}
                             className="flex items-center gap-2 rounded-xl border border-secondary bg-primary px-5 py-2.5 text-[14px] font-semibold text-secondary transition hover:bg-secondary disabled:pointer-events-none disabled:opacity-30">
                             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7" /></svg>
@@ -1422,12 +1559,13 @@ export const OwnerGuideScreen = () => {
                 </button>
             )}
 
-            {/* template hint toast — top-right, appears after 2s, dismissible */}
+            {/* template hint toast — bottom-left, just above the sidebar's
+                "Create Owner Guide" button it refers to; appears after 2s, dismissible */}
             <AnimatePresence>
                 {isTemplate && showTemplateToast && (
                     <motion.div
-                        className="fixed right-5 top-5 z-[55] w-[340px] max-w-[calc(100vw-2.5rem)] rounded-xl border border-secondary bg-primary p-4 shadow-lg ring-1 ring-black/5"
-                        initial={{ opacity: 0, y: -12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: 0.98 }}
+                        className="fixed bottom-[76px] left-3 z-[55] w-[264px] max-w-[calc(100vw-1.5rem)] rounded-xl border border-secondary bg-primary p-4 shadow-lg ring-1 ring-black/5"
+                        initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.98 }}
                         transition={{ type: "spring", stiffness: 320, damping: 26 }}>
                         <div className="flex items-start gap-3">
                             <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-600 dark:bg-brand-950/40">

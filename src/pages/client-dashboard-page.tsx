@@ -1,11 +1,17 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 // Functional UI icons — Untitled UI PRO, line style (drop-in for the free set).
 import {
     ArrowDown,
     ArrowRight,
     ArrowUp,
     ArrowUpRight,
+    Camera01,
     Check,
+    ChevronLeft,
+    ChevronRight,
+    FileCheck02,
+    Globe01,
+    HelpCircle,
     Image01,
     LayoutAlt01,
     LinkExternal01,
@@ -13,12 +19,16 @@ import {
     LockUnlocked01,
     Mail01,
     MessageChatCircle,
+    PlayCircle,
     Plus,
+    SearchLg,
+    Target04,
     Trash01,
+    TrendUp01,
     XClose,
 } from "@untitledui-pro/icons/line";
 import { useNavigate, useSearchParams } from "react-router";
-import { motion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from "recharts";
 import { Button } from "@/components/base/buttons/button";
 import { BadgeWithDot, BadgeWithIcon } from "@/components/base/badges/badges";
@@ -53,6 +63,7 @@ type GhlItem = DashboardContent["ghl"]["items"][number];
 type RevenueMonth = DashboardContent["revenue"]["months"][number];
 type QuickLink = DashboardContent["links"][number];
 type VideoGuide = NonNullable<DashboardContent["videos"]>[number];
+type FaqItem = NonNullable<DashboardContent["foundation"]>["faqs"][number];
 
 const STATUS_OPTIONS = ["Onboarding", "Active", "Paused"] as const;
 
@@ -66,6 +77,18 @@ function slugify(name: string): string {
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-|-$/g, "");
 }
+
+const uid = () => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `id-${Math.random().toString(36).slice(2)}`);
+
+const DEFAULT_FOUNDATION: NonNullable<DashboardContent["foundation"]> = {
+    propertyBasics: "",
+    persona: "",
+    toneOfVoice: "",
+    amenities: "",
+    localRecommendations: "",
+    bookingLinks: "",
+    faqs: [],
+};
 
 const DEFAULT_GHL_ITEMS: GhlItem[] = [
     { label: "Domain & website connected", done: false },
@@ -113,6 +136,7 @@ const TEMPLATE_CONTENT: DashboardContent = {
     },
     links: defaultLinks("yourclient"),
     videos: [],
+    foundation: DEFAULT_FOUNDATION,
 };
 
 /** Fresh content for a newly created client copy — no sample numbers. */
@@ -122,6 +146,7 @@ const createDefaultContent = (base: string): DashboardContent => ({
     revenue: { currency: "USD", months: [] },
     ghl: { ...TEMPLATE_CONTENT.ghl, items: DEFAULT_GHL_ITEMS.map((i) => ({ ...i })) },
     links: defaultLinks(base),
+    foundation: { ...DEFAULT_FOUNDATION, faqs: [] },
     videos: [],
 });
 
@@ -135,16 +160,31 @@ const mergeContent = (partial?: Partial<DashboardContent> | null): DashboardCont
     revenue: { ...TEMPLATE_CONTENT.revenue, ...partial?.revenue },
     links: partial?.links ?? TEMPLATE_CONTENT.links,
     videos: partial?.videos ?? [],
+    foundation: { ...DEFAULT_FOUNDATION, ...partial?.foundation, faqs: partial?.foundation?.faqs ?? [] },
 });
 
-const SectionEyebrow = ({ number }: { number: string }) => (
-    <div className="flex items-center gap-3">
-        <span className="flex size-7 items-center justify-center rounded-md bg-brand-solid text-xs font-semibold text-white tabular-nums">
-            {number}
-        </span>
-        <span className="h-px flex-1 bg-border-secondary" />
-    </div>
-);
+/** Which stage of the HiddenGem funnel a section belongs to — every section shows its
+ * stage badge so clients build the same Foundation → Top → Middle → Bottom mental model
+ * Dustin walks them through on the onboarding call, every time they open the dashboard. */
+const FUNNEL_STAGES = {
+    foundation: { label: "Foundation", bg: "bg-secondary", text: "text-secondary" },
+    top: { label: "Top of funnel", bg: "bg-brand-secondary", text: "text-brand-secondary" },
+    middle: { label: "Middle of funnel", bg: "bg-warning-secondary", text: "text-warning-primary" },
+    bottom: { label: "Bottom of funnel", bg: "bg-success-secondary", text: "text-success-primary" },
+} as const;
+type FunnelStageId = keyof typeof FUNNEL_STAGES;
+
+const SectionEyebrow = ({ stage }: { stage: FunnelStageId }) => {
+    const s = FUNNEL_STAGES[stage];
+    return (
+        <div className="flex items-center gap-3">
+            <span className={cx("inline-flex shrink-0 items-center rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-wide", s.bg, s.text)}>
+                {s.label}
+            </span>
+            <span className="h-px flex-1 bg-border-secondary" />
+        </div>
+    );
+};
 
 const SectionHeading = ({ children }: { children: ReactNode }) => (
     <h2 className="mt-4 text-display-xs font-semibold text-primary md:text-display-sm">{children}</h2>
@@ -159,6 +199,150 @@ const StatTile = ({ label, value, change }: { label: string; value: string; chan
         </div>
     </div>
 );
+
+/** Side-menu taxonomy — mirrors the funnel Dustin walks every client through on the
+ * onboarding call: Foundation (the Master Document everything else reads from) feeds
+ * Top of funnel (get seen) → Middle of funnel (nurture + capture) → Bottom of funnel
+ * (convert to a direct booking). Module scope so the array isn't rebuilt every render. */
+type SectionId = "overview" | "foundation" | "brand" | "videos" | "comms" | "website" | "instagram" | "flow" | "chatwidget" | "ghl" | "revenue";
+
+/** Sits above the funnel groups — not a funnel stage itself, just "home" (hero + the funnel explainer). */
+const OVERVIEW_ITEM = { id: "overview" as const, label: "Overview", icon: LayoutAlt01 };
+
+const NAV_GROUPS: { label: string; stage: FunnelStageId; items: { id: SectionId; label: string; icon: typeof LayoutAlt01; soon?: boolean }[] }[] = [
+    {
+        label: "Foundation",
+        stage: "foundation",
+        items: [
+            { id: "foundation", label: "Master Document", icon: FileCheck02 },
+            { id: "brand", label: "Brand Kit", icon: Image01 },
+            { id: "videos", label: "Video Guides", icon: PlayCircle },
+            { id: "comms", label: "Communication Log", icon: MessageChatCircle, soon: true },
+        ],
+    },
+    {
+        label: "Top of funnel",
+        stage: "top",
+        items: [
+            { id: "website", label: "Website", icon: Globe01 },
+            { id: "instagram", label: "Instagram", icon: Camera01 },
+        ],
+    },
+    {
+        label: "Middle of funnel",
+        stage: "middle",
+        items: [
+            { id: "flow", label: "Welcome Flow Email", icon: Mail01 },
+            { id: "chatwidget", label: "Chat Widget", icon: MessageChatCircle },
+        ],
+    },
+    {
+        label: "Bottom of funnel",
+        stage: "bottom",
+        items: [
+            { id: "ghl", label: "GoHighLevel Setup", icon: Target04 },
+            { id: "revenue", label: "Revenue & Results", icon: TrendUp01 },
+        ],
+    },
+];
+/** Flattened for lookups (active-section checks, deep links) — order matches the sidebar. */
+const SECTIONS = [OVERVIEW_ITEM, ...NAV_GROUPS.flatMap((g) => g.items)];
+
+type SearchHit = { id: SectionId; label: string; sub?: string };
+
+/**
+ * Header search — client-scoped, NOT the internal team's sitewide search. It only
+ * searches this one client's own sidebar sections, links and FAQs (passed in as
+ * `hits`) — never other clients, internal team pages, or admin routes. Purely local
+ * filtering over already-loaded props; no network calls.
+ */
+const ClientSearchBar = ({ hits, onSelect }: { hits: SearchHit[]; onSelect: (id: SectionId) => void }) => {
+    const [query, setQuery] = useState("");
+    const [open, setOpen] = useState(false);
+    const containerRef = useRef<HTMLDivElement>(null);
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        if (!open) return;
+        const onDown = (e: MouseEvent) => {
+            if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
+        };
+        window.addEventListener("mousedown", onDown);
+        return () => window.removeEventListener("mousedown", onDown);
+    }, [open]);
+
+    const q = query.trim().toLowerCase();
+    const results = q ? hits.filter((h) => h.label.toLowerCase().includes(q) || h.sub?.toLowerCase().includes(q)) : hits;
+
+    const go = (id: SectionId) => {
+        onSelect(id);
+        setQuery("");
+        setOpen(false);
+        inputRef.current?.blur();
+    };
+
+    return (
+        <div ref={containerRef} className="relative flex flex-1 items-center justify-center px-1">
+            <div
+                className={cx(
+                    "flex w-full max-w-md items-center gap-2.5 rounded-full border bg-primary px-4 py-2 transition duration-100 ease-linear",
+                    open ? "border-brand ring-2 ring-brand/15" : "border-secondary hover:border-primary",
+                )}
+            >
+                <SearchLg className={cx("size-4 shrink-0 transition duration-100 ease-linear", open ? "text-fg-brand-primary" : "text-quaternary")} aria-hidden="true" />
+                <input
+                    ref={inputRef}
+                    type="text"
+                    value={query}
+                    onChange={(e) => {
+                        setQuery(e.target.value);
+                        setOpen(true);
+                    }}
+                    onFocus={() => setOpen(true)}
+                    onKeyDown={(e) => {
+                        if (e.key === "Enter" && results[0]) go(results[0].id);
+                        else if (e.key === "Escape") {
+                            setOpen(false);
+                            inputRef.current?.blur();
+                        }
+                    }}
+                    placeholder="Search your dashboard…"
+                    className="min-w-0 flex-1 bg-transparent text-sm text-primary placeholder:text-placeholder outline-none"
+                />
+            </div>
+
+            <AnimatePresence>
+                {open && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -6 }}
+                        transition={{ duration: 0.14 }}
+                        className="absolute left-1/2 top-full z-30 mt-2 w-full max-w-md -translate-x-1/2 overflow-hidden rounded-2xl bg-primary shadow-2xl ring-1 ring-secondary"
+                    >
+                        <div className="max-h-[50vh] overflow-y-auto p-2">
+                            {results.length === 0 ? (
+                                <p className="px-4 py-6 text-center text-sm text-tertiary">No matches for “{query}”</p>
+                            ) : (
+                                results.map((h, i) => (
+                                    <button
+                                        key={`${h.id}-${i}`}
+                                        type="button"
+                                        onClick={() => go(h.id)}
+                                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-secondary transition duration-100 ease-linear hover:bg-secondary hover:text-primary"
+                                    >
+                                        <span className="flex-1 truncate">{h.label}</span>
+                                        {h.sub && <span className="shrink-0 truncate text-xs text-quaternary">{h.sub}</span>}
+                                    </button>
+                                ))
+                            )}
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </div>
+    );
+};
 
 export interface ClientDashboardPageProps {
     /** Page slug — when set, locking persists edits to dashboard_pages (shared). */
@@ -193,19 +377,14 @@ export const ClientDashboardPage = ({
     // Lock state
     const [isLocked, setIsLocked] = useState(true);
 
-    // Side-menu section (per-client dashboard side menu — see /welcome-email-flow-overview).
-    const SECTIONS = [
-        { id: "overview", label: "Client Overview", icon: LayoutAlt01 },
-        { id: "flow", label: "Welcome Flow Email", icon: Mail01 },
-        { id: "comms", label: "Communication Log", icon: MessageChatCircle, soon: true },
-    ] as const;
-    const [activeSection, setActiveSection] = useState<(typeof SECTIONS)[number]["id"]>("overview");
+    // Side-menu section — grouped by funnel stage (NAV_GROUPS, module scope above).
+    const [activeSection, setActiveSection] = useState<SectionId>("overview");
 
     // Deep-link support: /client-dashboard#flow (or #overview) opens that side-menu
     // section on load — used by the Welcome Email Flow overview page's "live builder" link.
     useEffect(() => {
         const h = window.location.hash.replace("#", "");
-        if (h && SECTIONS.some((s) => s.id === h)) setActiveSection(h as (typeof SECTIONS)[number]["id"]);
+        if (h && SECTIONS.some((s) => s.id === h)) setActiveSection(h as SectionId);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -251,6 +430,12 @@ export const ClientDashboardPage = ({
         setContent((c) => ({ ...c, ghl: { ...c.ghl, ...patch } }));
     const patchRevenue = (patch: Partial<DashboardContent["revenue"]>) =>
         setContent((c) => ({ ...c, revenue: { ...c.revenue, ...patch } }));
+    const patchFoundation = (patch: Partial<NonNullable<DashboardContent["foundation"]>>) =>
+        setContent((c) => ({ ...c, foundation: { ...DEFAULT_FOUNDATION, ...c.foundation, ...patch } }));
+
+    const foundation = content.foundation ?? DEFAULT_FOUNDATION;
+    const updateFaq = (i: number, patch: Partial<FaqItem>) =>
+        patchFoundation({ faqs: foundation.faqs.map((f, j) => (j === i ? { ...f, ...patch } : f)) });
 
     const updateColor = (i: number, patch: Partial<BrandColor>) =>
         patchBrand({ colors: content.brand.colors.map((col, j) => (j === i ? { ...col, ...patch } : col)) });
@@ -260,8 +445,13 @@ export const ClientDashboardPage = ({
         patchGhl({ items: content.ghl.items.map((item, j) => (j === i ? { ...item, ...patch } : item)) });
     const updateMonth = (i: number, patch: Partial<RevenueMonth>) =>
         patchRevenue({ months: content.revenue.months.map((m, j) => (j === i ? { ...m, ...patch } : m)) });
-    const updateLink = (i: number, patch: Partial<QuickLink>) =>
-        setContent((c) => ({ ...c, links: c.links.map((l, j) => (j === i ? { ...l, ...patch } : l)) }));
+    // By object reference, not index — this array now renders as two filtered views
+    // (Website / Chat Widget), so a positional index from one view can't safely
+    // address the full array.
+    const updateLink = (link: QuickLink, patch: Partial<QuickLink>) =>
+        setContent((c) => ({ ...c, links: c.links.map((l) => (l === link ? { ...l, ...patch } : l)) }));
+    const removeLink = (link: QuickLink) =>
+        setContent((c) => ({ ...c, links: c.links.filter((l) => l !== link) }));
     const updateVideo = (i: number, patch: Partial<VideoGuide>) =>
         setContent((c) => ({ ...c, videos: (c.videos ?? []).map((v, j) => (j === i ? { ...v, ...patch } : v)) }));
 
@@ -292,6 +482,31 @@ export const ClientDashboardPage = ({
     const videoGuides = content.videos ?? [];
 
     const websiteHref = clientWebsite && (clientWebsite.startsWith("http") ? clientWebsite : `https://${clientWebsite}`);
+
+    // Split the shared `links` array by which funnel section it belongs on. The chat
+    // widget's own setup guide is Middle of funnel (it's what nurtures/answers guests);
+    // everything else (pixel tracking, lead-capture popup, and any custom link a team
+    // member adds) is a Top-of-funnel, on-site tool — same array, two filtered views,
+    // so nothing about the underlying data shape needs to change.
+    const chatWidgetLinks = content.links.filter((l) => l.url.includes("-chatwidget"));
+    const websiteLinks = content.links.filter((l) => !l.url.includes("-chatwidget"));
+
+    // Client-scoped search index — sidebar sections, this client's own links, and their
+    // FAQ questions. Nothing here reaches outside this one client's own content.
+    const searchHits = useMemo<SearchHit[]>(() => {
+        const navHits = SECTIONS.filter((s) => !("soon" in s && s.soon)).map((s) => ({ id: s.id, label: s.label }));
+        const linkHits = content.links.map((l) => ({ id: (l.url.includes("-chatwidget") ? "chatwidget" : "website") as SectionId, label: l.title || "Untitled link", sub: "Link" }));
+        const faqHits = foundation.faqs.filter((f) => f.question.trim()).map((f) => ({ id: "foundation" as SectionId, label: f.question, sub: "FAQ" }));
+        return [...navHits, ...linkHits, ...faqHits];
+    }, [content.links, foundation.faqs]);
+
+    const clientInitials = (clientName || "Client")
+        .split(" ")
+        .map((w) => w[0])
+        .filter(Boolean)
+        .slice(0, 2)
+        .join("")
+        .toUpperCase();
 
     /* ── Lock / save ── */
     const handleLockClick = async () => {
@@ -376,7 +591,47 @@ export const ClientDashboardPage = ({
     const removeButton = "flex size-8 shrink-0 items-center justify-center rounded-lg text-fg-quaternary transition duration-100 ease-linear hover:bg-error-primary hover:text-fg-error-primary";
 
     return (
-        <AppShell className="flex flex-col md:flex-row">
+        <AppShell className="flex flex-col">
+            {/* ── Header — back/forward, client-scoped search, client identity badge.
+                Not AppShell's built-in row (that one's gated on the internal department
+                rail, and its search indexes every client + internal page — wrong for a
+                page clients themselves open). Hand-built here, client-safe only. ── */}
+            <div className="flex h-[73px] shrink-0 items-center gap-3 border-b border-secondary bg-primary px-4 md:px-5">
+                <button
+                    type="button"
+                    onClick={() => navigate(-1)}
+                    title="Back"
+                    className="flex size-8 shrink-0 items-center justify-center rounded-full text-fg-quaternary ring-1 ring-secondary transition duration-100 ease-linear hover:bg-secondary hover:text-fg-secondary"
+                >
+                    <ChevronLeft className="size-4" aria-hidden="true" />
+                </button>
+                <button
+                    type="button"
+                    onClick={() => navigate(1)}
+                    title="Forward"
+                    className="flex size-8 shrink-0 items-center justify-center rounded-full text-fg-quaternary ring-1 ring-secondary transition duration-100 ease-linear hover:bg-secondary hover:text-fg-secondary"
+                >
+                    <ChevronRight className="size-4" aria-hidden="true" />
+                </button>
+
+                <ClientSearchBar hits={searchHits} onSelect={setActiveSection} />
+
+                {/* Client identity badge — this client's own logo/initials, not a team login */}
+                <button
+                    type="button"
+                    onClick={() => setActiveSection("overview")}
+                    title={clientName || "Client"}
+                    className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-secondary text-xs font-semibold text-secondary ring-1 ring-secondary transition duration-100 ease-linear hover:ring-brand"
+                >
+                    {content.logo_url ? (
+                        <img src={content.logo_url} alt={`${clientName || "Client"} logo`} className="size-full object-cover" draggable={false} />
+                    ) : (
+                        clientInitials || <Image01 className="size-4 text-fg-quaternary" aria-hidden="true" />
+                    )}
+                </button>
+            </div>
+
+            <div className="flex min-h-0 flex-1 flex-col md:flex-row">
             {/* ── Client side menu (no icon rail — client-facing) ── */}
             <aside className="flex w-full shrink-0 flex-col border-b border-secondary bg-primary md:h-full md:w-64 md:border-b-0 md:border-r">
                 {/* Client identity */}
@@ -396,32 +651,57 @@ export const ClientDashboardPage = ({
                     </div>
                 </div>
 
-                {/* Sections */}
+                {/* Overview — sits above the funnel groups, not a funnel stage itself */}
+                <div className="p-3 pb-0 md:pb-0">
+                    <button
+                        type="button"
+                        onClick={() => setActiveSection("overview")}
+                        className={cx(
+                            "flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition duration-100 ease-linear",
+                            activeSection === "overview"
+                                ? "bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300"
+                                : "text-secondary hover:bg-secondary hover:text-primary",
+                        )}
+                    >
+                        <OVERVIEW_ITEM.icon className="size-4 shrink-0" aria-hidden="true" />
+                        <span className="flex-1">{OVERVIEW_ITEM.label}</span>
+                    </button>
+                </div>
+
+                {/* Funnel groups — Foundation → Top → Middle → Bottom, the same mental model
+                    Dustin walks every client through on the onboarding call. */}
                 <motion.nav
-                    className="flex gap-1 overflow-x-auto p-3 md:flex-1 md:flex-col md:gap-1.5 md:overflow-y-auto"
+                    className="flex-1 overflow-y-auto p-3 md:overflow-y-auto"
                     initial="hidden"
                     animate="show"
-                    variants={{ show: { transition: { staggerChildren: 0.05 } } }}
+                    variants={{ show: { transition: { staggerChildren: 0.04 } } }}
                 >
-                    {SECTIONS.map((s) => (
-                        <motion.button
-                            key={s.id}
-                            type="button"
-                            onClick={() => !("soon" in s && s.soon) && setActiveSection(s.id)}
-                            variants={{ hidden: { opacity: 0, x: -8 }, show: { opacity: 1, x: 0 } }}
-                            className={cx(
-                                "flex shrink-0 items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium whitespace-nowrap transition duration-100 ease-linear md:w-full",
-                                activeSection === s.id
-                                    ? "bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300"
-                                    : "soon" in s && s.soon
-                                      ? "cursor-not-allowed text-quaternary opacity-60"
-                                      : "text-secondary hover:bg-secondary hover:text-primary",
-                            )}
-                        >
-                            <s.icon className="size-4 shrink-0" aria-hidden="true" />
-                            <span className="flex-1">{s.label}</span>
-                            {"soon" in s && s.soon && <span className="text-[10px] font-semibold uppercase text-quaternary">Soon</span>}
-                        </motion.button>
+                    {NAV_GROUPS.map((group) => (
+                        <div key={group.label} className="mt-4 first:mt-1">
+                            <p className={cx("mb-1 px-3 text-[11px] font-bold uppercase tracking-wide", FUNNEL_STAGES[group.stage].text)}>{group.label}</p>
+                            <div className="flex flex-col gap-0.5">
+                                {group.items.map((s) => (
+                                    <motion.button
+                                        key={s.id}
+                                        type="button"
+                                        onClick={() => !s.soon && setActiveSection(s.id)}
+                                        variants={{ hidden: { opacity: 0, x: -8 }, show: { opacity: 1, x: 0 } }}
+                                        className={cx(
+                                            "flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition duration-100 ease-linear",
+                                            activeSection === s.id
+                                                ? "bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300"
+                                                : s.soon
+                                                  ? "cursor-not-allowed text-quaternary opacity-60"
+                                                  : "text-secondary hover:bg-secondary hover:text-primary",
+                                        )}
+                                    >
+                                        <s.icon className="size-4 shrink-0" aria-hidden="true" />
+                                        <span className="flex-1">{s.label}</span>
+                                        {s.soon && <span className="text-[10px] font-semibold uppercase text-quaternary">Soon</span>}
+                                    </motion.button>
+                                ))}
+                            </div>
+                        </div>
                     ))}
                 </motion.nav>
 
@@ -552,6 +832,44 @@ export const ClientDashboardPage = ({
                             </div>
                         </div>
                     )}
+
+                    {/* How we grow your bookings — the same funnel Dustin walks every client
+                        through on the onboarding call. Foundation feeds Top → Middle → Bottom;
+                        clicking a card jumps straight to that stage's first section. */}
+                    <div className="mt-10">
+                        <div className="flex items-center gap-3">
+                            <span className="h-px flex-1 bg-border-secondary" />
+                            <p className="shrink-0 text-xs font-semibold uppercase tracking-wide text-quaternary">How we grow your bookings</p>
+                            <span className="h-px flex-1 bg-border-secondary" />
+                        </div>
+                        <p className="mx-auto mt-4 max-w-lg text-center text-sm text-tertiary">
+                            Everything below fits one funnel — start with your Foundation, then work top to bottom.
+                        </p>
+                        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                            {[
+                                { stage: "foundation" as const, title: "Your Master Document", body: "Persona, tone, FAQs, amenities — the source everything else reads from." },
+                                { stage: "top" as const, title: "Get seen", body: "Your website and Instagram bring new guests in." },
+                                { stage: "middle" as const, title: "Nurture", body: "Welcome emails and chat build trust and answer questions." },
+                                { stage: "bottom" as const, title: "Convert", body: "GoHighLevel and your results — turning interest into direct bookings." },
+                            ].map((card) => {
+                                const targetId = card.stage === "foundation" ? "foundation" : NAV_GROUPS.find((g) => g.stage === card.stage)!.items[0].id;
+                                return (
+                                    <button
+                                        key={card.stage}
+                                        type="button"
+                                        onClick={() => setActiveSection(targetId)}
+                                        className="rounded-xl p-5 text-left ring-1 ring-secondary transition duration-100 ease-linear hover:ring-brand"
+                                    >
+                                        <span className={cx("inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide", FUNNEL_STAGES[card.stage].bg, FUNNEL_STAGES[card.stage].text)}>
+                                            {FUNNEL_STAGES[card.stage].label}
+                                        </span>
+                                        <p className="mt-3 text-sm font-semibold text-primary">{card.title}</p>
+                                        <p className="mt-1 text-xs text-tertiary">{card.body}</p>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
                     </>
                     )}
 
@@ -562,11 +880,99 @@ export const ClientDashboardPage = ({
                                 <WelcomeFlowSection slug={slug} clientName={clientName} isLocked={isLocked} isTemplate={isTemplate} />
                             )}
 
-                            {activeSection === "overview" && (
-                            <>
-                    {/* ── Section 01 — Brand Kit ── */}
+                            {/* ── Master Document — the Foundation everything downstream reads from ── */}
+                            {activeSection === "foundation" && (
+                                <Reveal>
+                                    <SectionEyebrow stage="foundation" />
+                                    <SectionHeading>Master Document</SectionHeading>
+                                    <p className="mt-3 text-md text-tertiary">
+                                        This is where it starts. Everyone — you, your team, and ours — keeps this updated. It's what your
+                                        Welcome Emails, chat widget, and every future AI feature read from, so the more complete it is,
+                                        the smarter everything downstream gets.
+                                    </p>
+
+                                    <div className="mt-6 flex flex-col gap-6">
+                                        {(
+                                            [
+                                                { key: "propertyBasics", label: "Property basics", hint: "Name, type, location, vibe.", placeholder: "e.g. Oceanview Cottage — a 3-bed boutique rental on the Big Sur coast, rustic-luxury vibe." },
+                                                { key: "persona", label: "Ideal guest persona", hint: "Who books, why they come, what they care about.", placeholder: "e.g. Couples celebrating an anniversary, mid-30s to 50s, want privacy + a view, not big groups." },
+                                                { key: "toneOfVoice", label: "Tone of voice", hint: "How your brand talks.", placeholder: "e.g. Warm and personal, a little playful — never corporate." },
+                                                { key: "amenities", label: "Amenities & house rules", hint: "What's included, what's not allowed.", placeholder: "e.g. Hot tub, full kitchen, pet-friendly. No parties, quiet hours after 10pm." },
+                                                { key: "localRecommendations", label: "Local recommendations", hint: "Food, activities, hidden gems.", placeholder: "e.g. Nepenthe for sunset dinner, McWay Falls trail, Big Sur Bakery for breakfast." },
+                                                { key: "bookingLinks", label: "Booking & upsell links", hint: "Where guests book, and anything you'd like to upsell.", placeholder: "e.g. Book direct at oceanviewcottage.com/book — ask about our late-checkout add-on." },
+                                            ] as const
+                                        ).map((f) => (
+                                            <div key={f.key}>
+                                                <p className="text-sm font-semibold text-primary">{f.label}</p>
+                                                <p className="mt-0.5 text-xs text-tertiary">{f.hint}</p>
+                                                {isLocked ? (
+                                                    foundation[f.key] ? (
+                                                        <p className="mt-2 whitespace-pre-wrap rounded-xl bg-secondary px-4 py-3 text-sm text-secondary">{foundation[f.key]}</p>
+                                                    ) : (
+                                                        <p className="mt-2 rounded-xl border border-dashed border-secondary px-4 py-3 text-sm italic text-quaternary">Not filled in yet.</p>
+                                                    )
+                                                ) : (
+                                                    <textarea
+                                                        rows={2}
+                                                        placeholder={f.placeholder}
+                                                        value={foundation[f.key]}
+                                                        onChange={(e) => patchFoundation({ [f.key]: e.target.value })}
+                                                        className={cx(editInput(), "mt-2 resize-y")}
+                                                    />
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {/* FAQ bank — client & AM can both add */}
+                                    <div className="mt-8 border-t border-secondary pt-6">
+                                        <div className="flex items-center gap-2">
+                                            <HelpCircle className="size-4 text-fg-quaternary" aria-hidden="true" />
+                                            <p className="text-sm font-semibold text-primary">FAQ bank</p>
+                                        </div>
+                                        <p className="mt-0.5 text-xs text-tertiary">Questions guests ask often — the chat widget answers straight from this list.</p>
+
+                                        <div className="mt-4 flex flex-col gap-3">
+                                            {foundation.faqs.length === 0 && isLocked && (
+                                                <p className="rounded-xl border border-dashed border-secondary px-4 py-3 text-sm italic text-quaternary">No FAQs yet.</p>
+                                            )}
+                                            {foundation.faqs.map((f, i) =>
+                                                isLocked ? (
+                                                    <div key={f.id} className="rounded-xl p-4 ring-1 ring-secondary">
+                                                        <p className="text-sm font-semibold text-primary">{f.question || "Untitled question"}</p>
+                                                        <p className="mt-1 text-sm text-tertiary">{f.answer || "No answer yet."}</p>
+                                                    </div>
+                                                ) : (
+                                                    <div key={f.id} className="flex flex-col gap-1.5 rounded-xl p-4 ring-1 ring-secondary">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <input type="text" placeholder="Question" value={f.question} onChange={(e) => updateFaq(i, { question: e.target.value })} className={editInput("font-semibold")} />
+                                                            <button type="button" title="Remove FAQ" onClick={() => patchFoundation({ faqs: foundation.faqs.filter((_, j) => j !== i) })} className={removeButton}>
+                                                                <Trash01 className="size-4" aria-hidden="true" />
+                                                            </button>
+                                                        </div>
+                                                        <textarea rows={2} placeholder="Answer" value={f.answer} onChange={(e) => updateFaq(i, { answer: e.target.value })} className={cx(editInput(), "resize-y text-xs")} />
+                                                    </div>
+                                                ),
+                                            )}
+                                            {!isLocked && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => patchFoundation({ faqs: [...foundation.faqs, { id: uid(), question: "", answer: "" }] })}
+                                                    className="flex items-center gap-2 rounded-lg px-2 py-1 text-sm font-medium text-tertiary transition duration-100 ease-linear hover:text-brand-secondary"
+                                                >
+                                                    <Plus className="size-4" aria-hidden="true" />
+                                                    Add FAQ
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                </Reveal>
+                            )}
+
+                            {/* ── Brand Kit ── */}
+                            {activeSection === "brand" && (
                     <Reveal>
-                        <SectionEyebrow number="01" />
+                        <SectionEyebrow stage="foundation" />
                         <div className="flex flex-wrap items-end justify-between gap-3">
                             <SectionHeading>Brand Kit</SectionHeading>
                             {isLocked ? (
@@ -664,10 +1070,12 @@ export const ClientDashboardPage = ({
                             )}
                         </div>
                     </Reveal>
+                            )}
 
-                    {/* ── Section 02 — Instagram Highlights ── */}
-                    <Reveal className="mt-14">
-                        <SectionEyebrow number="02" />
+                            {/* ── Instagram Highlights ── */}
+                            {activeSection === "instagram" && (
+                    <Reveal>
+                        <SectionEyebrow stage="top" />
                         <div className="flex flex-wrap items-end justify-between gap-3">
                             <SectionHeading>Instagram Highlights</SectionHeading>
                             {isLocked ? (
@@ -756,10 +1164,12 @@ export const ClientDashboardPage = ({
                             </div>
                         )}
                     </Reveal>
+                            )}
 
-                    {/* ── Section 03 — GoHighLevel Setup ── */}
-                    <Reveal className="mt-14">
-                        <SectionEyebrow number="03" />
+                            {/* ── GoHighLevel Setup ── */}
+                            {activeSection === "ghl" && (
+                    <Reveal>
+                        <SectionEyebrow stage="bottom" />
                         <div className="flex flex-wrap items-end justify-between gap-3">
                             <SectionHeading>GoHighLevel Setup</SectionHeading>
                             {isLocked ? (
@@ -856,10 +1266,12 @@ export const ClientDashboardPage = ({
                             </ul>
                         </div>
                     </Reveal>
+                            )}
 
-                    {/* ── Section 04 — Revenue & Results ── */}
-                    <Reveal className="mt-14">
-                        <SectionEyebrow number="04" />
+                            {/* ── Revenue & Results ── */}
+                            {activeSection === "revenue" && (
+                    <Reveal>
+                        <SectionEyebrow stage="bottom" />
                         <div className="flex flex-wrap items-end justify-between gap-3">
                             <SectionHeading>Revenue &amp; Results</SectionHeading>
                             {!isLocked && (
@@ -979,17 +1391,19 @@ export const ClientDashboardPage = ({
                             </>
                         )}
                     </Reveal>
+                            )}
 
-                    {/* ── Section 05 — Your Pages ── */}
-                    <Reveal className="mt-14">
-                        <SectionEyebrow number="05" />
-                        <SectionHeading>Your Pages</SectionHeading>
+                            {/* ── Website — top-of-funnel tools embedded on your own site ── */}
+                            {activeSection === "website" && (
+                    <Reveal>
+                        <SectionEyebrow stage="top" />
+                        <SectionHeading>Website</SectionHeading>
                         <p className="mt-3 text-md text-tertiary">
-                            Guides and tools we've prepared for your business — all in one place.
+                            Your site is the first real impression — these are the tools we've set up on it to turn visitors into leads.
                         </p>
 
                         <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                            {content.links.map((link, i) =>
+                            {websiteLinks.map((link, i) =>
                                 isLocked ? (
                                     <a
                                         key={i}
@@ -1008,18 +1422,13 @@ export const ClientDashboardPage = ({
                                 ) : (
                                     <div key={i} className="flex flex-col gap-1.5 rounded-xl p-4 ring-1 ring-secondary">
                                         <div className="flex items-center gap-1.5">
-                                            <input type="text" placeholder="Title" value={link.title} onChange={(e) => updateLink(i, { title: e.target.value })} className={editInput("font-semibold")} />
-                                            <button
-                                                type="button"
-                                                title="Remove link"
-                                                onClick={() => setContent((c) => ({ ...c, links: c.links.filter((_, j) => j !== i) }))}
-                                                className={removeButton}
-                                            >
+                                            <input type="text" placeholder="Title" value={link.title} onChange={(e) => updateLink(link, { title: e.target.value })} className={editInput("font-semibold")} />
+                                            <button type="button" title="Remove link" onClick={() => removeLink(link)} className={removeButton}>
                                                 <Trash01 className="size-4" aria-hidden="true" />
                                             </button>
                                         </div>
-                                        <input type="text" placeholder="Description" value={link.description} onChange={(e) => updateLink(i, { description: e.target.value })} className={editInput("text-xs")} />
-                                        <input type="text" placeholder="/acme-metapixel or https://…" value={link.url} onChange={(e) => updateLink(i, { url: e.target.value })} className={editInput("font-mono text-xs")} />
+                                        <input type="text" placeholder="Description" value={link.description} onChange={(e) => updateLink(link, { description: e.target.value })} className={editInput("text-xs")} />
+                                        <input type="text" placeholder="/acme-metapixel or https://…" value={link.url} onChange={(e) => updateLink(link, { url: e.target.value })} className={editInput("font-mono text-xs")} />
                                     </div>
                                 ),
                             )}
@@ -1035,27 +1444,91 @@ export const ClientDashboardPage = ({
                             )}
                         </div>
                     </Reveal>
+                            )}
 
-                    {/* ── Section 06 — Video Guides ── */}
-                    {(!isLocked || videoGuides.some((v) => v.url)) && (
-                        <Reveal className="mt-14">
-                            <SectionEyebrow number="06" />
+                            {/* ── Chat Widget — middle-of-funnel, answers guest questions from the Master Document ── */}
+                            {activeSection === "chatwidget" && (
+                    <Reveal>
+                        <SectionEyebrow stage="middle" />
+                        <SectionHeading>Chat Widget</SectionHeading>
+                        <p className="mt-3 text-md text-tertiary">
+                            An AI chat on your website that answers guest questions instantly, straight from your Master Document's
+                            FAQ bank — so no question goes unanswered while you're offline.
+                        </p>
+
+                        <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                            {chatWidgetLinks.length === 0 && isLocked && (
+                                <p className="rounded-xl border border-dashed border-secondary px-4 py-5 text-sm italic text-quaternary sm:col-span-2">
+                                    Your chat widget setup guide will appear here once it's ready.
+                                </p>
+                            )}
+                            {chatWidgetLinks.map((link, i) =>
+                                isLocked ? (
+                                    <a
+                                        key={i}
+                                        href={link.url}
+                                        target={link.url.startsWith("/") ? undefined : "_blank"}
+                                        rel={link.url.startsWith("/") ? undefined : "noopener noreferrer"}
+                                        className="group rounded-xl p-5 ring-1 ring-secondary transition duration-100 ease-linear hover:ring-brand"
+                                    >
+                                        <div className="flex items-start justify-between gap-2">
+                                            <FeaturedIcon icon={MessageChatCircle} size="sm" color="brand" theme="light" />
+                                            <ArrowUpRight className="size-4 text-fg-quaternary opacity-0 transition duration-100 ease-linear group-hover:opacity-100" aria-hidden="true" />
+                                        </div>
+                                        <p className="mt-3 text-sm font-semibold text-primary">{link.title}</p>
+                                        <p className="mt-1 text-sm text-tertiary">{link.description}</p>
+                                    </a>
+                                ) : (
+                                    <div key={i} className="flex flex-col gap-1.5 rounded-xl p-4 ring-1 ring-secondary">
+                                        <div className="flex items-center gap-1.5">
+                                            <input type="text" placeholder="Title" value={link.title} onChange={(e) => updateLink(link, { title: e.target.value })} className={editInput("font-semibold")} />
+                                            <button type="button" title="Remove link" onClick={() => removeLink(link)} className={removeButton}>
+                                                <Trash01 className="size-4" aria-hidden="true" />
+                                            </button>
+                                        </div>
+                                        <input type="text" placeholder="Description" value={link.description} onChange={(e) => updateLink(link, { description: e.target.value })} className={editInput("text-xs")} />
+                                        <input type="text" placeholder="/acme-chatwidget" value={link.url} onChange={(e) => updateLink(link, { url: e.target.value })} className={editInput("font-mono text-xs")} />
+                                    </div>
+                                ),
+                            )}
+                            {!isLocked && (
+                                <button
+                                    type="button"
+                                    onClick={() => setContent((c) => ({ ...c, links: [...c.links, { title: "Chat Widget", description: "", url: slug ? `/${slug}-chatwidget` : "" }] }))}
+                                    className="flex min-h-28 flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-secondary text-sm font-medium text-tertiary transition duration-100 ease-linear hover:border-brand hover:text-brand-secondary"
+                                >
+                                    <Plus className="size-5" aria-hidden="true" />
+                                    Add link
+                                </button>
+                            )}
+                        </div>
+                    </Reveal>
+                            )}
+
+                            {/* ── Video Guides ── */}
+                            {activeSection === "videos" && (
+                        <Reveal>
+                            <SectionEyebrow stage="foundation" />
                             <SectionHeading>Video Guides</SectionHeading>
                             <p className="mt-3 text-md text-tertiary">
                                 Short walkthrough videos recorded for you by the HiddenGem team.
                             </p>
 
                             {isLocked ? (
-                                <div className="mt-6 grid gap-6 sm:grid-cols-2">
-                                    {videoGuides
-                                        .filter((v) => v.url)
-                                        .map((v) => (
-                                            <div key={v.id}>
-                                                <p className="text-sm font-semibold text-primary">{v.title}</p>
-                                                <VideoEmbed url={v.url} className="mt-3" />
-                                            </div>
-                                        ))}
-                                </div>
+                                videoGuides.some((v) => v.url) ? (
+                                    <div className="mt-6 grid gap-6 sm:grid-cols-2">
+                                        {videoGuides
+                                            .filter((v) => v.url)
+                                            .map((v) => (
+                                                <div key={v.id}>
+                                                    <p className="text-sm font-semibold text-primary">{v.title}</p>
+                                                    <VideoEmbed url={v.url} className="mt-3" />
+                                                </div>
+                                            ))}
+                                    </div>
+                                ) : (
+                                    <p className="mt-6 rounded-xl border border-dashed border-secondary px-4 py-5 text-sm italic text-quaternary">No videos yet.</p>
+                                )
                             ) : (
                                 <div className="mt-6 flex flex-col gap-4">
                                     {videoGuides.map((v, i) => (
@@ -1098,7 +1571,17 @@ export const ClientDashboardPage = ({
                         </Reveal>
                     )}
 
-                    {/* ── Still need support? ── */}
+                            {/* ── Communication Log — not built yet, nav item is disabled ── */}
+                            {activeSection === "comms" && (
+                                <Reveal>
+                                    <SectionEyebrow stage="foundation" />
+                                    <SectionHeading>Communication Log</SectionHeading>
+                                    <p className="mt-3 text-md text-tertiary">Coming soon — a shared log of calls and updates between you and your Account Manager.</p>
+                                </Reveal>
+                            )}
+
+                            {/* ── Still need support? (Overview only) ── */}
+                            {activeSection === "overview" && (
                     <Reveal className="mt-16">
                         <div className="flex items-center gap-3">
                             <FeaturedIcon icon={MessageChatCircle} size="sm" color="brand" theme="dark" />
@@ -1120,7 +1603,6 @@ export const ClientDashboardPage = ({
                             </div>
                         </div>
                     </Reveal>
-                            </>
                             )}
                         </div>
                     </div>
@@ -1134,6 +1616,7 @@ export const ClientDashboardPage = ({
                     </footer>
                 </div>
             </motion.article>
+            </div>
             </div>
             </div>
 

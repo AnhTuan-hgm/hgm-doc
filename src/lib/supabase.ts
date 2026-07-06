@@ -125,6 +125,17 @@ export interface DashboardContent {
     };
     links: { title: string; description: string; url: string }[];
     videos?: { id: string; title: string; url: string }[]; // Video guides (Loom link or uploaded mp4) — optional so older rows load unchanged
+    /** The Master Document — the Foundation feeding the funnel (persona, FAQs, tone, amenities).
+     * Optional so older dashboard rows (saved before this section existed) still load unchanged. */
+    foundation?: {
+        propertyBasics: string;
+        persona: string;
+        toneOfVoice: string;
+        amenities: string;
+        localRecommendations: string;
+        bookingLinks: string;
+        faqs: { id: string; question: string; answer: string }[];
+    };
 }
 
 export interface DashboardPageData {
@@ -132,6 +143,48 @@ export interface DashboardPageData {
     client_name: string;
     client_website: string;
     data: Partial<DashboardContent> | null;
+    created_at?: string;
+}
+
+/** A checkbox-group answer: the picked options plus free-text for "Other". */
+export interface CheckboxAnswer {
+    picked: string[];
+    other: string;
+}
+
+/** Per-client Host Onboarding Form (host_onboarding_pages.data jsonb) — mirrors the
+ * "Brand Vision Form" the team already sends new hosts via Google Forms, brought
+ * in-app so answers land straight in the client's own dashboard ecosystem. */
+export interface HostOnboardingData {
+    email: string;
+    businessName: string;
+    // Section 2 — The WHY (Purpose)
+    purpose: CheckboxAnswer;
+    guestFeelings: CheckboxAnswer;
+    // Section 3 — The HOW (Your Unique Approach)
+    threeWords: string;
+    differentiators: CheckboxAnswer;
+    reviewMention: string;
+    // Section 4 — The WHAT (Your Offering)
+    idealGuest: CheckboxAnswer;
+    experienceType: CheckboxAnswer;
+    // Section 5 — Brand Personality & Voice
+    personaVoice: CheckboxAnswer;
+    tone: CheckboxAnswer;
+    aesthetic: CheckboxAnswer;
+    // Section 6 — Brand Ambition
+    brandKnownFor: CheckboxAnswer;
+    completeSentence: string;
+    /** Optional personal-touch video intro (Loom/YouTube link or uploaded file) — never required. */
+    video?: string;
+    submittedAt?: string;
+}
+
+export interface HostOnboardingPageData {
+    slug: string;
+    client_name: string;
+    client_website: string;
+    data: Partial<HostOnboardingData> | null;
     created_at?: string;
 }
 

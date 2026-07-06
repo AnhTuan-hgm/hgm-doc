@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { AppShell, CollapsedTopBar, IconRail, NavCollapseButton, useNavCollapsed } from "@/components/application/icon-rail";
+import { AppShell, CollapsedTopBar, HeaderAvatar, IconRail, NavCollapseButton, useNavCollapsed } from "@/components/application/icon-rail";
+import { HelpMenu } from "@/components/application/help-menu";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowUpRight, Award01, BookOpen01, Briefcase01, Check, ChevronDown, ClipboardCheck, Code02, Diamond01, Edit01, FolderClosed, Grid01, Image01, LayoutAlt01, List, Lock01, LockUnlocked01, Mail01, MarkerPin01, MessageChatCircle, Plus, SearchSm, Share07, Star01, Trash01, Trophy01, Users01, XClose } from "@untitledui/icons";
-import { supabase, type ChatWidgetPageData, type ClientPageData, type ClientRecord, type LeadCapturePageData, type OverviewCard, type OwnerGuideMeta, type OverviewTab } from "@/lib/supabase";
-import { Avatar } from "@/components/base/avatar/avatar";
-import { SettingsDialog } from "@/pages/settings-screen";
+import { ArrowUpRight, Award01, BookOpen01, Briefcase01, Check, ChevronDown, ClipboardCheck, Code02, Diamond01, Edit01, FilePlus02, FolderClosed, Grid01, Home02, Image01, LayoutAlt01, List, Lock01, LockUnlocked01, Mail01, MarkerPin01, MessageChatCircle, Plus, SearchSm, Share07, Star01, Trash01, Trophy01, Users01, XClose } from "@untitledui/icons";
+import { supabase, type ChatWidgetPageData, type ClientPageData, type ClientRecord, type HostOnboardingPageData, type LeadCapturePageData, type OverviewCard, type OwnerGuideMeta, type OverviewTab } from "@/lib/supabase";
+import { createBlankTemplateData, isReservedSlug, slugify } from "@/pages/template-one-screen";
 import { useAuthUser } from "@/hooks/use-auth-user";
 import { useEditShortcuts } from "@/hooks/use-edit-shortcuts";
 import { useTheme } from "@/providers/theme-provider";
@@ -212,6 +212,7 @@ const DEPARTMENTS: Department[] = [
         tabs: [
             { id: "project-logs", label: "Project Logs", icon: ClipboardCheck },
             { id: "owner-guides", label: "Owner Guides", icon: BookOpen01 },
+            { id: "host-onboarding", label: "Host Onboarding Form", icon: Home02 },
             { id: "popups", label: "Popups", icon: Mail01 },
             { id: "meta-pixel", label: "Meta Pixel", icon: Share07 },
             { id: "chat-widget", label: "Chat Widget", icon: MessageChatCircle },
@@ -230,18 +231,9 @@ const MoonIcon = () => (
 
 const RailBottom = ({ editing, onToggleEditing }: { editing: boolean; onToggleEditing: () => void }) => {
     const { theme, setTheme } = useTheme();
-    const { user } = useAuthUser();
-    const [settingsOpen, setSettingsOpen] = useState(false);
     const isDark =
         theme === "dark" ||
         (theme === "system" && typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-
-    const initials = (user?.name ?? "")
-        .split(" ")
-        .map((part) => part[0])
-        .slice(0, 2)
-        .join("")
-        .toUpperCase();
 
     return (
         <>
@@ -270,23 +262,8 @@ const RailBottom = ({ editing, onToggleEditing }: { editing: boolean; onToggleEd
                 {isDark ? <SunIcon /> : <MoonIcon />}
             </button>
 
-            {/* Account avatar — opens settings popup */}
-            {user && (
-                <>
-                    <span className="my-2 h-px w-8 bg-border-secondary" />
-                    <button
-                        type="button"
-                        onClick={() => setSettingsOpen(true)}
-                        title="Settings"
-                        aria-label="Open settings"
-                        className="rounded-full outline-focus-ring transition duration-100 ease-linear hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2"
-                    >
-                        <Avatar size="md" src={user.avatarUrl} alt={user.name} initials={initials} />
-                    </button>
-                </>
-            )}
-
-            <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+            {/* Help menu — docked here (not floating) so the AI chat widget can take the bottom-right corner. */}
+            <HelpMenu variant="rail" />
         </>
     );
 };
@@ -859,6 +836,160 @@ const OwnerGuidesContent = () => {
     );
 };
 
+/* ── Host Onboarding Form content ───────────────────────────────────── */
+
+const HostOnboardingCard = ({ page, index, onOpen, onDelete }: {
+    page: HostOnboardingPageData; index: number; onOpen: (slug: string) => void; onDelete: (slug: string) => void;
+}) => {
+    const [confirmDelete, setConfirmDelete] = useState(false);
+    const submitted = !!page.data?.submittedAt;
+    return (
+        <motion.div
+            initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1], delay: index * 0.03 }}
+            className="group flex flex-col rounded-xl bg-primary p-4 shadow-sm ring-1 ring-secondary transition duration-100 ease-linear hover:ring-brand"
+        >
+            <div className="flex items-start gap-3">
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-fg-brand-primary dark:bg-brand-950/40">
+                    <Home02 className="size-[18px]" aria-hidden="true" />
+                </span>
+                <div className="min-w-0 flex-1">
+                    <h3 className="truncate text-sm font-semibold text-primary">{page.client_name || page.slug}</h3>
+                    <p className="truncate text-xs text-tertiary">/{page.slug}</p>
+                </div>
+            </div>
+
+            <div className="mt-3 flex items-center gap-2 text-xs text-tertiary">
+                <span>Created {formatGuideDate(page.created_at)}</span>
+                {submitted ? (
+                    <span className="rounded-md bg-success-secondary px-1.5 py-0.5 text-[11px] font-medium text-success-primary">Submitted</span>
+                ) : (
+                    <span className="rounded-md bg-secondary px-1.5 py-0.5 text-[11px] text-quaternary">In progress</span>
+                )}
+            </div>
+
+            <div className="mt-4 flex items-center gap-2">
+                <button type="button" onClick={() => onOpen(page.slug)}
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-brand-solid px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90">
+                    Open <ArrowUpRight className="size-3.5" />
+                </button>
+                {confirmDelete ? (
+                    <>
+                        <button type="button" onClick={() => onDelete(page.slug)}
+                            className="rounded-lg bg-error-solid px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-error-solid_hover">Delete</button>
+                        <button type="button" onClick={() => setConfirmDelete(false)}
+                            className="rounded-lg border border-secondary px-2.5 py-1.5 text-xs font-medium text-secondary transition hover:bg-secondary">Cancel</button>
+                    </>
+                ) : (
+                    <button type="button" onClick={() => setConfirmDelete(true)} title="Delete form"
+                        className="flex size-8 items-center justify-center rounded-lg text-quaternary transition hover:bg-secondary hover:text-error-primary">
+                        <Trash01 className="size-4" />
+                    </button>
+                )}
+            </div>
+        </motion.div>
+    );
+};
+
+const HostOnboardingContent = () => {
+    const navigate = useNavigate();
+    const [pages, setPages] = useState<HostOnboardingPageData[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [query, setQuery] = useState("");
+
+    useEffect(() => {
+        supabase
+            .from("host_onboarding_pages")
+            .select("*")
+            .order("created_at", { ascending: false })
+            .then(({ data, error }) => {
+                if (!error && data) setPages(data as HostOnboardingPageData[]);
+                setLoading(false);
+            });
+    }, []);
+
+    const deletePage = async (slug: string) => {
+        setPages(prev => prev.filter(p => p.slug !== slug));
+        await supabase.from("host_onboarding_pages").delete().eq("slug", slug);
+    };
+
+    const filtered = pages.filter(p => {
+        const q = query.trim().toLowerCase();
+        if (!q) return true;
+        return (p.client_name ?? "").toLowerCase().includes(q) || p.slug.toLowerCase().includes(q);
+    });
+
+    return (
+        <div className="flex h-full flex-1 flex-col overflow-hidden bg-secondary">
+            <header className="flex h-[73px] shrink-0 items-center justify-between border-b border-secondary bg-primary px-6">
+                <div>
+                    <h1 className="text-md font-semibold text-primary">Host Onboarding Form</h1>
+                    <p className="text-sm text-tertiary">
+                        {loading ? "Loading…" : `${pages.length} form${pages.length !== 1 ? "s" : ""} sent`}
+                    </p>
+                </div>
+                <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => navigate("/host-onboarding-form")}
+                        className="rounded-lg border border-secondary bg-primary px-3.5 py-2 text-sm font-semibold text-secondary transition duration-100 ease-linear hover:bg-secondary hover:text-primary">
+                        View Template
+                    </button>
+                    <button type="button" onClick={() => navigate("/host-onboarding-form?create=1")}
+                        className="flex items-center gap-1.5 rounded-lg bg-brand-solid px-3.5 py-2 text-sm font-semibold text-white transition duration-100 ease-linear hover:opacity-90">
+                        <Plus className="size-4" aria-hidden="true" />
+                        New Form
+                    </button>
+                </div>
+            </header>
+
+            <div className="flex-1 overflow-y-auto">
+                <div className="mx-auto w-full max-w-[900px] px-6">
+                    <div className="relative mt-6">
+                        <SearchSm className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-quaternary" aria-hidden="true" />
+                        <input
+                            type="text"
+                            value={query}
+                            onChange={e => setQuery(e.target.value)}
+                            placeholder="Search host onboarding forms by client name…"
+                            className="w-full rounded-lg border border-secondary bg-primary py-2.5 pl-10 pr-3 text-sm text-primary placeholder:text-placeholder outline-none transition duration-100 ease-linear focus:border-brand focus:ring-1 focus:ring-brand"
+                        />
+                    </div>
+
+                    {loading ? (
+                        <div className="flex h-48 items-center justify-center">
+                            <div className="size-6 animate-spin rounded-full border-2 border-brand border-t-transparent opacity-60" />
+                        </div>
+                    ) : pages.length === 0 ? (
+                        <motion.div className="flex h-64 flex-col items-center justify-center gap-3 text-center"
+                            initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease: "easeOut" }}>
+                            <div className="flex size-12 items-center justify-center rounded-full bg-brand-50">
+                                <Home02 className="size-5 text-fg-brand-primary" aria-hidden="true" />
+                            </div>
+                            <div>
+                                <p className="text-sm font-medium text-primary">No host onboarding forms yet</p>
+                                <p className="mt-0.5 text-sm text-tertiary">Create one from the template to send to a new host.</p>
+                            </div>
+                            <button type="button" onClick={() => navigate("/host-onboarding-form?create=1")}
+                                className="mt-1 flex items-center gap-1.5 rounded-lg bg-brand-solid px-3.5 py-2 text-sm font-semibold text-white transition duration-100 ease-linear hover:opacity-90">
+                                <Plus className="size-4" aria-hidden="true" /> New Form
+                            </button>
+                        </motion.div>
+                    ) : filtered.length === 0 ? (
+                        <div className="py-16 text-center">
+                            <p className="text-sm font-medium text-secondary">No forms match “{query}”</p>
+                        </div>
+                    ) : (
+                        <div className="my-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            {filtered.map((p, i) => (
+                                <HostOnboardingCard key={p.slug} page={p} index={i} onOpen={(slug) => navigate(`/${slug}`)} onDelete={deletePage} />
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
 /* ── Popups content ───────────────────────────────────────────────── */
 
 const PopupRow = ({
@@ -1292,6 +1423,7 @@ const FolderTile = ({
     onRename,
     topLeft,
     topRight,
+    solidFooter,
 }: {
     title: string;
     description?: string;
@@ -1308,6 +1440,9 @@ const FolderTile = ({
     topLeft?: React.ReactNode;
     /** Star / edit / delete controls, top-right. */
     topRight?: React.ReactNode;
+    /** Put the title/description on a solid panel below the cover (dark text, most readable)
+        instead of white text overlaid on the gradient. */
+    solidFooter?: boolean;
 }) => {
     const [renaming, setRenaming] = useState(false);
     const [draftTitle, setDraftTitle] = useState(title);
@@ -1333,52 +1468,93 @@ const FolderTile = ({
             whileHover={{ y: -4 }}
             onClick={onOpen}
             className={cx(
-                "group relative aspect-[16/10] w-full cursor-pointer overflow-hidden rounded-2xl shadow-sm ring-1 ring-secondary transition-shadow duration-200 hover:shadow-xl",
-                wide && "sm:col-span-2 sm:aspect-[33/10]",
+                "group relative w-full cursor-pointer overflow-hidden rounded-2xl shadow-sm ring-1 ring-secondary transition-shadow duration-200 hover:shadow-xl",
+                // Overview cards (solid footer): 1-col tiles are square; the wide/starred card spans two
+                // columns ONLY in the 3-col (lg) grid — where the leftover 3rd column holds a square
+                // sibling — and drops its aspect so it stretches to that sibling's height (grid rows
+                // stretch by default), keeping the row uniform. Below lg it stays a plain square so it
+                // never spans a full row alone (which would collapse). The lg:min-h is a floor for the
+                // case where the wide card IS alone in its row (e.g. the only card on a page) so it
+                // still shows a proper cover instead of collapsing to the footer. Client cards keep 16/10.
+                solidFooter ? "flex flex-col bg-primary aspect-square" : "aspect-[16/10]",
+                wide && (solidFooter ? "lg:col-span-2 lg:aspect-auto lg:min-h-[240px]" : "sm:col-span-2 sm:aspect-[33/10]"),
             )}
         >
-            {/* Background — uploaded cover photo, or a deterministic gradient "folder" tile */}
-            {coverUrl ? (
-                <img src={coverUrl} alt={title} className="absolute inset-0 size-full object-cover transition duration-300 group-hover:scale-105" draggable={false} />
-            ) : (
-                <>
-                    <div className="absolute inset-0 transition duration-300 group-hover:scale-105" style={{ background: gradientFor(title) }} />
-                    <Icon className="pointer-events-none absolute -bottom-4 -right-4 size-28 rotate-6 text-white/15" aria-hidden="true" />
-                </>
-            )}
-            {/* Scrim so the title stays legible over any photo or gradient */}
-            <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
-
-            {topLeft && <div className="absolute left-3 top-3">{topLeft}</div>}
-            {topRight && <div className="absolute right-3 top-3 flex items-center gap-2">{topRight}</div>}
-
-            {/* Title + description, bottom-left, inline-renameable while unlocked */}
-            <div className="absolute inset-x-0 bottom-0 p-4">
-                {renaming ? (
-                    <input
-                        type="text"
-                        value={draftTitle}
-                        onChange={(e) => setDraftTitle(e.target.value)}
-                        onClick={(e) => e.stopPropagation()}
-                        onKeyDown={(e) => {
-                            if (e.key === "Enter") { e.preventDefault(); submitRename(); }
-                            else if (e.key === "Escape") { e.preventDefault(); setRenaming(false); }
-                        }}
-                        onBlur={submitRename}
-                        ref={(el) => el?.focus({ preventScroll: true })}
-                        className="w-full rounded-lg border border-brand bg-primary px-2 py-1 text-sm font-semibold text-primary outline-none"
-                    />
+            {/* Cover — uploaded photo, or a deterministic gradient "folder" tile with a watermark icon.
+                In solid-footer mode the cover is the top region; otherwise it fills the whole tile. */}
+            <div className={cx("overflow-hidden", solidFooter ? "relative min-h-0 flex-1" : "absolute inset-0")}>
+                {coverUrl ? (
+                    <img src={coverUrl} alt={title} className="absolute inset-0 size-full object-cover transition duration-300 group-hover:scale-105" draggable={false} />
                 ) : (
-                    <h3
-                        onClick={editing ? startRename : undefined}
-                        title={editing ? "Click to rename" : undefined}
-                        className={cx("truncate text-lg font-bold text-white drop-shadow-sm", editing && "cursor-text hover:underline")}
-                    >
-                        {title}
-                    </h3>
+                    <>
+                        <div className="absolute inset-0 transition duration-300 group-hover:scale-105" style={{ background: gradientFor(title) }} />
+                        <Icon className="pointer-events-none absolute -bottom-4 -right-4 size-28 rotate-6 text-white/15" aria-hidden="true" />
+                    </>
                 )}
-                {description && <p className="mt-0.5 line-clamp-1 text-xs text-white/80">{description}</p>}
+                {/* Overlay mode only: scrim so the white title stays legible over any photo or gradient */}
+                {!solidFooter && <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />}
             </div>
+
+            {topLeft && <div className="absolute left-3 top-3 z-10">{topLeft}</div>}
+            {topRight && <div className="absolute right-3 top-3 z-10 flex items-center gap-2">{topRight}</div>}
+
+            {/* Title + description — inline-renameable while unlocked. Solid footer (dark text on a
+                solid panel, most readable) or white text overlaid on the cover scrim. */}
+            {solidFooter ? (
+                <div className="shrink-0 border-t border-secondary bg-primary px-4 py-3">
+                    {renaming ? (
+                        <input
+                            type="text"
+                            value={draftTitle}
+                            onChange={(e) => setDraftTitle(e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => {
+                                if (e.key === "Enter") { e.preventDefault(); submitRename(); }
+                                else if (e.key === "Escape") { e.preventDefault(); setRenaming(false); }
+                            }}
+                            onBlur={submitRename}
+                            ref={(el) => el?.focus({ preventScroll: true })}
+                            className="w-full rounded-lg border border-brand bg-primary px-2 py-1 text-sm font-semibold text-primary outline-none"
+                        />
+                    ) : (
+                        <h3
+                            onClick={editing ? startRename : undefined}
+                            title={editing ? "Click to rename" : undefined}
+                            className={cx("truncate text-[15px] font-bold text-primary", editing && "cursor-text hover:underline")}
+                        >
+                            {title}
+                        </h3>
+                    )}
+                    {description && <p className="mt-0.5 line-clamp-1 text-xs text-tertiary">{description}</p>}
+                </div>
+            ) : (
+                <div className="absolute inset-x-0 bottom-0 p-4">
+                    {renaming ? (
+                        <input
+                            type="text"
+                            value={draftTitle}
+                            onChange={(e) => setDraftTitle(e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => {
+                                if (e.key === "Enter") { e.preventDefault(); submitRename(); }
+                                else if (e.key === "Escape") { e.preventDefault(); setRenaming(false); }
+                            }}
+                            onBlur={submitRename}
+                            ref={(el) => el?.focus({ preventScroll: true })}
+                            className="w-full rounded-lg border border-brand bg-primary px-2 py-1 text-sm font-semibold text-primary outline-none"
+                        />
+                    ) : (
+                        <h3
+                            onClick={editing ? startRename : undefined}
+                            title={editing ? "Click to rename" : undefined}
+                            className={cx("truncate text-lg font-bold text-white drop-shadow-sm", editing && "cursor-text hover:underline")}
+                        >
+                            {title}
+                        </h3>
+                    )}
+                    {description && <p className="mt-0.5 line-clamp-1 text-xs text-white/80">{description}</p>}
+                </div>
+            )}
         </motion.div>
     );
 };
@@ -1433,6 +1609,7 @@ const OverviewCard = ({
             wide={card.starred}
             index={index}
             icon={iconForOverviewCard(card)}
+            solidFooter
             onOpen={open}
             onRename={(title) => onRename(card.id, title)}
             topLeft={
@@ -1507,6 +1684,47 @@ const AddCardModal = ({ onClose, onSubmit, initial }: {
     const [cover, setCover] = useState(initial?.cover ?? "");
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
+    const { user } = useAuthUser();
+
+    // "Create a new page" — spins up a blank /template-1-style document (3 empty
+    // sections, 3 empty notes each) in template_docs and links this card to it.
+    const [creatingPage, setCreatingPage] = useState(false);
+    const [newPageName, setNewPageName] = useState("");
+    const [newPageSlug, setNewPageSlug] = useState("");
+    const [pageSlugTouched, setPageSlugTouched] = useState(false);
+    const [pageBusy, setPageBusy] = useState(false);
+    const [pageError, setPageError] = useState("");
+
+    const effectivePageSlug = slugify(newPageSlug || newPageName);
+
+    const onNewPageNameChange = (v: string) => {
+        setNewPageName(v);
+        if (!pageSlugTouched) setNewPageSlug(slugify(v));
+    };
+
+    const handleCreatePage = async () => {
+        if (!newPageName.trim() || pageBusy) return;
+        if (!user) { setPageError("Sign in with your team Google account to create pages."); return; }
+        const slug = effectivePageSlug;
+        if (!slug) { setPageError("Enter a name with at least one letter or number."); return; }
+        if (isReservedSlug(slug)) { setPageError("That name is reserved — please pick another."); return; }
+        setPageBusy(true);
+        setPageError("");
+        const { error: insertError } = await supabase
+            .from("template_docs")
+            .insert({ slug, name: newPageName.trim(), data: createBlankTemplateData(), updated_at: new Date().toISOString() });
+        setPageBusy(false);
+        if (insertError) {
+            setPageError(insertError.code === "23505" ? "A page with that name already exists — pick another." : insertError.message);
+            return;
+        }
+        setLink(`/${slug}`);
+        if (!title.trim()) setTitle(newPageName.trim());
+        setCreatingPage(false);
+        setNewPageName("");
+        setNewPageSlug("");
+        setPageSlugTouched(false);
+    };
 
     const valid = title.trim() && description.trim() && link.trim();
 
@@ -1581,6 +1799,51 @@ const AddCardModal = ({ onClose, onSubmit, initial }: {
                         <label className="mb-1.5 block text-sm font-medium text-secondary">Page link <span className="text-error-primary">*</span></label>
                         <input type="text" value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://docs-hgm.netlify.app/…"
                             className="w-full rounded-lg border border-secondary px-3 py-2 text-sm text-primary placeholder:text-placeholder outline-none transition duration-100 ease-linear focus:border-brand focus:ring-1 focus:ring-brand" />
+
+                        {!creatingPage ? (
+                            <button
+                                type="button"
+                                onClick={() => { setCreatingPage(true); setPageError(""); }}
+                                className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-brand-secondary transition duration-100 ease-linear hover:text-brand-secondary_hover"
+                            >
+                                <FilePlus02 className="size-3.5" aria-hidden="true" />
+                                Or create a new page
+                            </button>
+                        ) : (
+                            <div className="mt-2 flex flex-col gap-2 rounded-lg border border-secondary bg-secondary p-3">
+                                <p className="text-xs text-tertiary">Spins up a blank page (3 sections, 3 empty notes each) and links it here.</p>
+                                <input
+                                    type="text"
+                                    value={newPageName}
+                                    onChange={(e) => onNewPageNameChange(e.target.value)}
+                                    placeholder="Page name, e.g. Ideation Notes"
+                                    autoFocus
+                                    className="w-full rounded-lg border border-secondary bg-primary px-3 py-2 text-sm text-primary placeholder:text-placeholder outline-none transition duration-100 ease-linear focus:border-brand focus:ring-1 focus:ring-brand"
+                                />
+                                {newPageName.trim() && (
+                                    <p className="text-[11px] text-quaternary">Will live at docs-hgm.netlify.app/{effectivePageSlug || "…"}</p>
+                                )}
+                                {pageError && <p className="text-xs text-error-primary">{pageError}</p>}
+                                <div className="flex gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => { setCreatingPage(false); setNewPageName(""); setNewPageSlug(""); setPageSlugTouched(false); setPageError(""); }}
+                                        disabled={pageBusy}
+                                        className="flex-1 rounded-lg border border-secondary px-3 py-1.5 text-xs font-semibold text-secondary transition hover:bg-primary disabled:opacity-50"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleCreatePage}
+                                        disabled={!newPageName.trim() || pageBusy}
+                                        className="flex-1 rounded-lg bg-brand-solid px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-40"
+                                    >
+                                        {pageBusy ? "Creating…" : "Create page"}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -2058,6 +2321,32 @@ const ClientCard = ({
     );
 };
 
+/* Sidebar pieces live at module scope — defining them inside ClientListContent
+   would mint new component types on every render, remounting the sidebar (and
+   replaying its stagger animation) each time a filter is clicked. */
+const SidebarGroup = ({ label, children }: { label: string; children: React.ReactNode }) => (
+    <div className="flex flex-col gap-0.5">
+        <p className="mb-1 px-2 text-xs font-semibold uppercase tracking-widest text-quaternary">{label}</p>
+        {children}
+    </div>
+);
+
+const NavItem = ({ active, icon: Icon, label, count, onClick }: { active: boolean; icon: typeof Share07; label: string; count: number; onClick: () => void }) => (
+    <motion.button
+        type="button"
+        variants={{ hidden: { opacity: 0, x: -10 }, show: { opacity: 1, x: 0, transition: { duration: 0.3, ease: [0.22, 1, 0.36, 1] } } }}
+        onClick={onClick}
+        className={cx(
+            "group flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm font-medium transition duration-100 ease-linear",
+            active ? "bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300" : "text-secondary hover:bg-secondary hover:text-primary",
+        )}
+    >
+        <Icon className="size-4 shrink-0" aria-hidden="true" />
+        <span className="flex-1 truncate">{label}</span>
+        <span className={cx("text-xs tabular-nums", active ? "text-brand-700 dark:text-brand-300" : "text-quaternary")}>{count}</span>
+    </motion.button>
+);
+
 const ClientListContent = ({
     editing,
     navCollapsed = false,
@@ -2164,29 +2453,6 @@ const ClientListContent = ({
         }
         setModal(null);
     };
-
-    const SidebarGroup = ({ label, children }: { label: string; children: React.ReactNode }) => (
-        <div className="flex flex-col gap-0.5">
-            <p className="mb-1 px-2 text-xs font-semibold uppercase tracking-widest text-quaternary">{label}</p>
-            {children}
-        </div>
-    );
-
-    const NavItem = ({ active, icon: Icon, label, count, onClick }: { active: boolean; icon: typeof Share07; label: string; count: number; onClick: () => void }) => (
-        <motion.button
-            type="button"
-            variants={{ hidden: { opacity: 0, x: -10 }, show: { opacity: 1, x: 0, transition: { duration: 0.3, ease: [0.22, 1, 0.36, 1] } } }}
-            onClick={onClick}
-            className={cx(
-                "group flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm font-medium transition duration-100 ease-linear",
-                active ? "bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300" : "text-secondary hover:bg-secondary hover:text-primary",
-            )}
-        >
-            <Icon className="size-4 shrink-0" aria-hidden="true" />
-            <span className="flex-1 truncate">{label}</span>
-            <span className={cx("text-xs tabular-nums", active ? "text-brand-700 dark:text-brand-300" : "text-quaternary")}>{count}</span>
-        </motion.button>
-    );
 
     return (
         <>
@@ -2499,6 +2765,7 @@ const DashboardLayout = () => {
                     />
                 )
             }
+            headerRight={!navCollapsed && <HeaderAvatar />}
         >
             {/* Slim top bar when the rail + side menu are hidden */}
             {navCollapsed && <CollapsedTopBar title={dept.header} onExpand={toggleNav} />}
@@ -2529,9 +2796,11 @@ const DashboardLayout = () => {
                                 ? <ChatWidgetContent />
                                 : activeSection === "owner-guides"
                                     ? <OwnerGuidesContent />
-                                    : activeSection === "project-logs"
-                                        ? <OverviewContent key={dept.id + ":" + activeSection} department={dept} tab={activeSection} editing={editing} isOwner={isOwner} />
-                                        : <MetaPixelContent />
+                                    : activeSection === "host-onboarding"
+                                        ? <HostOnboardingContent />
+                                        : activeSection === "project-logs"
+                                            ? <OverviewContent key={dept.id + ":" + activeSection} department={dept} tab={activeSection} editing={editing} isOwner={isOwner} />
+                                            : <MetaPixelContent />
                         : <OverviewContent key={dept.id + ":" + activeSection} department={dept} tab={activeSection} editing={editing} isOwner={isOwner} />}
                 </>
             )}

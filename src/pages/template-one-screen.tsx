@@ -1,15 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { AppShell, CollapsedTopBar, IconRail, NavCollapseButton, RailBottom, useNavCollapsed } from "@/components/application/icon-rail";
+import { AppShell, CollapsedTopBar, HeaderAvatar, IconRail, NavCollapseButton, RailBottom, useNavCollapsed } from "@/components/application/icon-rail";
+import { VideoAttach, VideoEmbed } from "@/components/application/video-block";
 import { useAuthUser } from "@/hooks/use-auth-user";
+import { useEditShortcuts } from "@/hooks/use-edit-shortcuts";
 import { supabase } from "@/lib/supabase";
+import { useSuppressFloatingThemeToggle } from "@/providers/theme-provider";
 import { compressImageFile } from "@/utils/compress-image";
 import { cx } from "@/utils/cx";
 
 /** The master template lives at /template-1; copies live at /{custom-slug} (stored in template_docs). */
 const TEMPLATE_BASE = "template-1";
-const slugify = (s: string) =>
+export const slugify = (s: string) =>
     s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
 /** Slugs that are named routes (or route elsewhere) — a copy can't use these or it'd be unreachable. */
@@ -17,15 +20,32 @@ const RESERVED_SLUGS = new Set([
     "template-1", "template", "dashboard", "roadmap", "requests", "settings",
     "designsystem", "home2", "popup", "owner-guide", "chat-widget", "metapixel",
 ]);
-const isReservedSlug = (slug: string) =>
+export const isReservedSlug = (slug: string) =>
     RESERVED_SLUGS.has(slug) || /-(leadcapture|chatwidget|dashboard)$/.test(slug);
 
 /* ── Types ───────────────────────────────────────────────────────── */
 
 type LensPos = { x: number; y: number };
 type Step = { id: string; heading: string; tools: string[]; command: string; note?: string; image: string; lensPos?: LensPos };
-type Stage = { id: string; name: string; steps: Step[] };
-type SOPState = { stages: Stage[]; selectedId: string | null; locked: boolean };
+/** `parentId` nests a stage as a sub menu under another stage; absent = top-level menu (old docs stay flat). */
+type Stage = { id: string; name: string; steps: Step[]; parentId?: string | null };
+/** Doc-level open question — same shape as the overview pages' QA (answered = resolved). */
+type QA = { id: string; question: string; answer: string; video?: string };
+type SOPState = { stages: Stage[]; selectedId: string | null; locked: boolean; questions?: QA[] };
+
+/** Top-level menus; a stage whose parent went missing is promoted rather than lost. */
+const topStages = (stages: Stage[]) => stages.filter((s) => !s.parentId || !stages.some((p) => p.id === s.parentId));
+const subStages = (stages: Stage[], parentId: string) => stages.filter((s) => s.parentId === parentId);
+
+/** "1" for top-level menus, "2.1" for sub menus (parent № . child №). */
+function stageNum(stages: Stage[], stage: Stage): string {
+    const tops = topStages(stages);
+    const topIdx = tops.findIndex((t) => t.id === stage.id);
+    if (topIdx !== -1) return String(topIdx + 1);
+    const parentIdx = tops.findIndex((t) => t.id === stage.parentId);
+    const sibs = subStages(stages, stage.parentId!);
+    return `${parentIdx + 1}.${sibs.findIndex((c) => c.id === stage.id) + 1}`;
+}
 
 const storageKey = (slug: string) => `hgm_template1_${slug}`;
 
@@ -77,6 +97,17 @@ const uid = () => "id" + Math.random().toString(36).slice(2, 9);
 
 function mkStep(heading = "New step"): Step {
     return { id: uid(), heading, tools: [], command: "", note: "", image: "" };
+}
+
+/** Blank 3-section/3-step shell (no placeholder prose) for pages spun up from elsewhere
+    — e.g. the dashboard's "Create a new page" shortcut in the Add Card modal. */
+export function createBlankTemplateData(): SOPState {
+    const stages: Stage[] = ["Section 1", "Section 2", "Section 3"].map((name) => ({
+        id: uid(),
+        name,
+        steps: [mkStep("Step 1"), mkStep("Step 2"), mkStep("Step 3")],
+    }));
+    return { stages, selectedId: stages[0].id, locked: true, questions: [] };
 }
 
 function seed(): SOPState {
@@ -575,17 +606,17 @@ const StepCard = ({
                                 onChange={(e) => onUpdate(step.id, "note", e.target.value)}
                                 placeholder="Add a note…"
                                 rows={2}
-                                className="w-full resize-y border-0 bg-transparent px-0 py-0 text-[13.5px] leading-[22px] text-secondary outline-none placeholder:text-placeholder"
+                                className="w-full resize-y rounded-lg border border-secondary bg-secondary px-3.5 py-3 text-[13.5px] leading-[22px] text-secondary outline-none focus:border-brand focus:bg-primary focus:ring-1 focus:ring-brand"
                             />
                         ) : (
-                            <p className="text-[13.5px] leading-[22px] text-secondary">{step.note}</p>
+                            <p className="whitespace-pre-wrap rounded-lg border border-secondary bg-secondary px-3.5 py-3 text-[13.5px] leading-[22px] text-secondary">{step.note}</p>
                         )}
                     </div>
                 )}
 
                 {/* image */}
                 {step.image ? (
-                    <div className="relative mx-5 ml-[69px]">
+                    <div className="relative mx-5 mt-6 ml-[69px]">
                         <ImageWithMagnifier
                                         src={step.image}
                                         editing={editing}
@@ -600,7 +631,7 @@ const StepCard = ({
                         )}
                     </div>
                 ) : editing ? (
-                    <label className="mx-5 ml-[69px] flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-[1.5px] border-dashed border-primary bg-secondary py-8 text-[13px] font-medium text-tertiary transition duration-100 ease-linear hover:border-brand hover:bg-brand-50 hover:text-brand-700">
+                    <label className="mx-5 mt-6 ml-[69px] flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-[1.5px] border-dashed border-primary bg-secondary py-8 text-[13px] font-medium text-tertiary transition duration-100 ease-linear hover:border-brand hover:bg-brand-50 hover:text-brand-700">
                         <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleImage} />
                         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                             <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -629,9 +660,132 @@ const StepCard = ({
 
 /* ── Sidebar ─────────────────────────────────────────────────────── */
 
+/** One sidebar row — module scope so re-renders don't remount it (and replay the stagger animation). */
+const StageRow = ({ stage, num, sub, active, locked, editing, onSelect, onMoveStage, onDeleteStage }: {
+    stage: Stage;
+    num: string;
+    sub: boolean;
+    active: boolean;
+    locked: boolean;
+    editing: boolean;
+    onSelect: (id: string) => void;
+    onMoveStage: (id: string, dir: -1 | 1) => void;
+    onDeleteStage: (id: string) => void;
+}) => (
+    <motion.div
+        variants={{ hidden: { opacity: 0, x: -10 }, show: { opacity: 1, x: 0, transition: { duration: 0.3, ease: [0.22, 1, 0.36, 1] } } }}
+        onClick={() => onSelect(stage.id)}
+        className={cx(
+            "relative flex cursor-pointer items-center gap-[11px] rounded-[9px] px-3 pl-[13px] transition-colors duration-100 ease-linear",
+            sub ? "ml-[26px] py-[7px]" : "py-[9px]",
+            active ? "bg-brand-50 dark:bg-brand-950/40" : "hover:bg-secondary hover:text-primary",
+        )}
+    >
+        {/* active bar */}
+        <span className={cx(
+            "absolute left-0 top-[7px] bottom-[7px] w-[3px] rounded-r-[3px] bg-brand-600 transition duration-100",
+            active ? "opacity-100" : "opacity-0",
+        )} />
+        {/* number — "01" for menus, "2.1" for sub menus */}
+        <span className={cx(
+            "shrink-0 font-mono text-[11px] font-semibold",
+            active ? "text-brand-600 dark:text-brand-400" : "text-quaternary",
+        )}>
+            {sub ? num : num.padStart(2, "0")}
+        </span>
+        {/* name */}
+        <span className={cx(
+            "flex-1 min-w-0 truncate font-medium",
+            sub ? "text-[13.5px]" : "text-[14px]",
+            active ? "text-primary" : "text-secondary",
+        )}>
+            {stage.name}
+        </span>
+        {/* step count badge */}
+        {locked && (
+            <span className={cx(
+                "shrink-0 rounded-full px-[7px] py-[1px] text-[11px] font-semibold",
+                active
+                    ? "bg-brand-100 text-brand-700 dark:bg-brand-900/50 dark:text-brand-300"
+                    : "bg-secondary text-quaternary",
+            )}>
+                {stage.steps.length}
+            </span>
+        )}
+        {/* editing controls */}
+        {editing && (
+            <div className="flex shrink-0 gap-px" onClick={(e) => e.stopPropagation()}>
+                <button type="button" title="Move up" onClick={() => onMoveStage(stage.id, -1)}
+                    className="flex size-[22px] items-center justify-center rounded-md text-quaternary transition duration-100 hover:bg-secondary hover:text-primary">
+                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 15l-6-6-6 6" /></svg>
+                </button>
+                <button type="button" title="Move down" onClick={() => onMoveStage(stage.id, 1)}
+                    className="flex size-[22px] items-center justify-center rounded-md text-quaternary transition duration-100 hover:bg-secondary hover:text-primary">
+                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
+                </button>
+                <button type="button" title={sub ? "Delete sub menu" : "Delete menu"} onClick={() => onDeleteStage(stage.id)}
+                    className="flex size-[22px] items-center justify-center rounded-md text-quaternary transition duration-100 hover:bg-error-primary hover:text-fg-error-primary">
+                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" /></svg>
+                </button>
+            </div>
+        )}
+    </motion.div>
+);
+
+/** One open-question card — mirrors the overview pages' Open Questions cards. */
+const QuestionCard = ({ q, editing, resolved, onChange, onRemove }: {
+    q: QA;
+    editing: boolean;
+    resolved?: boolean;
+    onChange: (patch: Partial<QA>) => void;
+    onRemove: () => void;
+}) => (
+    <div className={cx("rounded-2xl p-5 ring-1 ring-secondary", resolved ? "bg-secondary" : "bg-primary")}>
+        <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 flex-1 items-start gap-2">
+                {resolved && (
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 shrink-0 text-fg-success-primary"><path d="M20 6L9 17l-5-5" /></svg>
+                )}
+                {editing ? (
+                    <input
+                        type="text"
+                        value={q.question}
+                        onChange={(e) => onChange({ question: e.target.value })}
+                        placeholder="Question…"
+                        className="w-full bg-transparent font-medium text-primary outline-none placeholder:text-placeholder"
+                    />
+                ) : (
+                    <p className="min-w-0 flex-1 font-medium text-primary">{q.question}</p>
+                )}
+            </div>
+            {editing && (
+                <button type="button" title="Remove question" onClick={onRemove} className="shrink-0 text-fg-quaternary transition duration-100 ease-linear hover:text-fg-error-secondary">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" /></svg>
+                </button>
+            )}
+        </div>
+        <div className={cx("mt-3 border-l-2 pl-3", resolved ? "border-success" : "border-brand")}>
+            {editing ? (
+                <textarea
+                    value={q.answer}
+                    onChange={(e) => onChange({ answer: e.target.value })}
+                    placeholder="Unanswered — type the decision here."
+                    rows={2}
+                    className="w-full resize-y bg-transparent text-[14px] leading-relaxed text-secondary outline-none placeholder:italic placeholder:text-placeholder"
+                />
+            ) : q.answer.trim() ? (
+                <p className="whitespace-pre-wrap text-[14px] leading-relaxed text-secondary">{q.answer}</p>
+            ) : (
+                <p className="text-[14px] italic text-placeholder">Unanswered — type the decision here.</p>
+            )}
+        </div>
+        {editing ? <VideoAttach value={q.video} onChange={(v) => onChange({ video: v })} className="mt-3" /> : q.video && <VideoEmbed url={q.video} className="mt-3" />}
+    </div>
+);
+
 const Sidebar = ({
     stages, selectedId, locked, editing,
-    onSelect, onAddStage, onDeleteStage, onMoveStage, onCollapse,
+    onSelect, onAddStage, onAddSubStage, onDeleteStage, onMoveStage, onCollapse,
 }: {
     stages: Stage[];
     selectedId: string | null;
@@ -639,10 +793,12 @@ const Sidebar = ({
     editing: boolean;
     onSelect: (id: string) => void;
     onAddStage: () => void;
+    onAddSubStage: () => void;
     onDeleteStage: (id: string) => void;
     onMoveStage: (id: string, dir: -1 | 1) => void;
     onCollapse?: () => void;
 }) => {
+    const rowProps = { locked, editing, onSelect, onMoveStage, onDeleteStage };
     return (
     <aside className="flex h-full w-[300px] shrink-0 flex-col border-r border-secondary bg-primary">
         {/* header */}
@@ -651,7 +807,7 @@ const Sidebar = ({
             {onCollapse && <NavCollapseButton onClick={onCollapse} />}
         </div>
 
-        {/* stage list */}
+        {/* menu list — top-level menus with their sub menus indented beneath */}
         <div className="flex-1 overflow-y-auto px-3 py-3.5">
             <p className="mb-3 px-2 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-quaternary">Workflow</p>
             <motion.div
@@ -660,70 +816,12 @@ const Sidebar = ({
                 animate="show"
                 variants={{ show: { transition: { staggerChildren: 0.05 } } }}
             >
-                {stages.map((s, i) => {
-                    const active = s.id === selectedId;
-                    return (
-                        <motion.div
-                            key={s.id}
-                            variants={{ hidden: { opacity: 0, x: -10 }, show: { opacity: 1, x: 0, transition: { duration: 0.3, ease: [0.22, 1, 0.36, 1] } } }}
-                            onClick={() => onSelect(s.id)}
-                            className={cx(
-                                "relative flex cursor-pointer items-center gap-[11px] rounded-[9px] px-3 py-[9px] pl-[13px] transition-colors duration-100 ease-linear",
-                                active
-                                    ? "bg-brand-50 dark:bg-brand-950/40"
-                                    : "hover:bg-secondary hover:text-primary",
-                            )}
-                        >
-                            {/* active bar */}
-                            <span className={cx(
-                                "absolute left-0 top-[7px] bottom-[7px] w-[3px] rounded-r-[3px] bg-brand-600 transition duration-100",
-                                active ? "opacity-100" : "opacity-0",
-                            )} />
-                            {/* number */}
-                            <span className={cx(
-                                "shrink-0 font-mono text-[11px] font-semibold",
-                                active ? "text-brand-600 dark:text-brand-400" : "text-quaternary",
-                            )}>
-                                {String(i + 1).padStart(2, "0")}
-                            </span>
-                            {/* name */}
-                            <span className={cx(
-                                "flex-1 min-w-0 truncate text-[14px] font-medium",
-                                active ? "text-primary" : "text-secondary",
-                            )}>
-                                {s.name}
-                            </span>
-                            {/* step count badge */}
-                            {locked && (
-                                <span className={cx(
-                                    "shrink-0 rounded-full px-[7px] py-[1px] text-[11px] font-semibold",
-                                    active
-                                        ? "bg-brand-100 text-brand-700 dark:bg-brand-900/50 dark:text-brand-300"
-                                        : "bg-secondary text-quaternary",
-                                )}>
-                                    {s.steps.length}
-                                </span>
-                            )}
-                            {/* editing controls */}
-                            {editing && (
-                                <div className="flex shrink-0 gap-px" onClick={(e) => e.stopPropagation()}>
-                                    <button type="button" title="Move up" onClick={() => onMoveStage(s.id, -1)}
-                                        className="flex size-[22px] items-center justify-center rounded-md text-quaternary transition duration-100 hover:bg-secondary hover:text-primary">
-                                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 15l-6-6-6 6" /></svg>
-                                    </button>
-                                    <button type="button" title="Move down" onClick={() => onMoveStage(s.id, 1)}
-                                        className="flex size-[22px] items-center justify-center rounded-md text-quaternary transition duration-100 hover:bg-secondary hover:text-primary">
-                                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
-                                    </button>
-                                    <button type="button" title="Delete stage" onClick={() => onDeleteStage(s.id)}
-                                        className="flex size-[22px] items-center justify-center rounded-md text-quaternary transition duration-100 hover:bg-red-50 hover:text-red-600">
-                                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" /></svg>
-                                    </button>
-                                </div>
-                            )}
-                        </motion.div>
-                    );
-                })}
+                {topStages(stages).flatMap((top) => [
+                    <StageRow key={top.id} stage={top} num={stageNum(stages, top)} sub={false} active={top.id === selectedId} {...rowProps} />,
+                    ...subStages(stages, top.id).map((child) => (
+                        <StageRow key={child.id} stage={child} num={stageNum(stages, child)} sub active={child.id === selectedId} {...rowProps} />
+                    )),
+                ])}
             </motion.div>
         </div>
 
@@ -733,7 +831,13 @@ const Sidebar = ({
                 <button type="button" onClick={onAddStage}
                     className="flex items-center justify-center gap-2 rounded-[9px] border border-primary bg-primary px-2.5 py-2.5 text-[13px] font-semibold text-secondary transition duration-100 ease-linear hover:bg-secondary">
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
-                    Add stage
+                    Add menu
+                </button>
+                <button type="button" onClick={onAddSubStage} disabled={stages.length === 0}
+                    title="Adds a sub menu under the selected menu"
+                    className="flex items-center justify-center gap-2 rounded-[9px] border border-dashed border-primary px-2.5 py-2 text-[12.5px] font-semibold text-tertiary transition duration-100 ease-linear hover:bg-secondary hover:text-secondary disabled:cursor-not-allowed disabled:opacity-50">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+                    Add sub menu
                 </button>
             </div>
         )}
@@ -755,9 +859,10 @@ export const TemplateOneScreen = ({
     const [signingIn, setSigningIn] = useState(false);
     const [state, setState] = useState<SOPState>(() => load(slug));
     const { collapsed: navCollapsed, toggle: toggleNav } = useNavCollapsed();
-    const [saved, setSaved] = useState(false);
-    const [saving, setSaving] = useState(false);
-    const [saveError, setSaveError] = useState("");
+    // Copies live at arbitrary slugs that can't be listed in main.tsx's static
+    // PAGES_WITHOUT_FLOATING_CHROME array — self-report to hide the duplicate
+    // floating toggle (this page already has one in the rail via RailBottom).
+    useSuppressFloatingThemeToggle();
     const mainRef = useRef<HTMLElement>(null);
     const hydratedRef = useRef(false);
 
@@ -801,7 +906,7 @@ export const TemplateOneScreen = ({
                         });
                     });
                     // Always open locked, regardless of the saved lock flag.
-                    setState({ ...loaded, locked: true });
+                    setState({ ...loaded, questions: loaded.questions ?? [], locked: true });
                 }
                 hydratedRef.current = true;
             });
@@ -825,7 +930,7 @@ export const TemplateOneScreen = ({
     const editing = !locked;
 
     const sel = stages.find((s) => s.id === selectedId) ?? stages[0] ?? null;
-    const selIdx = sel ? stages.findIndex((s) => s.id === sel.id) : -1;
+    const selNum = sel ? stageNum(stages, sel) : ""; // "3" for menus, "2.1" for sub menus
 
     const update = (mutator: (draft: SOPState) => SOPState | void) => {
         setState((prev) => {
@@ -851,23 +956,21 @@ export const TemplateOneScreen = ({
     };
     const handleToggleLock = () => update((d) => { d.locked = !d.locked; });
 
-    const handleSave = async () => {
-        setSaving(true);
-        setSaveError("");
-        save(slug, state); // best-effort local cache
-        const { error } = await supabase
-            .from("template_docs")
-            .upsert({ slug, data: state, updated_at: new Date().toISOString() }, { onConflict: "slug" });
-        setSaving(false);
-        if (error) {
-            console.error("[template-1 save] Supabase error:", error);
-            setSaveError(error.message);
-            setTimeout(() => setSaveError(""), 5000);
-            return;
-        }
-        setSaved(true);
-        setTimeout(() => setSaved(false), 1800);
-    };
+    // Shift+E toggles edit mode; Shift+S saves immediately and locks — same
+    // shortcuts as /roadmap, /chat-widget-overview, etc. (Content also
+    // autosaves on every change, debounced, via the effect above.)
+    useEditShortcuts({
+        onToggle: handleToggleLock,
+        onSave: () => {
+            const next = { ...state, locked: true };
+            save(slug, next);
+            supabase
+                .from("template_docs")
+                .upsert({ slug, data: next, updated_at: new Date().toISOString() }, { onConflict: "slug" })
+                .then(({ error }) => { if (error) console.error("[template-1 save]", error); });
+            setState(next);
+        },
+    });
 
     // "Copy this template" → create a new document from the current content.
     const handleCopy = async () => {
@@ -879,14 +982,18 @@ export const TemplateOneScreen = ({
         setCopying(true);
         setCopyError("");
         // Fresh copy: clone the current stages/steps with brand-new ids, locked.
+        // Ids are remapped up front so sub menus keep pointing at their parent's new id.
+        const idMap = new Map(state.stages.map((st) => [st.id, uid()]));
         const cloned: SOPState = {
             stages: state.stages.map((st) => ({
-                id: uid(),
+                id: idMap.get(st.id)!,
                 name: st.name,
+                parentId: st.parentId ? (idMap.get(st.parentId) ?? null) : null,
                 steps: st.steps.map((s) => ({ ...s, id: uid() })),
             })),
             selectedId: null,
             locked: true,
+            questions: (state.questions ?? []).map((q) => ({ ...q, id: uid() })),
         };
         cloned.selectedId = cloned.stages[0]?.id ?? null;
         const { error } = await supabase
@@ -913,24 +1020,54 @@ export const TemplateOneScreen = ({
 
     const handleAddStage = () => update((d) => {
         const id = uid();
-        d.stages.push({ id, name: "New Stage", steps: [] });
+        d.stages.push({ id, name: "New Menu", steps: [] });
         d.selectedId = id;
         d.locked = false;
     });
 
-    const handleDeleteStage = (id: string) => update((d) => {
-        const i = d.stages.findIndex((s) => s.id === id);
-        if (i < 0) return;
-        d.stages.splice(i, 1);
-        if (d.selectedId === id) {
-            d.selectedId = d.stages[i]?.id ?? d.stages[i - 1]?.id ?? d.stages[0]?.id ?? null;
-        }
+    // Adds a sub menu under the selected menu (or the selected sub menu's parent).
+    const handleAddSubStage = () => update((d) => {
+        const selStage = d.stages.find((x) => x.id === d.selectedId);
+        const parentId = selStage ? (selStage.parentId ?? selStage.id) : topStages(d.stages)[0]?.id;
+        if (!parentId) return;
+        const id = uid();
+        // Insert after the parent's last existing sub so sidebar order matches array order.
+        const kids = subStages(d.stages, parentId);
+        const anchorId = kids.length ? kids[kids.length - 1].id : parentId;
+        d.stages.splice(d.stages.findIndex((s) => s.id === anchorId) + 1, 0, { id, name: "New Sub Menu", steps: [], parentId });
+        d.selectedId = id;
+        d.locked = false;
     });
 
+    // Deleting a menu also deletes its sub menus.
+    const handleDeleteStage = (id: string) => update((d) => {
+        const removed = new Set([id, ...subStages(d.stages, id).map((s) => s.id)]);
+        d.stages = d.stages.filter((s) => !removed.has(s.id));
+        if (d.selectedId && removed.has(d.selectedId)) d.selectedId = d.stages[0]?.id ?? null;
+    });
+
+    /* ── Open Questions (doc-level, same behavior as the overview pages) ── */
+    const [showResolved, setShowResolved] = useState(false);
+    const questions = state.questions ?? [];
+    const isAnswered = (q: QA) => !!q.answer.trim();
+    const openQuestions = questions.filter((q) => !isAnswered(q));
+    const resolvedQuestions = questions.filter(isAnswered);
+    const setQuestion = (id: string, patch: Partial<QA>) => update((d) => {
+        const q = (d.questions ?? []).find((x) => x.id === id);
+        if (q) Object.assign(q, patch);
+    });
+    const rmQuestion = (id: string) => update((d) => { d.questions = (d.questions ?? []).filter((x) => x.id !== id); });
+    const addQuestion = () => update((d) => { (d.questions ??= []).push({ id: uid(), question: "", answer: "" }); });
+
+    // Reorders within siblings only — menus swap among menus, subs among their parent's subs.
     const handleMoveStage = (id: string, dir: -1 | 1) => update((d) => {
+        const stage = d.stages.find((s) => s.id === id);
+        if (!stage) return;
+        const siblings = stage.parentId ? subStages(d.stages, stage.parentId) : topStages(d.stages);
+        const target = siblings[siblings.findIndex((s) => s.id === id) + dir];
+        if (!target) return;
         const i = d.stages.findIndex((s) => s.id === id);
-        const j = i + dir;
-        if (i < 0 || j < 0 || j >= d.stages.length) return;
+        const j = d.stages.findIndex((s) => s.id === target.id);
         [d.stages[i], d.stages[j]] = [d.stages[j], d.stages[i]];
     });
 
@@ -990,6 +1127,7 @@ export const TemplateOneScreen = ({
         <AppShell
             className="flex flex-col"
             rail={!navCollapsed && <IconRail activeDept="" bottom={<RailBottom editing={editing} onToggleEditing={handleToggleLock} />} />}
+            headerRight={!navCollapsed && <HeaderAvatar />}
         >
             {navCollapsed && <CollapsedTopBar title="Web Team" onExpand={toggleNav} />}
             <div className="flex min-h-0 flex-1">
@@ -1001,6 +1139,7 @@ export const TemplateOneScreen = ({
                 editing={editing}
                 onSelect={handleSelect}
                 onAddStage={handleAddStage}
+                onAddSubStage={handleAddSubStage}
                 onDeleteStage={handleDeleteStage}
                 onMoveStage={handleMoveStage}
                 onCollapse={toggleNav}
@@ -1023,7 +1162,7 @@ export const TemplateOneScreen = ({
                             <div className="flex-1 min-w-0">
                                 <div className="mb-2 flex items-center gap-2.5">
                                     <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-brand-600 dark:text-brand-400">
-                                        Stage {String(selIdx + 1).padStart(2, "0")}
+                                        Stage {sel.parentId ? selNum : selNum.padStart(2, "0")}
                                     </span>
                                     <span className="size-1 rounded-full bg-tertiary" />
                                     <span className="text-[12px] font-medium text-quaternary">
@@ -1032,7 +1171,7 @@ export const TemplateOneScreen = ({
                                 </div>
                                 {editing ? (
                                     <div className="-ml-2.5 flex items-center gap-2">
-                                        <span className="shrink-0 px-2.5 py-1 text-[34px] font-semibold leading-10 tracking-[-0.02em] text-primary">{selIdx + 1}.</span>
+                                        <span className="shrink-0 px-2.5 py-1 text-[34px] font-semibold leading-10 tracking-[-0.02em] text-primary">{selNum}.</span>
                                         <input
                                             type="text"
                                             value={sel.name}
@@ -1042,7 +1181,7 @@ export const TemplateOneScreen = ({
                                     </div>
                                 ) : (
                                     <h1 className="text-[34px] font-semibold leading-10 tracking-[-0.02em] text-primary">
-                                        {selIdx + 1}. {sel.name}
+                                        {selNum}. {sel.name}
                                     </h1>
                                 )}
                             </div>
@@ -1099,6 +1238,72 @@ export const TemplateOneScreen = ({
                                 Add step
                             </button>
                         )}
+
+                        {/* Open Questions — doc-level (shared across all menus), same pattern as the overview pages */}
+                        <hr className="my-10 border-secondary" />
+                        <section>
+                            <h2 className="text-xl font-semibold text-primary">Open Questions</h2>
+                            <p className="mt-1 text-sm text-tertiary">
+                                Answer inline — decisions live here so nothing gets lost in chat. Answered questions move to Resolved / History below (nothing is deleted).
+                            </p>
+                            <div className="mt-4 flex flex-col gap-4">
+                                {openQuestions.length === 0 ? (
+                                    <p className="rounded-2xl bg-primary p-5 text-sm italic text-quaternary ring-1 ring-secondary">
+                                        No open questions right now — everything's been answered.
+                                    </p>
+                                ) : (
+                                    openQuestions.map((q) => (
+                                        <QuestionCard key={q.id} q={q} editing={editing} onChange={(patch) => setQuestion(q.id, patch)} onRemove={() => rmQuestion(q.id)} />
+                                    ))
+                                )}
+                            </div>
+                            {editing && (
+                                <button type="button" onClick={addQuestion}
+                                    className="mt-3 flex items-center gap-1.5 text-sm font-semibold text-brand-secondary hover:underline">
+                                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+                                    Add question
+                                </button>
+                            )}
+
+                            {/* Resolved / History — answered questions collapse here so the open list stays focused. */}
+                            {resolvedQuestions.length > 0 && (
+                                <div className="mt-6">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowResolved((s) => !s)}
+                                        aria-expanded={showResolved || editing}
+                                        className="flex w-full items-center gap-2.5 rounded-xl bg-secondary px-4 py-3 text-left text-sm font-semibold text-secondary transition duration-100 ease-linear hover:bg-secondary_hover"
+                                    >
+                                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
+                                            className={cx("shrink-0 text-fg-quaternary transition-transform duration-200", (showResolved || editing) && "rotate-180")}>
+                                            <path d="M6 9l6 6 6-6" />
+                                        </svg>
+                                        <span className="flex-1">Resolved / History</span>
+                                        <span className="rounded-full bg-primary px-2 py-0.5 text-xs font-semibold text-tertiary tabular-nums ring-1 ring-secondary">
+                                            {resolvedQuestions.length}
+                                        </span>
+                                    </button>
+                                    <AnimatePresence initial={false}>
+                                        {(showResolved || editing) && (
+                                            <motion.div
+                                                key="resolved"
+                                                initial={{ height: 0, opacity: 0 }}
+                                                animate={{ height: "auto", opacity: 1 }}
+                                                exit={{ height: 0, opacity: 0 }}
+                                                transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                                                className="overflow-hidden"
+                                            >
+                                                <div className="mt-3 flex flex-col gap-4">
+                                                    {resolvedQuestions.map((q) => (
+                                                        <QuestionCard key={q.id} q={q} editing={editing} resolved onChange={(patch) => setQuestion(q.id, patch)} onRemove={() => rmQuestion(q.id)} />
+                                                    ))}
+                                                </div>
+                                            </motion.div>
+                                        )}
+                                    </AnimatePresence>
+                                </div>
+                            )}
+                        </section>
                     </motion.div>
                 ) : (
                     <motion.div
@@ -1139,59 +1344,6 @@ export const TemplateOneScreen = ({
                         Copy this template
                     </button>
                 )}
-
-                {/* Save — editing only */}
-                <AnimatePresence>
-                    {editing && (
-                        <motion.div
-                            initial={{ opacity: 0, scale: 0.8, y: 6 }}
-                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.8, y: 6 }}
-                            transition={{ type: "spring", stiffness: 320, damping: 24 }}
-                            className="relative"
-                        >
-                            <button
-                                type="button"
-                                onClick={handleSave}
-                                disabled={saving}
-                                title="Save"
-                                className={cx(
-                                    "flex size-11 items-center justify-center rounded-full shadow-lg ring-1 transition duration-100 ease-linear disabled:opacity-80",
-                                    saveError
-                                        ? "bg-error-solid text-white ring-error-solid"
-                                        : saved
-                                          ? "bg-success-solid text-white ring-success-solid"
-                                          : "bg-brand-600 text-white ring-brand-600 hover:bg-brand-700",
-                                )}
-                            >
-                                {saving ? (
-                                    <span className="size-[18px] animate-spin rounded-full border-2 border-white border-t-transparent" />
-                                ) : saveError ? (
-                                    <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 8v5M12 16h.01" /><circle cx="12" cy="12" r="9" /></svg>
-                                ) : saved ? (
-                                    <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
-                                ) : (
-                                    <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" /><path d="M17 21v-8H7v8M7 3v5h8" /></svg>
-                                )}
-                            </button>
-                            <AnimatePresence>
-                                {(saved || saveError) && (
-                                    <motion.span
-                                        initial={{ opacity: 0, x: 6 }}
-                                        animate={{ opacity: 1, x: 0 }}
-                                        exit={{ opacity: 0, x: 6 }}
-                                        className={cx(
-                                            "absolute right-full top-1/2 mr-2.5 -translate-y-1/2 max-w-[220px] truncate rounded-lg px-2.5 py-1 text-[12px] font-semibold text-white shadow-md",
-                                            saveError ? "bg-error-solid" : "bg-success-solid",
-                                        )}
-                                    >
-                                        {saveError ? `Save failed: ${saveError}` : "Saved!"}
-                                    </motion.span>
-                                )}
-                            </AnimatePresence>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
             </div>
 
             {/* Copy-template modal */}

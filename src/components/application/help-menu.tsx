@@ -16,6 +16,9 @@ const SHORTCUTS: { keys: string[]; label: string }[] = [
     { keys: ["Shift", "F"], label: "Open sitewide search" },
     { keys: ["Shift", "E"], label: "Unlock / lock editing" },
     { keys: ["Shift", "S"], label: "Save and lock" },
+    { keys: ["Shift", "B"], label: "Show / hide the menu" },
+    { keys: ["Shift", "R"], label: "Show / hide the icon rail" },
+    { keys: ["Shift", "Q"], label: "Open / close the AI chat" },
 ];
 
 /** Shared modal shell (same pattern as DocsRequestModal). */
@@ -224,10 +227,12 @@ const ShortcutsModal = ({ open, onClose }: { open: boolean; onClose: () => void 
 );
 
 /**
- * Floating "?" help button (bottom-right, Figma-style).
+ * "?" help button — floating (bottom-right) on pages without an icon rail, or
+ * docked in the icon rail (under the theme toggle) on pages that have one, so
+ * the floating bottom-right slot is free for the AI chat widget there.
  * Only rendered for signed-in @hiddengem.media team members.
  */
-export const HelpMenu = () => {
+export const HelpMenu = ({ variant = "floating" }: { variant?: "floating" | "rail" }) => {
     const { user } = useAuthUser();
     const navigate = useNavigate();
     const [menuOpen, setMenuOpen] = useState(false);
@@ -259,7 +264,7 @@ export const HelpMenu = () => {
 
     return (
         <>
-            <div ref={containerRef} className="fixed right-4 bottom-4 z-50">
+            <div ref={containerRef} className={variant === "rail" ? "relative" : "fixed right-4 bottom-4 z-50"}>
                 <AnimatePresence>
                     {menuOpen && (
                         <motion.div
@@ -267,7 +272,10 @@ export const HelpMenu = () => {
                             animate={{ opacity: 1, y: 0, scale: 1 }}
                             exit={{ opacity: 0, y: 8, scale: 0.97 }}
                             transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
-                            className="absolute right-0 bottom-12 w-60 rounded-xl border border-secondary_alt bg-primary p-1.5 shadow-lg"
+                            className={cx(
+                                "absolute w-60 rounded-xl border border-secondary_alt bg-primary p-1.5 shadow-lg",
+                                variant === "rail" ? "bottom-0 left-full ml-2" : "right-0 bottom-12",
+                            )}
                         >
                             {items.map((item, i) => (
                                 <div key={item.label}>
@@ -301,7 +309,10 @@ export const HelpMenu = () => {
                     type="button"
                     title="Help and resources"
                     onClick={() => setMenuOpen((o) => !o)}
-                    className="flex size-10 items-center justify-center rounded-full border border-secondary bg-primary text-secondary shadow-sm transition duration-100 ease-linear hover:bg-secondary hover:text-primary"
+                    className={cx(
+                        "flex size-10 items-center justify-center rounded-full border border-secondary bg-primary text-secondary transition duration-100 ease-linear hover:bg-secondary hover:text-primary",
+                        variant === "rail" ? "mt-2 hover:bg-tertiary" : "shadow-sm",
+                    )}
                 >
                     <HelpCircle className="size-5" aria-hidden="true" />
                 </button>

@@ -251,16 +251,25 @@ const QuestionCard = ({
 
 /* ── Page ────────────────────────────────────────────────────────── */
 
-const SECTIONS = [
-    { id: "s-overview", label: "Overview", icon: BookOpen01 },
-    { id: "s-flow", label: "The Flow", icon: Send01 },
-    { id: "s-emails", label: "Email Templates", icon: Mail01 },
-    { id: "s-workflow", label: "How AMs use it", icon: Users01 },
-    { id: "s-sidemenu", label: "Dashboard side menu", icon: LayoutAlt01 },
-    { id: "s-todos", label: "Build To-dos", icon: CheckDone01 },
-    { id: "s-questions", label: "Open Questions", icon: HelpCircle },
-    { id: "s-log", label: "Timeline", icon: Hourglass01 },
+/** Sidebar is grouped (macOS System Settings style) with dividers between groups.
+    Order here IS the scroll order — keep it matching the section DOM order below. */
+const NAV_GROUPS = [
+    [
+        { id: "s-overview", label: "Overview", icon: BookOpen01 },
+        { id: "s-flow", label: "The Flow", icon: Send01 },
+        { id: "s-emails", label: "Email Templates", icon: Mail01 },
+        { id: "s-workflow", label: "How AMs use it", icon: Users01 },
+        { id: "s-sidemenu", label: "Dashboard side menu", icon: LayoutAlt01 },
+    ],
+    [
+        { id: "s-todos", label: "Build To-dos", icon: CheckDone01 },
+        { id: "s-questions", label: "Open Questions", icon: HelpCircle },
+    ],
+    [
+        { id: "s-log", label: "Timeline", icon: Hourglass01 },
+    ],
 ];
+const SECTIONS = NAV_GROUPS.flat();
 
 export const WelcomeEmailFlowOverviewScreen = () => {
     const [data, setData] = useState<FlowData>(seed);
@@ -392,23 +401,28 @@ export const WelcomeEmailFlowOverviewScreen = () => {
                     animate="show"
                     variants={{ show: { transition: { staggerChildren: 0.05 } } }}
                 >
-                    <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wide text-quaternary">Table of Contents</p>
-                    {SECTIONS.map((s) => (
-                        <motion.button
-                            key={s.id}
-                            type="button"
-                            onClick={() => goTo(s.id)}
-                            variants={{ hidden: { opacity: 0, x: -8 }, show: { opacity: 1, x: 0 } }}
-                            className={cx(
-                                "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium transition duration-100 ease-linear",
-                                activeSection === s.id
-                                    ? "bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300"
-                                    : "text-secondary hover:bg-secondary_hover hover:text-primary",
-                            )}
-                        >
-                            <s.icon className="size-4 shrink-0 text-fg-quaternary" aria-hidden="true" />
-                            {s.label}
-                        </motion.button>
+                    {NAV_GROUPS.map((group, gi) => (
+                        <div key={gi}>
+                            {/* Divider between groups (macOS System Settings style) */}
+                            {gi > 0 && <div className="mx-3 my-2.5 h-px bg-border-secondary" />}
+                            {group.map((s) => (
+                                <motion.button
+                                    key={s.id}
+                                    type="button"
+                                    onClick={() => goTo(s.id)}
+                                    variants={{ hidden: { opacity: 0, x: -8 }, show: { opacity: 1, x: 0 } }}
+                                    className={cx(
+                                        "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium transition duration-100 ease-linear",
+                                        activeSection === s.id
+                                            ? "bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300"
+                                            : "text-secondary hover:bg-secondary_hover hover:text-primary",
+                                    )}
+                                >
+                                    <s.icon className="size-4 shrink-0 text-fg-quaternary" aria-hidden="true" />
+                                    {s.label}
+                                </motion.button>
+                            ))}
+                        </div>
                     ))}
                 </motion.nav>
             </aside>
@@ -571,25 +585,27 @@ export const WelcomeEmailFlowOverviewScreen = () => {
                     {/* 04 Workflow */}
                     <section>
                         <SectionHeader id="s-workflow" number="04" title="How AMs use it" hint="The intended end-to-end workflow once the builder ships." />
-                        <ol className="mt-5 flex flex-col gap-2.5">
-                            {data.workflow.map((step, i) => (
-                                <li key={i} className="flex items-start gap-3">
-                                    <span className="mt-px flex size-5 shrink-0 items-center justify-center rounded-md bg-brand-50 text-xs font-semibold text-brand-700 tabular-nums dark:bg-brand-950/50 dark:text-brand-300">
-                                        {i + 1}
-                                    </span>
-                                    <div className="flex min-w-0 flex-1 items-center gap-2">
-                                        <div className="min-w-0 flex-1">
-                                            <EditLine value={step} editing={editing} onChange={(v) => setLine("workflow", i, v)} placeholder="Step…" />
+                        <div className="mt-4 rounded-2xl bg-primary p-5 ring-1 ring-secondary">
+                            <ol className="flex flex-col gap-2.5">
+                                {data.workflow.map((step, i) => (
+                                    <li key={i} className="flex items-start gap-3">
+                                        <span className="mt-px flex size-5 shrink-0 items-center justify-center rounded-md bg-brand-50 text-xs font-semibold text-brand-700 tabular-nums dark:bg-brand-950/50 dark:text-brand-300">
+                                            {i + 1}
+                                        </span>
+                                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                                            <div className="min-w-0 flex-1">
+                                                <EditLine value={step} editing={editing} onChange={(v) => setLine("workflow", i, v)} placeholder="Step…" />
+                                            </div>
+                                            {editing && (
+                                                <button type="button" title="Remove step" onClick={() => rmLine("workflow", i)} className="text-fg-quaternary hover:text-fg-error-secondary">
+                                                    <Trash01 className="size-4" />
+                                                </button>
+                                            )}
                                         </div>
-                                        {editing && (
-                                            <button type="button" title="Remove step" onClick={() => rmLine("workflow", i)} className="text-fg-quaternary hover:text-fg-error-secondary">
-                                                <Trash01 className="size-4" />
-                                            </button>
-                                        )}
-                                    </div>
-                                </li>
-                            ))}
-                        </ol>
+                                    </li>
+                                ))}
+                            </ol>
+                        </div>
                         {editing && (
                             <button type="button" onClick={() => addLine("workflow")} className="mt-3 flex items-center gap-1.5 text-sm font-semibold text-brand-secondary hover:underline">
                                 <Plus className="size-4" /> Add step

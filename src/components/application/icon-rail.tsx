@@ -1,9 +1,46 @@
-import { useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
 import { BookOpen01, Briefcase01, ChevronLeft, ChevronRight, Code02, LayoutLeft, Lock01, LockUnlocked01, Moon01, Sun, Users01 } from "@untitledui/icons";
+import { Avatar } from "@/components/base/avatar/avatar";
+import { useAuthUser } from "@/hooks/use-auth-user";
+import { SettingsDialog } from "@/pages/settings-screen";
 import { useTheme } from "@/providers/theme-provider";
+import { HelpMenu } from "@/components/application/help-menu";
 import { SearchBar } from "@/components/application/search-modal";
 import { cx } from "@/utils/cx";
+
+/**
+ * Account avatar — opens the settings popup. Lives in the search-bar row
+ * (top-right), not the icon rail, so it renders on any page that passes
+ * `headerRight` to <AppShell>. Returns null while signed out.
+ */
+export const HeaderAvatar = () => {
+    const { user } = useAuthUser();
+    const [settingsOpen, setSettingsOpen] = useState(false);
+    if (!user) return null;
+
+    const initials = (user.name ?? "")
+        .split(" ")
+        .map((part) => part[0])
+        .slice(0, 2)
+        .join("")
+        .toUpperCase();
+
+    return (
+        <>
+            <button
+                type="button"
+                onClick={() => setSettingsOpen(true)}
+                title="Settings"
+                aria-label="Open settings"
+                className="rounded-full outline-focus-ring transition duration-100 ease-linear hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2"
+            >
+                <Avatar size="md" src={user.avatarUrl} alt={user.name} initials={initials} />
+            </button>
+            <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+        </>
+    );
+};
 
 /**
  * Bottom controls for the icon rail: an edit lock toggle and a light/dark theme
@@ -42,6 +79,9 @@ export const RailBottom = ({ editing, onToggleEditing }: { editing: boolean; onT
             >
                 {isDark ? <Sun className="size-[18px]" /> : <Moon01 className="size-[18px]" />}
             </button>
+
+            {/* Help menu — docked here (not floating) so the AI chat widget can take the bottom-right corner. */}
+            <HelpMenu variant="rail" />
         </>
     );
 };
@@ -56,12 +96,63 @@ export const useNavCollapsed = () => {
     const [collapsed, setCollapsed] = useState(() => {
         try { return localStorage.getItem(NAV_COLLAPSED_KEY) === "1"; } catch { return false; }
     });
-    const toggle = () =>
+    const toggle = useCallback(() =>
         setCollapsed((v) => {
             const next = !v;
             try { localStorage.setItem(NAV_COLLAPSED_KEY, next ? "1" : "0"); } catch { /* ignore */ }
             return next;
-        });
+        }), []);
+
+    // Global shortcut: Shift + B shows/hides the menu (same convention as Shift + F
+    // search / Shift + E edit — ignored while typing and when Cmd/Ctrl/Alt are held).
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            const el = document.activeElement as HTMLElement | null;
+            const typing = !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+            if (e.shiftKey && (e.key === "B" || e.key === "b") && !typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
+                e.preventDefault();
+                toggle();
+            }
+        };
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, [toggle]);
+
+    return { collapsed, toggle };
+};
+
+/* ── Collapsible department icon rail (hide/show just the left icon strip) ──
+   Independent of useNavCollapsed: Shift + B hides the whole menu (rail + side
+   menu), Shift + R hides only the icon rail. Owned by AppShell so no page needs
+   to wire it up. Persists in localStorage. */
+
+const RAIL_COLLAPSED_KEY = "hgm_rail_collapsed";
+
+export const useRailCollapsed = () => {
+    const [collapsed, setCollapsed] = useState(() => {
+        try { return localStorage.getItem(RAIL_COLLAPSED_KEY) === "1"; } catch { return false; }
+    });
+    const toggle = useCallback(() =>
+        setCollapsed((v) => {
+            const next = !v;
+            try { localStorage.setItem(RAIL_COLLAPSED_KEY, next ? "1" : "0"); } catch { /* ignore */ }
+            return next;
+        }), []);
+
+    // Global shortcut: Shift + R shows/hides the department icon rail.
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            const el = document.activeElement as HTMLElement | null;
+            const typing = !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+            if (e.shiftKey && (e.key === "R" || e.key === "r") && !typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
+                e.preventDefault();
+                toggle();
+            }
+        };
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, [toggle]);
+
     return { collapsed, toggle };
 };
 
@@ -98,6 +189,7 @@ export const AppShell = ({
     rail,
     className,
     highlightScope,
+    headerRight,
 }: {
     children: ReactNode;
     /** The department icon rail (or any left-of-shell rail) — rendered outside the rounded card. */
@@ -105,11 +197,18 @@ export const AppShell = ({
     className?: string;
     /** Marks the card as the highlight-pen's field scope (see utils/highlight.tsx). */
     highlightScope?: boolean;
+    /** Optional right-aligned content in the search-bar row (e.g. account avatar). */
+    headerRight?: ReactNode;
 }) => {
     const navigate = useNavigate();
+    // Shift + R hides just the icon rail. The search/back-forward row still shows on
+    // pages that HAVE a rail (gated on `rail`); only the left icon strip toggles, and
+    // the card reclaims its left padding when the strip is hidden.
+    const { collapsed: railCollapsed } = useRailCollapsed();
+    const showRail = !!rail && !railCollapsed;
     return (
-    <div className={cx("flex h-dvh gap-2.5 overflow-hidden bg-tertiary p-2.5 sm:gap-3 sm:p-3", rail && "pl-0 sm:pl-0")}>
-        {rail}
+    <div className={cx("flex h-dvh gap-2.5 overflow-hidden bg-tertiary p-2.5 sm:gap-3 sm:p-3", showRail && "pl-0 sm:pl-0")}>
+        {showRail && rail}
         <div className="flex min-h-0 flex-1 flex-col gap-2.5 sm:gap-3">
             {/* Global search + back/forward — only on pages with the department rail.
                 Row height matches the rail's favicon header (73px) so the two line up. */}
@@ -132,6 +231,7 @@ export const AppShell = ({
                         <ChevronRight className="size-4" aria-hidden="true" />
                     </button>
                     <SearchBar />
+                    {headerRight && <div className="ml-2 flex shrink-0 items-center gap-2 pr-1">{headerRight}</div>}
                 </div>
             )}
             <div

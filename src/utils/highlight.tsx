@@ -98,13 +98,27 @@ export const HighlightPen = ({ enabled }: { enabled: boolean }) => {
                 setPos(null);
             }
         };
+        // Shift + H highlights the current field selection — keyboard equivalent of
+        // the pen button (ignored when Cmd/Ctrl/Alt are held). Works wherever an
+        // editable, highlightable field is focused with a non-empty selection.
+        const onKey = (e: KeyboardEvent) => {
+            if (!e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
+            if (e.key !== "H" && e.key !== "h") return;
+            const el = document.activeElement;
+            if (isHighlightable(el) && el.selectionStart !== el.selectionEnd) {
+                e.preventDefault();
+                toggleSelection(el);
+            }
+        };
         document.addEventListener("selectionchange", update);
         document.addEventListener("select", update, true);
+        document.addEventListener("keydown", onKey);
         window.addEventListener("scroll", update, true);
         window.addEventListener("resize", update);
         return () => {
             document.removeEventListener("selectionchange", update);
             document.removeEventListener("select", update, true);
+            document.removeEventListener("keydown", onKey);
             window.removeEventListener("scroll", update, true);
             window.removeEventListener("resize", update);
         };
@@ -115,7 +129,7 @@ export const HighlightPen = ({ enabled }: { enabled: boolean }) => {
     return (
         <button
             type="button"
-            title="Highlight the selected text (yellow)"
+            title="Highlight the selected text (yellow) · Shift + H"
             // preventDefault keeps focus + selection inside the text field.
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => fieldRef.current && toggleSelection(fieldRef.current)}

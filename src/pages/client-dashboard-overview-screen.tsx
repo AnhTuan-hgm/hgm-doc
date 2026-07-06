@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowRight, ArrowUpRight, BookOpen01, Briefcase01, Check, CheckDone01, ChevronDown, ClipboardCheck, Database01, FileCheck02, HelpCircle, Hourglass01, LayoutAlt01, Plus, Send01, Stars01, Trash01, Users01 } from "@untitledui/icons";
+import { ArrowRight, ArrowUpRight, BookOpen01, Briefcase01, Check, CheckDone01, ChevronDown, ChevronUp, ClipboardCheck, Database01, FileCheck02, HelpCircle, Hourglass01, LayoutAlt01, Plus, Send01, Stars01, Trash01, Users01, Zap } from "@untitledui/icons";
 import { PageBanner } from "@/components/application/page-banner";
 import { AppShell, CollapsedTopBar, IconRail, NavCollapseButton, RailBottom, useNavCollapsed } from "@/components/application/icon-rail";
 import { VideoAttach, VideoEmbed } from "@/components/application/video-block";
@@ -31,12 +31,20 @@ type DashData = {
     stages: Stage[];
     fields: string[];
     workflow: string[];
+    ownerFunctions: Todo[];
+    guestFunctions: Todo[];
     todos: Todo[];
     questions: QA[];
     log: LogEntry[];
 };
 
 const uid = () => "id" + Math.random().toString(36).slice(2, 9);
+
+/** Owner/guest function lists shipped as plain strings before move/checkbox support — upgrade old rows in place. */
+function normalizeFunctions(list: unknown): Todo[] {
+    if (!Array.isArray(list)) return [];
+    return list.map((item) => (typeof item === "string" ? { id: uid(), text: item, done: false } : { id: item.id ?? uid(), text: item.text ?? "", done: !!item.done }));
+}
 
 function seed(): DashData {
     return {
@@ -62,6 +70,8 @@ function seed(): DashData {
             "Booking & upsell links",
             "… (not finalized — edit freely)",
         ],
+        ownerFunctions: [],
+        guestFunctions: [],
         workflow: [
             "Web team creates the client's dashboard from the template — the Master Document section comes with it.",
             "The client gets the link and fills in their property info, persona and FAQs.",
@@ -230,15 +240,25 @@ const QuestionCard = ({
 
 /* ── Page ────────────────────────────────────────────────────────── */
 
-const SECTIONS = [
-    { id: "s-overview", label: "Overview", icon: BookOpen01 },
-    { id: "s-flow", label: "How info flows", icon: Send01 },
-    { id: "s-fields", label: "Master Document fields", icon: FileCheck02 },
-    { id: "s-workflow", label: "How it's used", icon: Users01 },
-    { id: "s-todos", label: "Build To-dos", icon: CheckDone01 },
-    { id: "s-questions", label: "Open Questions", icon: HelpCircle },
-    { id: "s-log", label: "Timeline", icon: Hourglass01 },
+/** Sidebar is grouped (macOS System Settings style) with dividers between groups.
+    Order here IS the scroll order — keep it matching the section DOM order below. */
+const NAV_GROUPS = [
+    [
+        { id: "s-overview", label: "Overview", icon: BookOpen01 },
+        { id: "s-flow", label: "How info flows", icon: Send01 },
+        { id: "s-fields", label: "Master Document fields", icon: FileCheck02 },
+        { id: "s-workflow", label: "How it's used", icon: Users01 },
+        { id: "s-functions", label: "Dashboard Functions", icon: Zap },
+    ],
+    [
+        { id: "s-todos", label: "Build To-dos", icon: CheckDone01 },
+        { id: "s-questions", label: "Open Questions", icon: HelpCircle },
+    ],
+    [
+        { id: "s-log", label: "Timeline", icon: Hourglass01 },
+    ],
 ];
+const SECTIONS = NAV_GROUPS.flat();
 
 const STAGE_ICONS = [Users01, Briefcase01, Database01, Stars01];
 
@@ -277,7 +297,11 @@ export const ClientDashboardOverviewScreen = () => {
             .maybeSingle()
             .then(({ data: row, error }) => {
                 const d = row?.data as DashData | undefined;
-                if (!error && d && Array.isArray(d.todos)) setData(d);
+                if (!error && d && Array.isArray(d.todos)) {
+                    // Backfill fields added after this row was first saved, and migrate
+                    // ownerFunctions/guestFunctions from plain strings to {id,text,done}.
+                    setData({ ...d, ownerFunctions: normalizeFunctions(d.ownerFunctions), guestFunctions: normalizeFunctions(d.guestFunctions) });
+                }
                 hydratedRef.current = true;
             });
     }, []);
@@ -337,6 +361,24 @@ export const ClientDashboardOverviewScreen = () => {
     const addLine = (list: "workflow" | "fields") => update((d) => void d[list].push(""));
     const rmLine = (list: "workflow" | "fields", i: number) => update((d) => void d[list].splice(i, 1));
 
+    /* owner/guest function lists — id-based so move/checkbox/delete stay stable */
+    type FnList = "ownerFunctions" | "guestFunctions";
+    const addFunction = (list: FnList) => update((d) => void d[list].push({ id: uid(), text: "", done: false }));
+    const setFunction = (list: FnList, id: string, patch: Partial<Todo>) =>
+        update((d) => {
+            const item = d[list].find((x) => x.id === id);
+            if (item) Object.assign(item, patch);
+        });
+    const rmFunction = (list: FnList, id: string) => update((d) => void (d[list] = d[list].filter((x) => x.id !== id)));
+    const moveFunction = (list: FnList, id: string, dir: -1 | 1) =>
+        update((d) => {
+            const arr = d[list];
+            const i = arr.findIndex((x) => x.id === id);
+            const j = i + dir;
+            if (i < 0 || j < 0 || j >= arr.length) return;
+            [arr[i], arr[j]] = [arr[j], arr[i]];
+        });
+
     /* questions — edited by id so the open / resolved split stays stable across renders */
     const setQuestion = (id: string, patch: Partial<QA>) =>
         update((d) => {
@@ -373,23 +415,28 @@ export const ClientDashboardOverviewScreen = () => {
                     animate="show"
                     variants={{ show: { transition: { staggerChildren: 0.05 } } }}
                 >
-                    <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wide text-quaternary">Table of Contents</p>
-                    {SECTIONS.map((s) => (
-                        <motion.button
-                            key={s.id}
-                            type="button"
-                            onClick={() => goTo(s.id)}
-                            variants={{ hidden: { opacity: 0, x: -8 }, show: { opacity: 1, x: 0 } }}
-                            className={cx(
-                                "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium transition duration-100 ease-linear",
-                                activeSection === s.id
-                                    ? "bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300"
-                                    : "text-secondary hover:bg-secondary_hover hover:text-primary",
-                            )}
-                        >
-                            <s.icon className="size-4 shrink-0 text-fg-quaternary" aria-hidden="true" />
-                            {s.label}
-                        </motion.button>
+                    {NAV_GROUPS.map((group, gi) => (
+                        <div key={gi}>
+                            {/* Divider between groups (macOS System Settings style) */}
+                            {gi > 0 && <div className="mx-3 my-2.5 h-px bg-border-secondary" />}
+                            {group.map((s) => (
+                                <motion.button
+                                    key={s.id}
+                                    type="button"
+                                    onClick={() => goTo(s.id)}
+                                    variants={{ hidden: { opacity: 0, x: -8 }, show: { opacity: 1, x: 0 } }}
+                                    className={cx(
+                                        "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium transition duration-100 ease-linear",
+                                        activeSection === s.id
+                                            ? "bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300"
+                                            : "text-secondary hover:bg-secondary_hover hover:text-primary",
+                                    )}
+                                >
+                                    <s.icon className="size-4 shrink-0 text-fg-quaternary" aria-hidden="true" />
+                                    {s.label}
+                                </motion.button>
+                            ))}
+                        </div>
                     ))}
                 </motion.nav>
             </aside>
@@ -544,25 +591,27 @@ export const ClientDashboardOverviewScreen = () => {
                     {/* 04 How it's used */}
                     <section>
                         <SectionHeader id="s-workflow" number="04" title="How it's used" hint="The intended end-to-end workflow once the Master Document ships." />
-                        <ol className="mt-5 flex flex-col gap-2.5">
-                            {data.workflow.map((step, i) => (
-                                <li key={i} className="flex items-start gap-3">
-                                    <span className="mt-px flex size-5 shrink-0 items-center justify-center rounded-md bg-brand-50 text-xs font-semibold text-brand-700 tabular-nums dark:bg-brand-950/50 dark:text-brand-300">
-                                        {i + 1}
-                                    </span>
-                                    <div className="flex min-w-0 flex-1 items-center gap-2">
-                                        <div className="min-w-0 flex-1">
-                                            <EditLine value={step} editing={editing} onChange={(v) => setLine("workflow", i, v)} placeholder="Step…" />
+                        <div className="mt-4 rounded-2xl bg-primary p-5 ring-1 ring-secondary">
+                            <ol className="flex flex-col gap-2.5">
+                                {data.workflow.map((step, i) => (
+                                    <li key={i} className="flex items-start gap-3">
+                                        <span className="mt-px flex size-5 shrink-0 items-center justify-center rounded-md bg-brand-50 text-xs font-semibold text-brand-700 tabular-nums dark:bg-brand-950/50 dark:text-brand-300">
+                                            {i + 1}
+                                        </span>
+                                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                                            <div className="min-w-0 flex-1">
+                                                <EditLine value={step} editing={editing} onChange={(v) => setLine("workflow", i, v)} placeholder="Step…" />
+                                            </div>
+                                            {editing && (
+                                                <button type="button" title="Remove step" onClick={() => rmLine("workflow", i)} className="text-fg-quaternary hover:text-fg-error-secondary">
+                                                    <Trash01 className="size-4" />
+                                                </button>
+                                            )}
                                         </div>
-                                        {editing && (
-                                            <button type="button" title="Remove step" onClick={() => rmLine("workflow", i)} className="text-fg-quaternary hover:text-fg-error-secondary">
-                                                <Trash01 className="size-4" />
-                                            </button>
-                                        )}
-                                    </div>
-                                </li>
-                            ))}
-                        </ol>
+                                    </li>
+                                ))}
+                            </ol>
+                        </div>
                         {editing && (
                             <button type="button" onClick={() => addLine("workflow")} className="mt-3 flex items-center gap-1.5 text-sm font-semibold text-brand-secondary hover:underline">
                                 <Plus className="size-4" /> Add step
@@ -570,9 +619,85 @@ export const ClientDashboardOverviewScreen = () => {
                         )}
                     </section>
 
-                    {/* 05 To-dos */}
+                    {/* 05 Dashboard Functions */}
                     <section>
-                        <SectionHeader id="s-todos" number="05" title="Build To-dos" hint="Checklist to ship the feature. Tick items as they land." />
+                        <SectionHeader id="s-functions" number="05" title="Dashboard Functions" hint="Any feature or capability idea for the dashboard — split by who it's for." />
+                        <div className="mt-4 grid grid-cols-1 gap-5 md:grid-cols-2">
+                            {(
+                                [
+                                    { list: "ownerFunctions", label: "For Owner" },
+                                    { list: "guestFunctions", label: "For Guests" },
+                                ] as const
+                            ).map(({ list, label }) => (
+                                <div key={list} className="rounded-2xl bg-primary p-5 ring-1 ring-secondary">
+                                    <h4 className="text-sm font-semibold text-secondary">{label}</h4>
+                                    <div className="mt-3 flex flex-col gap-1.5">
+                                        {data[list].length === 0 && !editing && (
+                                            <p className="text-sm text-quaternary">Nothing listed yet.</p>
+                                        )}
+                                        {data[list].map((item, i) => (
+                                            <div key={item.id} className="flex items-center gap-2 rounded-lg px-1 py-1">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setFunction(list, item.id, { done: !item.done })}
+                                                    title={item.done ? "Mark not done" : "Mark done"}
+                                                    className={cx(
+                                                        "flex size-5 shrink-0 items-center justify-center rounded-md border transition duration-100 ease-linear",
+                                                        item.done ? "border-brand bg-brand-solid text-white" : "border-primary bg-primary hover:border-brand",
+                                                    )}
+                                                >
+                                                    {item.done && <Check className="size-3.5" />}
+                                                </button>
+                                                <div className={cx("min-w-0 flex-1", item.done && "opacity-60")}>
+                                                    <EditLine
+                                                        value={item.text}
+                                                        editing={editing}
+                                                        onChange={(v) => setFunction(list, item.id, { text: v })}
+                                                        placeholder="Function…"
+                                                        className={item.done ? "line-through" : undefined}
+                                                    />
+                                                </div>
+                                                {editing && (
+                                                    <div className="flex shrink-0 items-center gap-0.5">
+                                                        <button
+                                                            type="button"
+                                                            title="Move up"
+                                                            disabled={i === 0}
+                                                            onClick={() => moveFunction(list, item.id, -1)}
+                                                            className="flex size-6 items-center justify-center rounded-md text-fg-quaternary hover:bg-secondary hover:text-fg-secondary disabled:cursor-not-allowed disabled:opacity-30"
+                                                        >
+                                                            <ChevronUp className="size-3.5" aria-hidden="true" />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            title="Move down"
+                                                            disabled={i === data[list].length - 1}
+                                                            onClick={() => moveFunction(list, item.id, 1)}
+                                                            className="flex size-6 items-center justify-center rounded-md text-fg-quaternary hover:bg-secondary hover:text-fg-secondary disabled:cursor-not-allowed disabled:opacity-30"
+                                                        >
+                                                            <ChevronDown className="size-3.5" aria-hidden="true" />
+                                                        </button>
+                                                        <button type="button" title="Remove" onClick={() => rmFunction(list, item.id)} className="flex size-6 items-center justify-center rounded-md text-fg-quaternary hover:bg-error-primary hover:text-fg-error-primary">
+                                                            <Trash01 className="size-3.5" aria-hidden="true" />
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                    {editing && (
+                                        <button type="button" onClick={() => addFunction(list)} className="mt-3 flex items-center gap-1.5 text-sm font-semibold text-brand-secondary hover:underline">
+                                            <Plus className="size-4" /> Add function
+                                        </button>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </section>
+
+                    {/* 06 To-dos */}
+                    <section>
+                        <SectionHeader id="s-todos" number="06" title="Build To-dos" hint="Checklist to ship the feature. Tick items as they land." />
                         <div className="mt-4 flex flex-col gap-1.5">
                             {data.todos.map((t, i) => (
                                 <div key={t.id} className="flex items-center gap-3 rounded-xl bg-primary px-4 py-2.5 ring-1 ring-secondary">
@@ -615,11 +740,11 @@ export const ClientDashboardOverviewScreen = () => {
                         )}
                     </section>
 
-                    {/* 06 Questions */}
+                    {/* 07 Questions */}
                     <section>
                         <SectionHeader
                             id="s-questions"
-                            number="06"
+                            number="07"
                             title="Open Questions"
                             hint="Answer inline — decisions live here so nothing gets lost in chat. Answered questions move to Resolved / History below (nothing is deleted)."
                         />
@@ -701,9 +826,9 @@ export const ClientDashboardOverviewScreen = () => {
                         )}
                     </section>
 
-                    {/* 07 Timeline */}
+                    {/* 08 Timeline */}
                     <section>
-                        <SectionHeader id="s-log" number="07" title="Timeline" hint="Build log — updated as the feature progresses." />
+                        <SectionHeader id="s-log" number="08" title="Timeline" hint="Build log — updated as the feature progresses." />
                         <div className="mt-4 flex flex-col gap-3">
                             <AnimatePresence>
                                 {data.log.map((e) => (

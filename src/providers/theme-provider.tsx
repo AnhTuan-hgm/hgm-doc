@@ -10,6 +10,11 @@ const DARK_MODE_DEFAULT_USERS = ["anhtuan@hiddengem.media"];
 interface ThemeContextType {
     theme: Theme;
     setTheme: (theme: Theme) => void;
+    /** True while a page with its own theme-toggle chrome (a dynamic slug that
+     * can't be listed in main.tsx's static PAGES_WITHOUT_FLOATING_CHROME array,
+     * e.g. a /template-1 copy) is mounted — hides the global floating toggle. */
+    hideFloatingToggle: boolean;
+    setHideFloatingToggle: (hidden: boolean) => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -22,6 +27,20 @@ export const useTheme = (): ThemeContextType => {
     }
 
     return context;
+};
+
+/**
+ * Call from a page that renders its own theme-toggle chrome (e.g. the
+ * department icon rail) whose route can't be listed in main.tsx's static
+ * PAGES_WITHOUT_FLOATING_CHROME array — dynamic template-doc slugs are the
+ * motivating case. Hides the global floating toggle while the page is mounted.
+ */
+export const useSuppressFloatingThemeToggle = () => {
+    const { setHideFloatingToggle } = useTheme();
+    useEffect(() => {
+        setHideFloatingToggle(true);
+        return () => setHideFloatingToggle(false);
+    }, [setHideFloatingToggle]);
 };
 
 interface ThemeProviderProps {
@@ -51,6 +70,7 @@ export const ThemeProvider = ({ children, defaultTheme = "system", storageKey = 
         }
         return defaultTheme;
     });
+    const [hideFloatingToggle, setHideFloatingToggle] = useState(false);
 
     // For specific users (e.g. anhtuan@hiddengem.media), default every page to dark
     // mode — but only if they haven't already chosen a theme on this device, so a
@@ -103,5 +123,5 @@ export const ThemeProvider = ({ children, defaultTheme = "system", storageKey = 
         return () => mediaQuery.removeEventListener("change", handleChange);
     }, [theme]);
 
-    return <ThemeContext.Provider value={{ theme, setTheme }}>{children}</ThemeContext.Provider>;
+    return <ThemeContext.Provider value={{ theme, setTheme, hideFloatingToggle, setHideFloatingToggle }}>{children}</ThemeContext.Provider>;
 };
