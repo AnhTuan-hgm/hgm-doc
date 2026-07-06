@@ -14,23 +14,47 @@ const WELCOME: ChatMessage = {
     content: "Hi! Ask me for a client's page, a template, or a saved prompt — e.g. \"give me the template for host onboarding\" or \"find Oceanview's dashboard\".",
 };
 
-/** Renders assistant replies with bare `/paths` turned into clickable links. */
-const MessageText = ({ text }: { text: string }) => {
-    const parts = text.split(/(\/[a-z0-9-]+(?:\/[a-z0-9-]+)?)/gi);
-    return (
-        <>
-            {parts.map((part, i) =>
-                /^\/[a-z0-9-]+(?:\/[a-z0-9-]+)?$/i.test(part) ? (
-                    <a key={i} href={part} target="_blank" rel="noreferrer" className="font-medium text-brand-secondary underline hover:no-underline">
+/** Renders **bold**, "- " bullet lines, and bare `/paths` (as clickable links) from
+ * the assistant's plain-text-with-light-markdown replies — no markdown library needed
+ * for this small a surface. The path regex requires a non-word character (or start of
+ * string) right before the "/" so things like "tiers/types" don't get mis-split. */
+const INLINE_RE = /(\*\*[^*]+\*\*|(?:^|(?<=[^\w/]))\/[a-z0-9-]+(?:\/[a-z0-9-]+)*)/gi;
+
+const renderInline = (text: string, keyPrefix: string) =>
+    text
+        .split(INLINE_RE)
+        .filter((part) => part !== "")
+        .map((part, i) => {
+            if (/^\*\*[^*]+\*\*$/.test(part)) {
+                return <strong key={`${keyPrefix}-${i}`}>{part.slice(2, -2)}</strong>;
+            }
+            if (/^\/[a-z0-9-]+(?:\/[a-z0-9-]+)*$/i.test(part)) {
+                return (
+                    <a key={`${keyPrefix}-${i}`} href={part} target="_blank" rel="noreferrer" className="font-medium text-brand-secondary underline hover:no-underline">
                         {part}
                     </a>
-                ) : (
-                    <span key={i}>{part}</span>
-                ),
-            )}
-        </>
-    );
-};
+                );
+            }
+            return <span key={`${keyPrefix}-${i}`}>{part}</span>;
+        });
+
+const MessageText = ({ text }: { text: string }) => (
+    <div className="flex flex-col gap-1.5">
+        {text.split("\n").map((line, i) => {
+            const bullet = /^[-•]\s+(.*)/.exec(line.trim());
+            if (bullet) {
+                return (
+                    <div key={i} className="flex gap-1.5 pl-0.5">
+                        <span className="text-tertiary">•</span>
+                        <span>{renderInline(bullet[1], `b${i}`)}</span>
+                    </div>
+                );
+            }
+            if (line.trim() === "") return null;
+            return <div key={i}>{renderInline(line, `l${i}`)}</div>;
+        })}
+    </div>
+);
 
 /**
  * Floating AI chat widget (bottom-right) — the internal team's assistant over
