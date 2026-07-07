@@ -301,7 +301,7 @@ const Sidebar = ({
     };
 
     return (
-    <aside className="flex h-full w-60 shrink-0 flex-col border-r border-secondary bg-primary">
+    <aside className="flex h-full w-60 shrink-0 flex-col overflow-hidden rounded-lg bg-primary shadow-sm">
         {/* Department header */}
         <div className="flex h-[73px] shrink-0 items-center justify-between border-b border-secondary px-5">
             <h2 className="text-md font-semibold text-primary">{department.header}</h2>
@@ -566,7 +566,7 @@ const MetaPixelContent = () => {
     });
 
     return (
-        <div className="flex h-full flex-1 flex-col overflow-hidden bg-secondary">
+        <div className="flex h-full flex-1 flex-col overflow-hidden rounded-lg bg-secondary shadow-sm">
             {/* Top bar */}
             <header className="flex h-[73px] shrink-0 items-center justify-between border-b border-secondary bg-primary px-6">
                 <div>
@@ -765,7 +765,7 @@ const OwnerGuidesContent = () => {
     });
 
     return (
-        <div className="flex h-full flex-1 flex-col overflow-hidden bg-secondary">
+        <div className="flex h-full flex-1 flex-col overflow-hidden rounded-lg bg-secondary shadow-sm">
             <header className="flex h-[73px] shrink-0 items-center justify-between border-b border-secondary bg-primary px-6">
                 <div>
                     <h1 className="text-md font-semibold text-primary">Owner Guides</h1>
@@ -920,7 +920,7 @@ const HostOnboardingContent = () => {
     });
 
     return (
-        <div className="flex h-full flex-1 flex-col overflow-hidden bg-secondary">
+        <div className="flex h-full flex-1 flex-col overflow-hidden rounded-lg bg-secondary shadow-sm">
             <header className="flex h-[73px] shrink-0 items-center justify-between border-b border-secondary bg-primary px-6">
                 <div>
                     <h1 className="text-md font-semibold text-primary">Host Onboarding Form</h1>
@@ -1106,7 +1106,7 @@ const PopupsContent = () => {
     };
 
     return (
-        <div className="flex h-full flex-1 flex-col overflow-hidden bg-secondary">
+        <div className="flex h-full flex-1 flex-col overflow-hidden rounded-lg bg-secondary shadow-sm">
             <header className="flex h-[73px] shrink-0 items-center justify-between border-b border-secondary bg-primary px-6">
                 <div>
                     <h1 className="text-md font-semibold text-primary">Popup Pages</h1>
@@ -1301,7 +1301,7 @@ const ChatWidgetContent = () => {
     };
 
     return (
-        <div className="flex h-full flex-1 flex-col overflow-hidden bg-secondary">
+        <div className="flex h-full flex-1 flex-col overflow-hidden rounded-lg bg-secondary shadow-sm">
             <header className="flex h-[73px] shrink-0 items-center justify-between border-b border-secondary bg-primary px-6">
                 <div>
                     <h1 className="text-md font-semibold text-primary">Chat Widget Guides</h1>
@@ -1938,7 +1938,7 @@ const OverviewContent = ({ department, tab, editing, isOwner }: { department: De
     const sorted = [...cards].sort((a, b) => (a.starred === b.starred ? 0 : a.starred ? -1 : 1));
 
     return (
-        <div className="flex h-full flex-1 flex-col overflow-hidden bg-secondary">
+        <div className="flex h-full flex-1 flex-col overflow-hidden rounded-lg bg-secondary shadow-sm">
             <header className="flex h-[73px] shrink-0 items-center justify-between border-b border-secondary bg-primary px-6">
                 <div>
                     <h1 className="text-md font-semibold text-primary">Overview</h1>
@@ -2458,7 +2458,7 @@ const ClientListContent = ({
         <>
             {/* Client List sidebar (tier + AM grouping) */}
             {!navCollapsed && (
-            <aside className="flex h-full w-60 shrink-0 flex-col border-r border-secondary bg-primary">
+            <aside className="flex h-full w-60 shrink-0 flex-col overflow-hidden rounded-lg bg-primary shadow-sm">
                 <div className="flex h-[73px] shrink-0 items-center justify-between border-b border-secondary px-5">
                     <h2 className="text-md font-semibold text-primary">Client List</h2>
                     {onCollapse && <NavCollapseButton onClick={onCollapse} />}
@@ -2503,7 +2503,7 @@ const ClientListContent = ({
             )}
 
             {/* Main */}
-            <div className="flex h-full flex-1 flex-col overflow-hidden bg-secondary">
+            <div className="flex h-full flex-1 flex-col overflow-hidden rounded-lg bg-secondary shadow-sm">
                 <header className="flex h-[73px] shrink-0 items-center justify-between border-b border-secondary bg-primary px-6">
                     <div>
                         <h1 className="text-md font-semibold text-primary">{headerLabel}</h1>
@@ -2770,7 +2770,7 @@ const DashboardLayout = () => {
             {/* Slim top bar when the rail + side menu are hidden */}
             {navCollapsed && <CollapsedTopBar title={dept.header} onExpand={toggleNav} />}
 
-            <div className="flex min-h-0 flex-1">
+            <div className="flex min-h-0 flex-1 gap-2 bg-secondary p-2">
             {dept.kind === "clientlist" ? (
                 <ClientListContent editing={editing} navCollapsed={navCollapsed} onCollapse={toggleNav} />
             ) : (

@@ -207,7 +207,7 @@ export const AppShell = ({
     const { collapsed: railCollapsed } = useRailCollapsed();
     const showRail = !!rail && !railCollapsed;
     return (
-    <div className={cx("flex h-dvh gap-2.5 overflow-hidden bg-tertiary p-2.5 sm:gap-3 sm:p-3", showRail && "pl-0 sm:pl-0")}>
+    <div className={cx("flex h-dvh gap-2.5 overflow-hidden bg-tertiary pt-1 pr-2.5 pb-2.5 sm:gap-3 sm:pr-3 sm:pb-3", showRail ? "pl-0" : "pl-2.5 sm:pl-3")}>
         {showRail && rail}
         <div className="flex min-h-0 flex-1 flex-col gap-2.5 sm:gap-3">
             {/* Global search + back/forward — only on pages with the department rail.
