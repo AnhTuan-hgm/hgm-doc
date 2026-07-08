@@ -489,10 +489,10 @@ const InstructionRow = ({
                 {editing ? (
                     <textarea value={ins.text}
                         onChange={e => onChangeText(e.target.value)}
-                        rows={2} className="flex-1 resize-y bg-transparent text-[18px] leading-relaxed text-secondary outline-none"
+                        rows={2} className="flex-1 resize-y bg-transparent text-[15px] leading-relaxed text-secondary outline-none"
                     />
                 ) : (
-                    <p className="flex-1 text-[18px] leading-relaxed text-secondary">{ins.text}</p>
+                    <p className="flex-1 text-[15px] leading-relaxed text-secondary">{ins.text}</p>
                 )}
                 {editing && (
                     <button type="button"
@@ -583,7 +583,10 @@ const SaveActions = ({ status, label, onSave, onClear }: {
 }) => (
     <div className="flex items-center gap-3 pt-2">
         <button type="button" onClick={onSave} disabled={status === "saving"}
-            className="rounded-xl bg-primary-solid px-5 py-2.5 text-[14px] font-semibold text-white transition hover:opacity-90 disabled:opacity-50">
+            className={cx(
+                "rounded-xl px-5 py-2.5 text-[14px] font-semibold text-white transition hover:opacity-90 disabled:opacity-50",
+                status === "saved" ? "bg-success-solid" : "bg-brand-solid",
+            )}>
             {status === "saving" ? "Saving…" : status === "saved" ? "✓ Saved!" : `Save ${label}`}
         </button>
         <button type="button" onClick={onClear}
@@ -1452,10 +1455,10 @@ export const OwnerGuideScreen = () => {
                     <textarea value={step.description}
                         onChange={e => updateField(currentStep, "description", e.target.value)}
                         rows={3}
-                        className="w-full resize-y bg-transparent text-[15px] leading-relaxed text-secondary outline-none"
+                        className="w-full resize-y bg-transparent text-[16px] leading-relaxed text-secondary outline-none"
                     />
                 ) : (
-                    <p className="text-[15px] leading-relaxed text-secondary">{step.description}</p>
+                    <p className="text-[16px] leading-relaxed text-secondary">{step.description}</p>
                 )}
 
                 {step.benefits && (
@@ -1468,10 +1471,10 @@ export const OwnerGuideScreen = () => {
                                 {editing ? (
                                     <input type="text" value={b}
                                         onChange={e => updateBenefit(currentStep, i, e.target.value)}
-                                        className="flex-1 bg-transparent text-[14px] font-medium text-primary outline-none border-b border-transparent focus:border-brand"
+                                        className="flex-1 bg-transparent text-[16px] font-medium text-primary outline-none border-b border-transparent focus:border-brand"
                                     />
                                 ) : (
-                                    <p className="text-[14px] font-medium text-primary">{b}</p>
+                                    <p className="text-[16px] font-medium text-primary">{b}</p>
                                 )}
                             </div>
                         ))}
@@ -1603,6 +1606,32 @@ export const OwnerGuideScreen = () => {
             </section>
         );
     })();
+
+    // Shared Back/Next controls — rendered right under the credential form on split-
+    // layout steps (Netlify/Supabase/Resend/Stripe/Cloudflare) so they're reachable
+    // without scrolling past a long instructions list, and at the bottom of the page
+    // for single-column steps (PMS/Domain/Overview) where the body is already short.
+    const backNextButtons = (
+        <div className="mt-6 flex items-center justify-between">
+            <button type="button" onClick={() => navigate(currentStep - 1)} disabled={currentStep === 0}
+                className="flex items-center gap-2 rounded-xl border border-secondary bg-primary px-5 py-2.5 text-[14px] font-semibold text-secondary transition hover:bg-secondary disabled:pointer-events-none disabled:opacity-30">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7" /></svg>
+                Back
+            </button>
+            {currentStep < steps.length - 1 ? (
+                <button type="button" onClick={() => { setVisited(v => new Set(v).add(currentStep)); navigate(currentStep + 1); }}
+                    className="flex items-center gap-2 rounded-xl bg-primary-solid px-5 py-2.5 text-[14px] font-semibold text-white transition hover:opacity-90">
+                    Next
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+                </button>
+            ) : (
+                <button type="button" onClick={() => setShowComplete(true)}
+                    className="flex items-center gap-2 rounded-xl bg-success-solid px-5 py-2.5 text-[14px] font-semibold text-white transition hover:opacity-90">
+                    Complete Onboarding 🎉
+                </button>
+            )}
+        </div>
+    );
 
     return (
         <AppShell className="flex gap-2 bg-secondary p-2">
@@ -1773,7 +1802,10 @@ export const OwnerGuideScreen = () => {
                                     clipped by this container's own overflow-y-auto edge — top
                                     padding stays minimal so the card lines up with the body
                                     column instead of sitting noticeably lower. */}
-                                <div className="sticky top-[135px] max-h-[calc(100vh-11rem)] overflow-y-auto px-8 pt-2 pb-8">{credentialForm}</div>
+                                <div className="sticky top-[135px] max-h-[calc(100vh-11rem)] overflow-y-auto px-8 pt-2 pb-8">
+                                    {credentialForm}
+                                    {backNextButtons}
+                                </div>
                             </div>
                         </div>
                     ) : (
@@ -1785,26 +1817,9 @@ export const OwnerGuideScreen = () => {
                         </>
                     )}
 
-                    {/* back / next */}
-                    <div className="mt-6 flex items-center justify-between">
-                        <button type="button" onClick={() => navigate(currentStep - 1)} disabled={currentStep === 0}
-                            className="flex items-center gap-2 rounded-xl border border-secondary bg-primary px-5 py-2.5 text-[14px] font-semibold text-secondary transition hover:bg-secondary disabled:pointer-events-none disabled:opacity-30">
-                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7" /></svg>
-                            Back
-                        </button>
-                        {currentStep < steps.length - 1 ? (
-                            <button type="button" onClick={() => { setVisited(v => new Set(v).add(currentStep)); navigate(currentStep + 1); }}
-                                className="flex items-center gap-2 rounded-xl bg-primary-solid px-5 py-2.5 text-[14px] font-semibold text-white transition hover:opacity-90">
-                                Next
-                                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
-                            </button>
-                        ) : (
-                            <button type="button" onClick={() => setShowComplete(true)}
-                                className="flex items-center gap-2 rounded-xl bg-success-solid px-5 py-2.5 text-[14px] font-semibold text-white transition hover:opacity-90">
-                                Complete Onboarding 🎉
-                            </button>
-                        )}
-                    </div>
+                    {/* Split-layout steps already have Back/Next right under the credential
+                        form (inside the sticky column above) — no need to repeat them here. */}
+                    {!showSplitLayout && backNextButtons}
                 </motion.div>
             </main>
 
