@@ -6,7 +6,7 @@ import type { FC } from "react";
 import { supabase, type ClientPageData, type HostOnboardingPageData, type LeadCapturePageData, type OverviewCard } from "@/lib/supabase";
 import { cx } from "@/utils/cx";
 
-interface SearchItem {
+export interface SearchItem {
     id: string;
     title: string;
     subtitle?: string;
@@ -16,7 +16,7 @@ interface SearchItem {
 }
 
 /** Static, always-available destinations. */
-const STATIC_ITEMS: SearchItem[] = [
+export const STATIC_ITEMS: SearchItem[] = [
     { id: "s-projectmgmt", title: "Project Management", subtitle: "Overview, to-dos, roadmap & timeline", path: "/roadmap", kind: "Page", icon: Flag05 },
     { id: "s-dashboard", title: "Dashboard", subtitle: "Client Support overview", path: "/dashboard", kind: "Page", icon: LayoutAlt01 },
     { id: "s-setup", title: "AI Website Setup", subtitle: "Web Team workflow", path: "/webteam/ai-website-setup", kind: "Page", icon: Code02 },
@@ -34,7 +34,7 @@ const STATIC_ITEMS: SearchItem[] = [
 ];
 
 /** Client/card/template rows that only exist in Supabase — fetched once, the first time the dropdown opens. */
-async function fetchDynamicSearchItems(): Promise<SearchItem[]> {
+export async function fetchDynamicSearchItems(): Promise<SearchItem[]> {
     const [clients, leads, hostForms, cards, docs] = await Promise.all([
         supabase.from("client_pages").select("slug, client_name, client_website"),
         supabase.from("leadcapture_pages").select("slug, client_name"),

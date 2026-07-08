@@ -202,6 +202,7 @@ const SectionHeader = ({ id, number, title, hint }: { id: string; number: string
 /** A single question card — reused for both Open and Resolved/History lists. */
 const QuestionCard = ({
     q,
+    number,
     editing,
     resolved,
     onQuestion,
@@ -210,6 +211,9 @@ const QuestionCard = ({
     onRemove,
 }: {
     q: QA;
+    /** Position in the full questions array (1-based) — stable across the Open/Resolved
+     * split and across new questions appended later, so numbering never gets reused. */
+    number: number;
     editing: boolean;
     resolved?: boolean;
     onQuestion: (v: string) => void;
@@ -221,6 +225,7 @@ const QuestionCard = ({
         <div className="flex items-start justify-between gap-3">
             <div className="flex min-w-0 flex-1 items-start gap-2">
                 {resolved && <Check className="mt-0.5 size-4 shrink-0 text-fg-success-primary" aria-hidden="true" />}
+                <span className="mt-0.5 shrink-0 text-sm font-semibold text-quaternary tabular-nums">{number}.</span>
                 <div className="min-w-0 flex-1">
                     <EditLine value={q.question} editing={editing} onChange={onQuestion} placeholder="Question…" className="font-medium text-primary" />
                 </div>
@@ -400,11 +405,11 @@ export const ClientDashboardOverviewScreen = () => {
         >
             <HighlightPen enabled={editing} />
             {navCollapsed && <CollapsedTopBar title="Client Dashboard" onExpand={toggleNav} />}
-            <div className="flex min-h-0 flex-1">
+            <div className="flex min-h-0 flex-1 gap-2 bg-secondary p-2">
 
             {/* Section nav */}
             {!navCollapsed && (
-            <aside className="hidden h-full w-60 shrink-0 flex-col border-r border-secondary bg-primary md:flex">
+            <aside className="hidden h-full w-60 shrink-0 flex-col overflow-hidden rounded-lg bg-primary shadow-sm md:flex">
                 <div className="flex h-[73px] shrink-0 items-center justify-between border-b border-secondary px-5">
                     <h2 className="text-md font-semibold text-primary">Client Dashboard</h2>
                     <NavCollapseButton onClick={toggleNav} />
@@ -443,7 +448,7 @@ export const ClientDashboardOverviewScreen = () => {
             )}
 
             {/* Content */}
-            <main ref={mainRef} className="flex-1 overflow-y-auto">
+            <main ref={mainRef} className="flex-1 overflow-y-auto overflow-x-hidden rounded-lg bg-primary shadow-sm">
                 <PageBanner
                     breadcrumb={[
                         { label: "Dashboard", to: "/dashboard", icon: LayoutAlt01 },
@@ -758,6 +763,7 @@ export const ClientDashboardOverviewScreen = () => {
                                     <QuestionCard
                                         key={q.id}
                                         q={q}
+                                        number={data.questions.findIndex((x) => x.id === q.id) + 1}
                                         editing={editing}
                                         onQuestion={(v) => setQuestion(q.id, { question: v })}
                                         onAnswer={(v) => setQuestion(q.id, { answer: v })}
@@ -810,6 +816,7 @@ export const ClientDashboardOverviewScreen = () => {
                                                     <QuestionCard
                                                         key={q.id}
                                                         q={q}
+                                                        number={data.questions.findIndex((x) => x.id === q.id) + 1}
                                                         editing={editing}
                                                         resolved
                                                         onQuestion={(v) => setQuestion(q.id, { question: v })}

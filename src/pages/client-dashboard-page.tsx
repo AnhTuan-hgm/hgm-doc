@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ChangeEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 // Functional UI icons — Untitled UI PRO, line style (drop-in for the free set).
 import {
     ArrowDown,
@@ -15,16 +15,17 @@ import {
     Image01,
     LayoutAlt01,
     LinkExternal01,
-    Lock01,
-    LockUnlocked01,
     Mail01,
     MessageChatCircle,
+    Moon01,
     PlayCircle,
     Plus,
     SearchLg,
+    Sun,
     Target04,
     Trash01,
     TrendUp01,
+    UploadCloud02,
     XClose,
 } from "@untitledui-pro/icons/line";
 import { useNavigate, useSearchParams } from "react-router";
@@ -41,7 +42,10 @@ import { AppShell } from "@/components/application/icon-rail";
 import { VideoAttach, VideoEmbed } from "@/components/application/video-block";
 import { WelcomeFlowSection } from "@/components/application/welcome-flow";
 import { useAuthUser } from "@/hooks/use-auth-user";
+import { useEditShortcuts } from "@/hooks/use-edit-shortcuts";
+import { useTheme, useSuppressFloatingThemeToggle } from "@/providers/theme-provider";
 import { cx } from "@/utils/cx";
+import { compressImageFile } from "@/utils/compress-image";
 import { supabase, type DashboardContent } from "@/lib/supabase";
 
 const PASSWORD = "ANHTUAN";
@@ -111,6 +115,7 @@ const defaultLinks = (base: string): QuickLink[] => [
 const TEMPLATE_CONTENT: DashboardContent = {
     status: "Active",
     logo_url: "",
+    sidebar_bg_url: "",
     brand: {
         colors: [
             { name: "Primary", hex: "#7F56D9" },
@@ -363,6 +368,11 @@ export const ClientDashboardPage = ({
 }: ClientDashboardPageProps) => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
+    const { theme, setTheme } = useTheme();
+    const isDark = theme === "dark" || (theme === "system" && typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    // This page has its own theme toggle in the side menu (below) — the global
+    // floating one would sit at the same top-right corner as the client badge.
+    useSuppressFloatingThemeToggle();
 
     // Team detection — the lock/create controls are only visible to signed-in
     // @hiddengem.media members; clients see a clean read-only dashboard.
@@ -377,6 +387,32 @@ export const ClientDashboardPage = ({
     // Lock state
     const [isLocked, setIsLocked] = useState(true);
 
+    // Side-menu logo + background uploads — click-to-upload in edit mode, compressed to WebP.
+    const logoFileRef = useRef<HTMLInputElement>(null);
+    const sidebarBgFileRef = useRef<HTMLInputElement>(null);
+    const onPickLogo = async (e: ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        e.target.value = "";
+        if (!file) return;
+        try {
+            const dataUrl = await compressImageFile(file);
+            setContent((c) => ({ ...c, logo_url: dataUrl }));
+        } catch {
+            /* keep the current logo if compression fails */
+        }
+    };
+    const onPickSidebarBg = async (e: ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        e.target.value = "";
+        if (!file) return;
+        try {
+            const dataUrl = await compressImageFile(file);
+            setContent((c) => ({ ...c, sidebar_bg_url: dataUrl }));
+        } catch {
+            /* keep the current background if compression fails */
+        }
+    };
+
     // Side-menu section — grouped by funnel stage (NAV_GROUPS, module scope above).
     const [activeSection, setActiveSection] = useState<SectionId>("overview");
 
@@ -387,11 +423,6 @@ export const ClientDashboardPage = ({
         if (h && SECTIONS.some((s) => s.id === h)) setActiveSection(h as SectionId);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
-
-    // Unlock modal
-    const [showUnlockModal, setShowUnlockModal] = useState(false);
-    const [unlockPassword, setUnlockPassword] = useState("");
-    const [unlockError, setUnlockError] = useState(false);
 
     // Plus wizard
     const [showPlusModal, setShowPlusModal] = useState(false);
@@ -414,12 +445,11 @@ export const ClientDashboardPage = ({
 
     // Lock background scroll while a modal is open.
     useEffect(() => {
-        const open = showPlusModal || showUnlockModal;
-        document.body.style.overflow = open ? "hidden" : "";
+        document.body.style.overflow = showPlusModal ? "hidden" : "";
         return () => {
             document.body.style.overflow = "";
         };
-    }, [showPlusModal, showUnlockModal]);
+    }, [showPlusModal]);
 
     /* ── Content updaters ── */
     const patchBrand = (patch: Partial<DashboardContent["brand"]>) =>
@@ -509,14 +539,8 @@ export const ClientDashboardPage = ({
         .toUpperCase();
 
     /* ── Lock / save ── */
-    const handleLockClick = async () => {
-        if (isLocked) {
-            setShowUnlockModal(true);
-            setUnlockPassword("");
-            setUnlockError(false);
-            return;
-        }
-        // Locking → persist edits to the shared dashboard_pages row.
+    /** Persist edits to the shared dashboard_pages row, then lock. */
+    const persistAndLock = async () => {
         if (slug && !isTemplate) {
             const { error } = await supabase
                 .from("dashboard_pages")
@@ -529,16 +553,18 @@ export const ClientDashboardPage = ({
         setIsLocked(true);
     };
 
-    const handleUnlock = () => {
-        if (unlockPassword === PASSWORD) {
-            setIsLocked(false);
-            setShowUnlockModal(false);
-            setUnlockPassword("");
-            setUnlockError(false);
-        } else {
-            setUnlockError(true);
-        }
-    };
+    // Shift+E toggles edit mode, Shift+S saves immediately and locks — team-only
+    // (gated by isTeam) since clients also reach this page. No password step here:
+    // isTeam already means a signed-in @hiddengem.media session, same precedent as
+    // the Plus/create flow below skipping the password gate for signed-in team members.
+    useEditShortcuts({
+        enabled: isTeam,
+        onToggle: () => {
+            if (isLocked) setIsLocked(false);
+            else void persistAndLock();
+        },
+        onSave: () => void persistAndLock(),
+    });
 
     /* ── Create flow ── */
     const handlePlusClick = () => {
@@ -597,6 +623,7 @@ export const ClientDashboardPage = ({
                 rail, and its search indexes every client + internal page — wrong for a
                 page clients themselves open). Hand-built here, client-safe only. ── */}
             <div className="flex h-[73px] shrink-0 items-center gap-3 border-b border-secondary bg-primary px-4 md:px-5">
+                <img src="/hgm logo/Favicon ON LIGHT.svg" alt="HiddenGem" className="size-8 shrink-0" draggable={false} />
                 <button
                     type="button"
                     onClick={() => navigate(-1)}
@@ -631,18 +658,36 @@ export const ClientDashboardPage = ({
                 </button>
             </div>
 
-            <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+            {/* Visibly grey canvas (bg-quaternary, not the barely-off-white bg-secondary)
+                so the white sidebar/content cards clearly pop — this is the client's
+                own dashboard, so it should read as the obvious focal point. */}
+            <div className="flex min-h-0 flex-1 flex-col gap-2 bg-quaternary p-2 md:flex-row">
             {/* ── Client side menu (no icon rail — client-facing) ── */}
-            <aside className="flex w-full shrink-0 flex-col border-b border-secondary bg-primary md:h-full md:w-64 md:border-b-0 md:border-r">
+            <aside className="flex w-full shrink-0 flex-col overflow-hidden rounded-lg bg-primary shadow-sm md:h-full md:w-64">
                 {/* Client identity */}
                 <div className="flex items-center gap-3 border-b border-secondary px-4 py-4 md:px-5">
-                    <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-secondary ring-1 ring-secondary">
+                    <button
+                        type="button"
+                        onClick={() => logoFileRef.current?.click()}
+                        disabled={isLocked}
+                        title={isLocked ? undefined : content.logo_url ? "Replace logo" : "Upload logo"}
+                        className={cx(
+                            "group relative flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-secondary ring-1 ring-secondary",
+                            !isLocked && "cursor-pointer",
+                        )}
+                    >
                         {content.logo_url ? (
                             <img src={content.logo_url} alt={`${clientName || "Client"} logo`} className="size-full object-contain p-1" draggable={false} />
                         ) : (
                             <Image01 className="size-5 text-fg-quaternary" aria-hidden="true" />
                         )}
-                    </div>
+                        {!isLocked && (
+                            <span className="absolute inset-0 flex items-center justify-center bg-black/0 text-white opacity-0 transition duration-100 ease-linear group-hover:bg-black/50 group-hover:opacity-100">
+                                <Camera01 className="size-4" aria-hidden="true" />
+                            </span>
+                        )}
+                    </button>
+                    {!isLocked && <input ref={logoFileRef} type="file" accept="image/*" className="hidden" onChange={onPickLogo} />}
                     <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-primary">{clientName || "Client Name"}</p>
                         <BadgeWithDot color={statusColor(content.status)} size="sm" type="pill-color">
@@ -705,14 +750,72 @@ export const ClientDashboardPage = ({
                     ))}
                 </motion.nav>
 
-                {/* Website link */}
-                {websiteHref && (
-                    <div className="hidden border-t border-secondary p-4 md:block">
-                        <Button href={websiteHref} target="_blank" rel="noopener noreferrer" color="secondary" size="sm" iconTrailing={LinkExternal01} className="w-full">
-                            Visit website
-                        </Button>
+                {/* Footer — website link + appearance + background upload. Wrapped so the
+                    custom side-menu background (below) starts exactly at its top edge,
+                    whatever this block's height ends up being, instead of a fixed guess. */}
+                <div className="relative isolate flex flex-col">
+                    {/* Custom side-menu background — optional, uploaded in edit mode below.
+                        The current solid color stays the default everywhere above the footer;
+                        the image only shows behind the footer itself. */}
+                    {content.sidebar_bg_url && (
+                        <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden="true">
+                            <img src={content.sidebar_bg_url} alt="" className="size-full object-cover object-bottom" draggable={false} />
+                            <div className="absolute inset-0 bg-gradient-to-t from-primary/30 to-primary" />
+                        </div>
+                    )}
+
+                    {/* Website link */}
+                    {websiteHref && (
+                        <div className="hidden border-t border-secondary p-4 pb-0 md:block">
+                            <Button href={websiteHref} target="_blank" rel="noopener noreferrer" color="secondary" size="sm" iconTrailing={LinkExternal01} className="w-full">
+                                Visit website
+                            </Button>
+                        </div>
+                    )}
+
+                    {/* Theme toggle — local to this side menu (the global floating toggle is
+                        suppressed on client-dashboard pages since it overlapped the client badge). */}
+                    <div className="flex items-center justify-between border-t border-secondary px-5 py-3">
+                        <span className="text-xs text-quaternary">Appearance</span>
+                        <button
+                            type="button"
+                            onClick={() => setTheme(isDark ? "light" : "dark")}
+                            title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+                            className="flex size-9 items-center justify-center rounded-full border border-secondary bg-primary text-secondary transition duration-100 ease-linear hover:bg-tertiary hover:text-primary"
+                        >
+                            {isDark ? <Sun className="size-[18px]" /> : <Moon01 className="size-[18px]" />}
+                        </button>
                     </div>
-                )}
+
+                    {/* Sidebar background upload — edit mode only. The solid color above stays
+                        the default until the team sets one; clients see whatever is set. */}
+                    {!isLocked && (
+                        <div className="flex items-center justify-between gap-2 border-t border-secondary px-5 py-3">
+                            <span className="text-xs text-quaternary">Sidebar background</span>
+                            <div className="flex items-center gap-1.5">
+                                <button
+                                    type="button"
+                                    onClick={() => sidebarBgFileRef.current?.click()}
+                                    title={content.sidebar_bg_url ? "Replace sidebar background" : "Upload sidebar background"}
+                                    className="flex size-9 items-center justify-center rounded-full border border-secondary bg-primary text-secondary transition duration-100 ease-linear hover:bg-tertiary hover:text-primary"
+                                >
+                                    <UploadCloud02 className="size-[18px]" />
+                                </button>
+                                {content.sidebar_bg_url && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setContent((c) => ({ ...c, sidebar_bg_url: "" }))}
+                                        title="Remove sidebar background"
+                                        className="flex size-9 items-center justify-center rounded-full border border-secondary bg-primary text-secondary transition duration-100 ease-linear hover:bg-error-primary hover:text-fg-error-primary"
+                                    >
+                                        <Trash01 className="size-[18px]" />
+                                    </button>
+                                )}
+                            </div>
+                            <input ref={sidebarBgFileRef} type="file" accept="image/*" className="hidden" onChange={onPickSidebarBg} />
+                        </div>
+                    )}
+                </div>
             </aside>
 
             {/* ── Main (scrolls) ── */}
@@ -1619,96 +1722,6 @@ export const ClientDashboardPage = ({
             </div>
             </div>
             </div>
-
-            {/* ── Fixed bottom-right action buttons — HGM team only (clients never see these) ── */}
-            {isTeam && (
-            <div className="fixed bottom-5 right-5 z-40 flex flex-col items-center gap-2">
-                {/* Plus — only on the template page (/client-dashboard) */}
-                {isTemplate && (
-                    <button
-                        type="button"
-                        onClick={handlePlusClick}
-                        title="Create new client dashboard"
-                        className="flex size-10 items-center justify-center rounded-full bg-primary shadow-lg ring-1 ring-secondary text-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-secondary"
-                    >
-                        <Plus className="size-4" aria-hidden="true" />
-                    </button>
-                )}
-
-                {/* Lock / Unlock */}
-                <button
-                    type="button"
-                    onClick={handleLockClick}
-                    title={isLocked ? "Unlock content" : "Lock content"}
-                    className="flex size-10 items-center justify-center rounded-full bg-primary shadow-lg ring-1 ring-secondary text-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-secondary"
-                >
-                    {isLocked ? (
-                        <Lock01 className="size-4" aria-hidden="true" />
-                    ) : (
-                        <LockUnlocked01 className="size-4" aria-hidden="true" />
-                    )}
-                </button>
-            </div>
-            )}
-
-            {/* ═══════════════════════════════════════════════
-                Unlock Modal
-            ════════════════════════════════════════════════ */}
-            {showUnlockModal && (
-                <div
-                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
-                    onClick={(e) => e.target === e.currentTarget && setShowUnlockModal(false)}
-                >
-                    <div className="w-full max-w-sm rounded-2xl bg-primary p-6 shadow-2xl ring-1 ring-secondary">
-                        <div className="flex items-start justify-between">
-                            <div>
-                                <h3 className="text-md font-semibold text-primary">Unlock Content</h3>
-                                <p className="mt-1 text-sm text-tertiary">Enter the password to edit this dashboard.</p>
-                            </div>
-                            <button
-                                type="button"
-                                aria-label="Close"
-                                onClick={() => setShowUnlockModal(false)}
-                                className="flex size-8 items-center justify-center rounded-lg text-tertiary hover:bg-secondary"
-                            >
-                                <XClose className="size-4" aria-hidden="true" />
-                            </button>
-                        </div>
-
-                        <div className="mt-4">
-                            <input
-                                type="password"
-                                placeholder="Password"
-                                value={unlockPassword}
-                                onChange={(e) => {
-                                    setUnlockPassword(e.target.value);
-                                    setUnlockError(false);
-                                }}
-                                onKeyDown={(e) => e.key === "Enter" && handleUnlock()}
-                                ref={(el) => el?.focus({ preventScroll: true })}
-                                className={cx(
-                                    "w-full rounded-lg border px-3 py-2 text-sm text-primary placeholder:text-placeholder outline-none transition duration-100 ease-linear",
-                                    unlockError
-                                        ? "border-error-primary ring-1 ring-error-primary"
-                                        : "border-secondary focus:border-brand focus:ring-1 focus:ring-brand",
-                                )}
-                            />
-                            {unlockError && (
-                                <p className="mt-1.5 text-xs text-error-primary">Incorrect password. Please try again.</p>
-                            )}
-                        </div>
-
-                        <div className="mt-4 flex gap-3">
-                            <Button color="secondary" size="sm" className="flex-1" onClick={() => setShowUnlockModal(false)}>
-                                Cancel
-                            </Button>
-                            <Button color="primary" size="sm" className="flex-1" onClick={handleUnlock}>
-                                Unlock
-                            </Button>
-                        </div>
-                    </div>
-                </div>
-            )}
 
             {/* ═══════════════════════════════════════════════
                 Plus Wizard Modal

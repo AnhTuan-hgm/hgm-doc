@@ -106,6 +106,8 @@ export interface ChatWidgetPageData {
 export interface DashboardContent {
     status: string; // Onboarding | Active | Paused
     logo_url: string;
+    /** Side-menu background image (client dashboard). Empty string = the default solid color. */
+    sidebar_bg_url: string;
     brand: {
         colors: { name: string; hex: string }[];
         fonts: string;

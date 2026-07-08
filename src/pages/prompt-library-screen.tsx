@@ -383,10 +383,10 @@ export const PromptLibraryScreen = () => {
     return (
         <AppShell className="flex flex-col" rail={!navCollapsed && <IconRail activeDept="" />}>
             {navCollapsed && <CollapsedTopBar title="Prompt Library" onExpand={toggleNav} />}
-            <div className="flex min-h-0 flex-1">
+            <div className="flex min-h-0 flex-1 gap-2 bg-secondary p-2">
                 {/* Filter sidebar */}
                 {!navCollapsed && (
-                    <aside className="flex h-full w-64 shrink-0 flex-col border-r border-secondary bg-primary">
+                    <aside className="flex h-full w-64 shrink-0 flex-col overflow-hidden rounded-lg bg-primary shadow-sm">
                         <div className="flex h-[73px] shrink-0 items-center justify-between border-b border-secondary px-5">
                             <h2 className="text-md font-semibold text-primary">Prompt Library</h2>
                             <NavCollapseButton onClick={toggleNav} />
@@ -478,7 +478,7 @@ export const PromptLibraryScreen = () => {
                 )}
 
                 {/* Main */}
-                <div className="flex h-full flex-1 flex-col overflow-hidden bg-secondary">
+                <div className="flex h-full flex-1 flex-col overflow-hidden rounded-lg bg-secondary shadow-sm">
                     <header className="flex h-[73px] shrink-0 items-center justify-between border-b border-secondary bg-primary px-6">
                         <div>
                             <h1 className="text-md font-semibold text-primary">Personal Prompt &amp; Pattern Library</h1>

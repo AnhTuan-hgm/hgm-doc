@@ -163,6 +163,9 @@ interface Department {
     sectionLabel: string;
     kind: "docs" | "cards" | "empty" | "clientlist";
     tabs: DeptTab[];
+    /** Extra static nav groups rendered above the main section (with a divider),
+        e.g. a "Client Input" group linking out to shared docs like Owner Guides. */
+    extraGroups?: { label: string; tabs: DeptTab[] }[];
 }
 
 /** Fixed client tiers for the Client List page (grouped in the sidebar). */
@@ -192,6 +195,9 @@ const DEPARTMENTS: Department[] = [
         sectionLabel: "Workflow",
         kind: "cards",
         tabs: [{ id: "overview", label: "Overview", icon: LayoutAlt01 }],
+        extraGroups: [
+            { label: "Client Input", tabs: [{ id: "owner-guides", label: "Owner Guides", icon: BookOpen01 }] },
+        ],
     },
     {
         id: "am",
@@ -268,6 +274,42 @@ const RailBottom = ({ editing, onToggleEditing }: { editing: boolean; onToggleEd
     );
 };
 
+/** One nav row shared by every sidebar group (static "extra" groups and the
+    main per-department tab list). */
+const NavRow = ({ item, active, onSelect, editing, isCustom, onDelete }: {
+    item: DeptTab; active: boolean; onSelect: () => void; editing: boolean; isCustom: boolean; onDelete: () => void;
+}) => (
+    <motion.div
+        variants={{ hidden: { opacity: 0, x: -10 }, show: { opacity: 1, x: 0, transition: { duration: 0.3, ease: [0.22, 1, 0.36, 1] } } }}
+        className={cx(
+            "group flex items-center gap-1 rounded-lg pr-1 transition-colors duration-100 ease-linear",
+            active ? "bg-brand-50 dark:bg-brand-950/50" : "hover:bg-secondary",
+        )}
+    >
+        <button
+            type="button"
+            onClick={onSelect}
+            className={cx(
+                "flex flex-1 items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm font-medium transition duration-100 ease-linear",
+                active ? "text-brand-700 dark:text-brand-300" : "text-secondary group-hover:text-primary",
+            )}
+        >
+            <item.icon className="size-4 shrink-0" aria-hidden="true" />
+            <span className="truncate">{item.label}</span>
+        </button>
+        {editing && isCustom && (
+            <button
+                type="button"
+                onClick={onDelete}
+                title="Delete tab"
+                className="flex size-6 shrink-0 items-center justify-center rounded-md text-quaternary opacity-0 transition hover:bg-primary hover:text-error-primary group-hover:opacity-100"
+            >
+                <Trash01 className="size-3.5" />
+            </button>
+        )}
+    </motion.div>
+);
+
 const Sidebar = ({
     department,
     tabs,
@@ -310,6 +352,28 @@ const Sidebar = ({
 
         {/* Nav */}
         <nav className="flex-1 px-3 py-4">
+            {/* Extra static groups (e.g. "Client Input") rendered above the main
+                section, each separated by a divider. */}
+            {department.extraGroups?.map((group) => (
+                <div key={group.label} className="mb-4">
+                    <p className="mb-1 px-2 text-xs font-semibold uppercase tracking-widest text-quaternary">
+                        {group.label}
+                    </p>
+                    <motion.div
+                        className="flex flex-col gap-0.5"
+                        initial="hidden"
+                        animate="show"
+                        variants={{ show: { transition: { staggerChildren: 0.05 } } }}
+                    >
+                        {group.tabs.map((item) => (
+                            <NavRow key={item.id} item={item} active={activeSection === item.id}
+                                onSelect={() => onSelect(item.id)} editing={editing} isCustom={false} onDelete={() => {}} />
+                        ))}
+                    </motion.div>
+                    <div className="mt-3 border-t border-secondary" />
+                </div>
+            ))}
+
             <p className="mb-1 px-2 text-xs font-semibold uppercase tracking-widest text-quaternary">
                 {department.sectionLabel}
             </p>
@@ -323,40 +387,8 @@ const Sidebar = ({
                 {tabs.map((item) => {
                     const isCustom = customTabIds.includes(item.id);
                     return (
-                        <motion.div
-                            key={item.id}
-                            variants={{ hidden: { opacity: 0, x: -10 }, show: { opacity: 1, x: 0, transition: { duration: 0.3, ease: [0.22, 1, 0.36, 1] } } }}
-                            className={cx(
-                                "group flex items-center gap-1 rounded-lg pr-1 transition-colors duration-100 ease-linear",
-                                activeSection === item.id
-                                    ? "bg-brand-50 dark:bg-brand-950/50"
-                                    : "hover:bg-secondary",
-                            )}
-                        >
-                            <button
-                                type="button"
-                                onClick={() => onSelect(item.id)}
-                                className={cx(
-                                    "flex flex-1 items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm font-medium transition duration-100 ease-linear",
-                                    activeSection === item.id
-                                        ? "text-brand-700 dark:text-brand-300"
-                                        : "text-secondary group-hover:text-primary",
-                                )}
-                            >
-                                <item.icon className="size-4 shrink-0" aria-hidden="true" />
-                                <span className="truncate">{item.label}</span>
-                            </button>
-                            {editing && isCustom && (
-                                <button
-                                    type="button"
-                                    onClick={() => onDeleteTab(item.id)}
-                                    title="Delete tab"
-                                    className="flex size-6 shrink-0 items-center justify-center rounded-md text-quaternary opacity-0 transition hover:bg-primary hover:text-error-primary group-hover:opacity-100"
-                                >
-                                    <Trash01 className="size-3.5" />
-                                </button>
-                            )}
-                        </motion.div>
+                        <NavRow key={item.id} item={item} active={activeSection === item.id}
+                            onSelect={() => onSelect(item.id)} editing={editing} isCustom={isCustom} onDelete={() => onDeleteTab(item.id)} />
                     );
                 })}
 
@@ -731,11 +763,56 @@ const OwnerGuideCard = ({ guide, index, onOpen, onDelete }: {
     );
 };
 
-const OwnerGuidesContent = () => {
+const OwnerGuidesContent = ({ editing, isOwner }: { editing: boolean; isOwner: boolean }) => {
     const navigate = useNavigate();
     const [guides, setGuides] = useState<OwnerGuideMeta[]>([]);
     const [loading, setLoading] = useState(true);
     const [query, setQuery] = useState("");
+
+    // The "Ai Website Setup" template card — a regular overview_cards row (department
+    // "website", tab "owner-guides") so it keeps the same star/lock/edit controls as
+    // every other overview card, just surfaced here instead of a generic cards grid.
+    const [templateCards, setTemplateCards] = useState<OverviewCard[]>([]);
+    const [templateLoading, setTemplateLoading] = useState(true);
+    const [editTemplateCard, setEditTemplateCard] = useState<OverviewCard | null>(null);
+
+    useEffect(() => {
+        supabase
+            .from("overview_cards")
+            .select("*")
+            .eq("department", "website")
+            .eq("tab", "owner-guides")
+            .order("created_at", { ascending: true })
+            .then(({ data, error }) => {
+                if (!error && data) setTemplateCards(data as OverviewCard[]);
+                setTemplateLoading(false);
+            });
+    }, []);
+
+    const handleStarTemplate = async (id: string, starred: boolean) => {
+        setTemplateCards((prev) => prev.map((c) => (c.id === id ? { ...c, starred } : c)));
+        await supabase.from("overview_cards").update({ starred }).eq("id", id);
+    };
+    const handleDeleteTemplate = async (id: string) => {
+        setTemplateCards((prev) => prev.filter((c) => c.id !== id));
+        await supabase.from("overview_cards").delete().eq("id", id);
+    };
+    const handleToggleLockTemplate = async (id: string, locked: boolean) => {
+        setTemplateCards((prev) => prev.map((c) => (c.id === id ? { ...c, locked } : c)));
+        await supabase.from("overview_cards").update({ locked }).eq("id", id);
+    };
+    const handleRenameTemplate = async (id: string, title: string) => {
+        setTemplateCards((prev) => prev.map((c) => (c.id === id ? { ...c, title } : c)));
+        await supabase.from("overview_cards").update({ title }).eq("id", id);
+    };
+    const handleUpdateTemplate = async (c: { title: string; description: string; link: string; cover: string }) => {
+        if (!editTemplateCard) return;
+        const patch = { title: c.title, description: c.description, link: c.link, cover_url: c.cover };
+        const { error } = await supabase.from("overview_cards").update(patch).eq("id", editTemplateCard.id);
+        if (error) { console.error("[template card update] Supabase error:", error); throw new Error(error.message); }
+        setTemplateCards((prev) => prev.map((x) => (x.id === editTemplateCard.id ? { ...x, ...patch } : x)));
+        setEditTemplateCard(null);
+    };
 
     useEffect(() => {
         supabase
@@ -773,23 +850,38 @@ const OwnerGuidesContent = () => {
                         {loading ? "Loading…" : `${guides.length} guide${guides.length !== 1 ? "s" : ""} created`}
                     </p>
                 </div>
-                <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => navigate("/owner-guide")}
-                        className="rounded-lg border border-secondary bg-primary px-3.5 py-2 text-sm font-semibold text-secondary transition duration-100 ease-linear hover:bg-secondary hover:text-primary">
-                        View Template
-                    </button>
-                    <button type="button" onClick={() => navigate("/owner-guide?create=1")}
-                        className="flex items-center gap-1.5 rounded-lg bg-brand-solid px-3.5 py-2 text-sm font-semibold text-white transition duration-100 ease-linear hover:opacity-90">
-                        <Plus className="size-4" aria-hidden="true" />
-                        New Guide
-                    </button>
-                </div>
+                <button type="button" onClick={() => navigate("/owner-guide?create=1")}
+                    className="flex items-center gap-1.5 rounded-lg bg-brand-solid px-3.5 py-2 text-sm font-semibold text-white transition duration-100 ease-linear hover:opacity-90">
+                    <Plus className="size-4" aria-hidden="true" />
+                    New Guide
+                </button>
             </header>
 
             <div className="flex-1 overflow-y-auto">
                 <div className="mx-auto w-full max-w-[900px] px-6">
-                    {/* Category search */}
-                    <div className="relative mt-6">
+                    {/* ── Section 1 — Template ── */}
+                    <div className="mt-6">
+                        <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-quaternary">Template</p>
+                        {templateLoading ? (
+                            <div className="flex h-24 items-center justify-center">
+                                <div className="size-5 animate-spin rounded-full border-2 border-brand border-t-transparent opacity-60" />
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                {templateCards.map((card, i) => (
+                                    <OverviewCard key={card.id} card={card} index={i} editing={editing} isOwner={isOwner}
+                                        onStar={handleStarTemplate} onDelete={handleDeleteTemplate}
+                                        onEdit={setEditTemplateCard} onToggleLock={handleToggleLockTemplate} onRename={handleRenameTemplate} />
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="my-6 border-t border-secondary" />
+
+                    {/* ── Section 2 — every client guide already used ── */}
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-quaternary">Client Guides</p>
+                    <div className="relative">
                         <SearchSm className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-quaternary" aria-hidden="true" />
                         <input
                             type="text"
@@ -830,8 +922,18 @@ const OwnerGuidesContent = () => {
                             ))}
                         </div>
                     )}
+                    <div className="h-6" />
                 </div>
             </div>
+
+            {editTemplateCard && (
+                <AddCardModal
+                    key={editTemplateCard.id}
+                    onClose={() => setEditTemplateCard(null)}
+                    onSubmit={handleUpdateTemplate}
+                    initial={{ title: editTemplateCard.title, description: editTemplateCard.description, link: editTemplateCard.link, cover: editTemplateCard.cover_url ?? "" }}
+                />
+            )}
         </div>
     );
 };
@@ -2789,19 +2891,19 @@ const DashboardLayout = () => {
                             onCollapse={toggleNav}
                         />
                     )}
-                    {dept.kind === "docs"
-                        ? activeSection === "popups"
-                            ? <PopupsContent />
-                            : activeSection === "chat-widget"
-                                ? <ChatWidgetContent />
-                                : activeSection === "owner-guides"
-                                    ? <OwnerGuidesContent />
+                    {activeSection === "owner-guides"
+                        ? <OwnerGuidesContent editing={editing} isOwner={isOwner} />
+                        : dept.kind === "docs"
+                            ? activeSection === "popups"
+                                ? <PopupsContent />
+                                : activeSection === "chat-widget"
+                                    ? <ChatWidgetContent />
                                     : activeSection === "host-onboarding"
                                         ? <HostOnboardingContent />
                                         : activeSection === "project-logs"
                                             ? <OverviewContent key={dept.id + ":" + activeSection} department={dept} tab={activeSection} editing={editing} isOwner={isOwner} />
                                             : <MetaPixelContent />
-                        : <OverviewContent key={dept.id + ":" + activeSection} department={dept} tab={activeSection} editing={editing} isOwner={isOwner} />}
+                            : <OverviewContent key={dept.id + ":" + activeSection} department={dept} tab={activeSection} editing={editing} isOwner={isOwner} />}
                 </>
             )}
             </div>

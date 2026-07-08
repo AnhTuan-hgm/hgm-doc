@@ -13,6 +13,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { Building07, CheckDone01, CloudBlank02, CreditCard01, Database01, Globe01, Mail01, Shield01, Users01 } from "@untitledui/icons";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { AppShell } from "@/components/application/icon-rail";
@@ -57,8 +58,38 @@ interface OwnerData { credentials: Creds; checklist: Checklist; notes: Notes }
  */
 const CRED_FORM_SECTIONS = ["pms", "netlify", "hosting", "supabase", "resend", "stripe", "domain", "cloudflare"];
 
-/** Each service stores a `${section}_username` and `${section}_password`. */
+/** User-resizable side menu — width persists per browser via localStorage. */
+const SIDEBAR_WIDTH_KEY = "hgm_owner_sidebar_width";
+const SIDEBAR_DEFAULT_WIDTH = 280;
+const SIDEBAR_MIN_WIDTH = 220;
+const SIDEBAR_MAX_WIDTH = 440;
+
+/** Some clients run more than one Stripe account (separate properties/brands).
+ * Account 1 keeps the original unsuffixed keys for backward compatibility;
+ * accounts 2+ append `_N`. */
+const MAX_STRIPE_ACCOUNTS = 5;
+const stripeKeys = (n: number) => ({
+    pk: n === 1 ? "stripe_publishable_key" : `stripe_publishable_key_${n}`,
+    sk: n === 1 ? "stripe_secret_key" : `stripe_secret_key_${n}`,
+    wh: n === 1 ? "stripe_webhook_secret" : `stripe_webhook_secret_${n}`,
+    // Title + note only ever get exposed in the UI for accounts 2+ (managed via
+    // the "Additional Stripe accounts" popup) — account 1 stays a plain, unlabeled
+    // primary account in the sidebar — but every account gets the same key shape.
+    title: n === 1 ? "stripe_title" : `stripe_title_${n}`,
+    note: n === 1 ? "stripe_note" : `stripe_note_${n}`,
+});
+
+/** Each service stores a `${section}_username` and `${section}_password` — except
+ * Stripe, which stores per-account `stripe_publishable_key(_N)`, `stripe_secret_key(_N)`
+ * and `stripe_webhook_secret(_N)` instead (API keys, not a login). */
 function sectionFilledIn(credentials: Creds, sec: string): boolean {
+    if (sec === "stripe") {
+        for (let n = 1; n <= MAX_STRIPE_ACCOUNTS; n++) {
+            const k = stripeKeys(n);
+            if (credentials[k.pk]?.trim() || credentials[k.sk]?.trim() || credentials[k.wh]?.trim()) return true;
+        }
+        return false;
+    }
     return !!(credentials[`${sec}_username`]?.trim() || credentials[`${sec}_password`]?.trim());
 }
 
@@ -350,7 +381,7 @@ const ImageMagnifier = ({ src, editing, lensPos, onLensPosChange, onRemove }: {
         <>
             <div className="relative select-none">
                 <img ref={imgRef} src={src} alt="reference"
-                    className="block w-full cursor-zoom-in rounded-xl border border-secondary"
+                    className="block w-full cursor-zoom-in rounded-xl"
                     onLoad={() => { if (imgRef.current) setDims({ w: imgRef.current.offsetWidth, h: imgRef.current.offsetHeight }); }}
                     draggable={false} onClick={() => setLightbox(true)}
                 />
@@ -370,14 +401,16 @@ const ImageMagnifier = ({ src, editing, lensPos, onLensPosChange, onRemove }: {
             <AnimatePresence>
                 {lightbox && (
                     <motion.div onClick={() => setLightbox(false)}
-                        className="fixed inset-0 z-50 flex cursor-zoom-out items-center justify-center bg-black/80 p-10 backdrop-blur-sm"
+                        className="fixed inset-0 z-50 flex cursor-zoom-out justify-center overflow-y-auto bg-black/80 px-4 py-16 backdrop-blur-sm sm:px-10"
                         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                         transition={{ duration: 0.2, ease: "easeOut" }}>
-                        <motion.div className="relative select-none" onClick={e => e.stopPropagation()}
+                        {/* Full-width instead of shrink-to-fit — tall reference screenshots
+                            stay readable and the overlay scrolls instead of squashing them
+                            down to fit the viewport height. */}
+                        <motion.div className="relative h-fit w-full max-w-5xl select-none" onClick={e => e.stopPropagation()}
                             initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.92, opacity: 0 }}
                             transition={{ type: "spring", stiffness: 300, damping: 26 }}>
-                            <img ref={lbImgRef} src={src} alt="full" className="block rounded-xl shadow-2xl"
-                                style={{ maxHeight: "90vh", maxWidth: "90vw" }}
+                            <img ref={lbImgRef} src={src} alt="full" className="block w-full rounded-xl shadow-2xl"
                                 onLoad={() => { if (lbImgRef.current) setLbDims({ w: lbImgRef.current.offsetWidth, h: lbImgRef.current.offsetHeight }); }}
                                 draggable={false}
                             />
@@ -388,7 +421,7 @@ const ImageMagnifier = ({ src, editing, lensPos, onLensPosChange, onRemove }: {
                             )}
                         </motion.div>
                         <button type="button" onClick={() => setLightbox(false)}
-                            className="absolute right-6 top-6 flex size-10 items-center justify-center rounded-xl bg-white/10 text-white hover:bg-white/20">
+                            className="fixed right-6 top-6 flex size-10 items-center justify-center rounded-xl bg-white/10 text-white hover:bg-white/20">
                             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
                         </button>
                     </motion.div>
@@ -450,16 +483,16 @@ const InstructionRow = ({
                         </button>
                     </div>
                 )}
-                <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-brand-100 text-[12px] font-bold text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-brand-100 text-[14px] font-bold text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">
                     {index + 1}
                 </span>
                 {editing ? (
                     <textarea value={ins.text}
                         onChange={e => onChangeText(e.target.value)}
-                        rows={2} className="flex-1 resize-y bg-transparent text-[14px] leading-relaxed text-secondary outline-none"
+                        rows={2} className="flex-1 resize-y bg-transparent text-[18px] leading-relaxed text-secondary outline-none"
                     />
                 ) : (
-                    <p className="flex-1 text-[14px] leading-relaxed text-secondary">{ins.text}</p>
+                    <p className="flex-1 text-[18px] leading-relaxed text-secondary">{ins.text}</p>
                 )}
                 {editing && (
                     <button type="button"
@@ -486,9 +519,10 @@ const InstructionRow = ({
                 )}
             </div>
 
-            {/* Per-instruction reference image with magnify circle */}
+            {/* Per-instruction reference image with magnify circle — same left/right
+                inset as the card's own padding, so it doesn't look off-center */}
             {ins.image ? (
-                <div className="mt-3 pl-[76px]">
+                <div className="mt-3">
                     <ImageMagnifier
                         src={ins.image}
                         editing={editing}
@@ -498,7 +532,7 @@ const InstructionRow = ({
                     />
                 </div>
             ) : editing ? (
-                <label className="mt-3 ml-[76px] flex w-fit cursor-pointer items-center gap-2 rounded-lg border border-dashed border-primary px-3 py-1.5 text-[12px] font-medium text-tertiary transition hover:border-brand hover:text-brand-700">
+                <label className="mt-3 flex w-fit cursor-pointer items-center gap-2 rounded-lg border border-dashed border-primary px-3 py-1.5 text-[12px] font-medium text-tertiary transition hover:border-brand hover:text-brand-700">
                     <input type="file" accept="image/*" className="hidden" onChange={onImageChange} />
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></svg>
                     Add image
@@ -572,8 +606,10 @@ const OverviewRow = ({ label, value, locked }: { label: string; value: string; l
     </div>
 );
 
-const OverviewSection = ({ num, title, label, rows, locked }: { num: number; title: string; label?: string; rows: { label: string; value: string }[]; locked: boolean }) => {
+const OverviewSection = ({ num, title, label, icon: Icon, rows, locked }: { num: number; title: string; label?: string; icon?: typeof Database01; rows: { label: string; value: string }[]; locked: boolean }) => {
     const hasAny = rows.some(r => r.value);
+    // Skip the subtitle when it's just a repeat of the heading (e.g. "Cloudflare" / "Cloudflare").
+    const showSubtitle = !!label && title.trim().toLowerCase() !== label.trim().toLowerCase();
     return (
         <div className="overflow-hidden rounded-2xl border border-secondary bg-primary shadow-xs">
             <div className="flex items-center gap-3 border-b border-secondary px-4 py-3">
@@ -584,9 +620,14 @@ const OverviewSection = ({ num, title, label, rows, locked }: { num: number; tit
                 )}>
                     {num}
                 </span>
+                {Icon && (
+                    <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-950/40 dark:text-brand-300">
+                        <Icon className="size-4" aria-hidden="true" />
+                    </span>
+                )}
                 <div className="min-w-0 flex-1">
                     <p className="truncate text-[14px] font-semibold text-primary">{label || title}</p>
-                    {label && <p className="truncate text-[11px] text-quaternary">{title}</p>}
+                    {showSubtitle && <p className="truncate text-[11px] text-quaternary">{title}</p>}
                 </div>
                 {hasAny
                     ? <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-success-secondary px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-success-primary">
@@ -609,11 +650,17 @@ const CRED_SECTION_LABEL: Record<CredSection, string> = {
     none: "", pms: "PMS", netlify: "Netlify", hosting: "Netlify", supabase: "Supabase", resend: "Resend", stripe: "Stripe", domain: "Domain", cloudflare: "Cloudflare", overview: "Overview",
 };
 
+/** Small service icon shown to the left of each step's title (page header). */
+const STEP_ICON: Record<CredSection, typeof Database01> = {
+    none: Users01, pms: Building07, netlify: CloudBlank02, hosting: CloudBlank02, supabase: Database01,
+    resend: Mail01, stripe: CreditCard01, domain: Globe01, cloudflare: Shield01, overview: CheckDone01,
+};
+
 const Sidebar = ({
     steps, credentials, visited, currentStep, editing,
     onSelect, onMoveStep, onDeleteStep, onAddStep, onNavigateOverview,
     canShare, sharePassword, showSharePw, onToggleSharePw, onCopyShareLink, shareCopied,
-    canCreate, onCreate,
+    canCreate, onCreate, showTemplateHint, onDismissTemplateHint,
 }: {
     steps: StepData[];
     credentials: Creds;
@@ -635,9 +682,50 @@ const Sidebar = ({
     /** "Create Owner Guide" action — team / template only. */
     canCreate: boolean;
     onCreate: () => void;
+    /** Template hint — nested in-flow above the bottom controls so it aligns with the
+     * sidebar's own width/padding instead of floating as a fixed-position popup. */
+    showTemplateHint: boolean;
+    onDismissTemplateHint: () => void;
 }) => {
     const { theme, setTheme } = useTheme();
     const isDark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+
+    // Resizable width — drag the handle on the right edge; persists per browser.
+    const [sidebarWidth, setSidebarWidth] = useState(() => {
+        const saved = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY));
+        return saved >= SIDEBAR_MIN_WIDTH && saved <= SIDEBAR_MAX_WIDTH ? saved : SIDEBAR_DEFAULT_WIDTH;
+    });
+    const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
+
+    useEffect(() => {
+        const onMove = (e: MouseEvent) => {
+            if (!dragRef.current) return;
+            const next = Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, dragRef.current.startWidth + (e.clientX - dragRef.current.startX)));
+            setSidebarWidth(next);
+        };
+        const onUp = () => {
+            if (!dragRef.current) return;
+            dragRef.current = null;
+            document.body.style.cursor = "";
+            document.body.style.userSelect = "";
+            setSidebarWidth(w => { localStorage.setItem(SIDEBAR_WIDTH_KEY, String(w)); return w; });
+        };
+        window.addEventListener("mousemove", onMove);
+        window.addEventListener("mouseup", onUp);
+        return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+    }, []);
+
+    const startResize = (e: React.MouseEvent) => {
+        e.preventDefault();
+        dragRef.current = { startX: e.clientX, startWidth: sidebarWidth };
+        document.body.style.cursor = "col-resize";
+        document.body.style.userSelect = "none";
+    };
+
+    const resetWidth = () => {
+        setSidebarWidth(SIDEBAR_DEFAULT_WIDTH);
+        localStorage.setItem(SIDEBAR_WIDTH_KEY, String(SIDEBAR_DEFAULT_WIDTH));
+    };
 
     // Progress = filled credential forms out of total forms.
     const formSteps = steps.filter(s => CRED_FORM_SECTIONS.includes(s.credSection));
@@ -655,7 +743,8 @@ const Sidebar = ({
     const overviewIdx = steps.findIndex(s => s.credSection === "overview");
 
     return (
-        <aside className="flex h-full w-[280px] shrink-0 flex-col border-r border-secondary bg-primary">
+        <div className="relative flex h-full shrink-0" style={{ width: sidebarWidth }}>
+        <aside className="flex h-full w-full flex-col overflow-hidden rounded-lg bg-primary shadow-sm">
             {/* header */}
             <div className="flex items-center border-b border-secondary px-5 py-4">
                 <img src={isDark ? "/hgm logo/LOGO ON Dark.svg" : "/hgm logo/Logo ON LIGHT.svg"}
@@ -665,7 +754,7 @@ const Sidebar = ({
             {/* progress */}
             <div className="border-b border-secondary px-5 py-4">
                 <div className="mb-2 flex items-center justify-between">
-                    <p className="text-[12px] font-semibold text-secondary">Onboarding Progress</p>
+                    <p className="text-[12px] font-semibold text-secondary">Ai Website Setup</p>
                     <span className="text-[12px] font-bold text-brand-600">{progress}%</span>
                 </div>
                 <div className="h-1.5 w-full overflow-hidden rounded-full bg-tertiary">
@@ -764,6 +853,32 @@ const Sidebar = ({
                 )}
             </motion.div>
 
+            {/* template hint — nested between the step list and the "Create Owner Guide"
+                button it refers to, so it aligns with the sidebar's own width/padding
+                instead of floating as a fixed-position popup. */}
+            <AnimatePresence>
+                {showTemplateHint && (
+                    <motion.div
+                        className="mx-3 mb-3 overflow-hidden rounded-xl border border-secondary bg-primary p-4 shadow-sm"
+                        initial={{ opacity: 0, y: 8, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.98, height: 0, marginBottom: 0, padding: 0 }}
+                        transition={{ type: "spring", stiffness: 320, damping: 26 }}>
+                        <div className="flex items-start gap-3">
+                            <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-600 dark:bg-brand-950/40">
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" /></svg>
+                            </span>
+                            <div className="flex-1">
+                                <p className="text-[13px] font-semibold text-primary">Master template</p>
+                                <p className="mt-0.5 text-[12.5px] leading-relaxed text-tertiary">This is the master template. Use <span className="font-semibold text-secondary">Create Owner Guide</span> below to make a private copy to share with a client.</p>
+                            </div>
+                            <button type="button" onClick={onDismissTemplateHint} title="Dismiss"
+                                className="flex size-6 shrink-0 items-center justify-center rounded-md text-quaternary transition hover:bg-secondary hover:text-secondary">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+                            </button>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
             {/* bottom controls: share password, copy link, theme toggle */}
             <div className="flex flex-col gap-2 border-t border-secondary p-3">
                 {canShare && sharePassword && (
@@ -805,6 +920,17 @@ const Sidebar = ({
                 </div>
             </div>
         </aside>
+
+        {/* Resize handle — drag to widen/narrow, double-click to reset */}
+        <div
+            onMouseDown={startResize}
+            onDoubleClick={resetWidth}
+            title="Drag to resize — double-click to reset"
+            className="group absolute -right-2 top-0 z-10 flex h-full w-4 cursor-col-resize items-center justify-center"
+        >
+            <div className="h-10 w-1 rounded-full bg-quaternary opacity-0 transition duration-100 ease-linear group-hover:opacity-100" />
+        </div>
+        </div>
     );
 };
 
@@ -970,6 +1096,11 @@ export const OwnerGuideScreen = () => {
     const [currentStep, setCurrentStep] = useState(0);
     const [visited, setVisited] = useState<Set<number>>(new Set());
     const [saveStatus, setSaveStatus] = useState<Record<string, SaveStatus>>({});
+    // How many Stripe accounts are expanded (clients with more than one Stripe
+    // account, e.g. separate properties/brands) — account 1 is always inline in
+    // the sidebar; accounts 2+ live in the "Additional Stripe accounts" popup.
+    const [stripeAccountsShown, setStripeAccountsShown] = useState(1);
+    const [showStripeAccountsModal, setShowStripeAccountsModal] = useState(false);
     const [overviewSaveStatus, setOverviewSaveStatus] = useState<SaveStatus>("idle");
     const [showComplete, setShowComplete] = useState(false);
     // Editing is HGM-team only: the lock toggle is hidden from clients, and a
@@ -1232,6 +1363,19 @@ export const OwnerGuideScreen = () => {
     const cred = (k: string) => ownerData.credentials[k] ?? "";
     const setCred = (k: string, v: string) => setOwnerData(prev => ({ ...prev, credentials: { ...prev.credentials, [k]: v } }));
 
+    // Always render at least as many Stripe account blocks as have saved data
+    // (e.g. reopening a guide with 3 saved accounts shows all 3), plus however
+    // many the user has expanded via "+ Add another" this session.
+    const highestFilledStripeAccount = (() => {
+        let n = 1;
+        for (let i = 2; i <= MAX_STRIPE_ACCOUNTS; i++) {
+            const k = stripeKeys(i);
+            if (cred(k.pk) || cred(k.sk) || cred(k.wh)) n = i;
+        }
+        return n;
+    })();
+    const stripeAccountsToRender = Math.max(stripeAccountsShown, highestFilledStripeAccount);
+
     const StatusBadge = ({ sec }: { sec: string }) => {
         const filled = sectionFilledIn(ownerData.credentials, sec);
         return (
@@ -1288,8 +1432,176 @@ export const OwnerGuideScreen = () => {
     const formSteps = steps.filter(s => CRED_FORM_SECTIONS.includes(s.credSection));
     const filledForms = formSteps.filter(s => sectionFilledIn(ownerData.credentials, s.credSection)).length;
 
+    // Steps with step-by-step instructions (Netlify, Supabase, Resend, Stripe, Cloudflare) get
+    // a sticky credential column beside the scrolling body, so the form is always reachable
+    // without scrolling past the instructions. PMS and Domain have no instructions to scroll
+    // alongside, so their form just stays inline in a single column.
+    const showSplitLayout = !loading && CRED_FORM_SECTIONS.includes(step.credSection) && step.instructions.length > 0;
+
+    const stepBody = (
+        <motion.div key={`body-${currentStep}`}
+            initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}>
+            {/* description */}
+            <section className="mb-6 rounded-2xl border border-secondary bg-primary p-6 shadow-md transition-shadow duration-200 hover:shadow-xl">
+                {editing ? (
+                    <textarea value={step.description}
+                        onChange={e => updateField(currentStep, "description", e.target.value)}
+                        rows={3}
+                        className="w-full resize-y bg-transparent text-[15px] leading-relaxed text-secondary outline-none"
+                    />
+                ) : (
+                    <p className="text-[15px] leading-relaxed text-secondary">{step.description}</p>
+                )}
+
+                {step.benefits && (
+                    <div className="mt-4 flex flex-col gap-2.5">
+                        {step.benefits.map((b, i) => (
+                            <div key={i} className="flex items-start gap-3">
+                                <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-success-solid">
+                                    <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6L9 17l-5-5" /></svg>
+                                </span>
+                                {editing ? (
+                                    <input type="text" value={b}
+                                        onChange={e => updateBenefit(currentStep, i, e.target.value)}
+                                        className="flex-1 bg-transparent text-[14px] font-medium text-primary outline-none border-b border-transparent focus:border-brand"
+                                    />
+                                ) : (
+                                    <p className="text-[14px] font-medium text-primary">{b}</p>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </section>
+
+            {/* instructions */}
+            {step.instructions.length > 0 && (
+                <section className="mb-6">
+                    <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-quaternary">Step-by-Step Instructions</h2>
+                    <div className="flex flex-col gap-3">
+                        {step.instructions.map((ins, i) => (
+                            <InstructionRow
+                                key={ins.id ?? i}
+                                ins={ins}
+                                index={i}
+                                isFirst={i === 0}
+                                isLast={i === step.instructions.length - 1}
+                                editing={editing}
+                                onChangeText={(val) => updateInstruction(currentStep, i, val)}
+                                onDelete={() => deleteInstruction(currentStep, i)}
+                                onToggleLock={() => toggleInstructionLock(currentStep, i)}
+                                onMoveUp={() => moveInstruction(currentStep, i, -1)}
+                                onMoveDown={() => moveInstruction(currentStep, i, 1)}
+                                onImageChange={(e) => handleInstructionImage(currentStep, i, e)}
+                                onLensPosChange={(p) => patchInstruction(currentStep, i, { lensPos: p })}
+                                onRemoveImage={() => patchInstruction(currentStep, i, { image: undefined, lensPos: undefined })}
+                            />
+                        ))}
+                        {editing && (
+                            <button type="button"
+                                onClick={() => updateField(currentStep, "instructions", [...step.instructions, { id: uid(), text: "New instruction" }])}
+                                className="flex items-center gap-2 rounded-xl border border-dashed border-primary py-2.5 text-[13px] font-medium text-tertiary transition hover:border-brand hover:text-brand-700">
+                                <span className="flex-1 text-center">+ Add instruction</span>
+                            </button>
+                        )}
+                    </div>
+                </section>
+            )}
+
+            {/* images */}
+            {(step.images.length > 0 || editing) && (
+                <section className="mb-6">
+                    {step.images.length > 0 && (
+                        <div className="mb-3 flex flex-col gap-3">
+                            {step.images.map(img => (
+                                <ImageMagnifier key={img.id} src={img.src} editing={editing}
+                                    lensPos={img.lensPos}
+                                    onLensPosChange={p => updateLensPos(currentStep, img.id, p)}
+                                    onRemove={() => removeImage(currentStep, img.id)}
+                                />
+                            ))}
+                        </div>
+                    )}
+                    {editing && (
+                        <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border-[1.5px] border-dashed border-primary bg-primary py-6 text-[13px] font-medium text-tertiary transition hover:border-brand hover:bg-brand-50 hover:text-brand-700">
+                            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageFile} />
+                            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></svg>
+                            Add reference image
+                        </label>
+                    )}
+                </section>
+            )}
+
+            {/* tutorial video */}
+            {(step.video || editing) && (
+                <section className="mb-6">
+                    {editing ? (
+                        <VideoAttach value={step.video} onChange={(url) => updateField(currentStep, "video", url)} />
+                    ) : (
+                        step.video && <VideoEmbed url={step.video} className="mt-4" />
+                    )}
+                </section>
+            )}
+        </motion.div>
+    );
+
+    /* ── Credential form — uniform Account User name + Password per service,
+        except Stripe (API key pair, not a login — see below) ── */
+    const credentialForm = !loading && CRED_FORM_SECTIONS.includes(step.credSection) && (() => {
+        const sec = step.credSection;
+
+        if (sec === "stripe") {
+            const primary = stripeKeys(1);
+            const extraAccountCount = stripeAccountsToRender - 1;
+            const allKeys = Array.from({ length: stripeAccountsToRender }, (_, i) => i + 1).flatMap(n => Object.values(stripeKeys(n)));
+            return (
+                <section className="rounded-2xl border border-secondary bg-primary p-6 shadow-md transition-shadow duration-200 hover:shadow-xl">
+                    <div className="mb-4 flex items-center justify-between gap-3">
+                        <h2 className="text-[15px] font-bold text-primary">Stripe Keys and Webhook</h2>
+                        <StatusBadge sec={sec} />
+                    </div>
+                    <div className="flex flex-col gap-4">
+                        <p className="rounded-lg bg-secondary px-4 py-3 text-[13px] text-tertiary">Enter your Stripe Publishable and Secret Keys (Developers → API Keys) and the Signing Secret from the webhook you create for this site.</p>
+                        <CredField label="Publishable Key" placeholder="pk_live_…" value={cred(primary.pk)} onChange={v => setCred(primary.pk, v)} />
+                        <SecretField label="Secret Key" placeholder="sk_live_…" value={cred(primary.sk)} onChange={v => setCred(primary.sk, v)} />
+                        <SecretField label="Webhook Signing Secret" placeholder="whsec_…" value={cred(primary.wh)} onChange={v => setCred(primary.wh, v)} />
+
+                        {/* Multiple accounts (separate properties/brands) are managed in a
+                            popup — keeps this sidebar card short even with several added. */}
+                        <button type="button"
+                            onClick={() => setShowStripeAccountsModal(true)}
+                            className="flex w-fit items-center gap-1.5 rounded-lg border border-dashed border-primary px-3 py-2 text-[12.5px] font-semibold text-tertiary transition hover:border-brand hover:bg-brand-50 hover:text-brand-700">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+                            {extraAccountCount > 0 ? `Manage additional accounts (${extraAccountCount})` : "Add another Stripe account"}
+                        </button>
+
+                        <SaveActions status={saveStatus[sec] ?? "idle"} label="Stripe Keys" onSave={() => doSave(sec)} onClear={() => doClear(sec, allKeys)} />
+                    </div>
+                </section>
+            );
+        }
+
+        const uKey = `${sec}_username`;
+        const pKey = `${sec}_password`;
+        return (
+            <section className="rounded-2xl border border-secondary bg-primary p-6 shadow-md transition-shadow duration-200 hover:shadow-xl">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                    <h2 className="text-[15px] font-bold text-primary">Enter your account login</h2>
+                    <StatusBadge sec={sec} />
+                </div>
+                <div className="flex flex-col gap-4">
+                    <p className="rounded-lg bg-secondary px-4 py-3 text-[13px] text-tertiary">Enter the account user name and password you use to sign in to this service.</p>
+                    <CredField label="Account User name" placeholder="you@email.com" value={cred(uKey)} onChange={v => setCred(uKey, v)} />
+                    <SecretField label="Password" placeholder="Account password" value={cred(pKey)} onChange={v => setCred(pKey, v)} />
+                    <SaveActions status={saveStatus[sec] ?? "idle"} label="Login" onSave={() => doSave(sec)} onClear={() => doClear(sec, [uKey, pKey])} />
+                </div>
+            </section>
+        );
+    })();
+
     return (
-        <AppShell className="flex">
+        <AppShell className="flex gap-2 bg-secondary p-2">
             <Sidebar
                 steps={steps} credentials={ownerData.credentials} visited={visited}
                 currentStep={currentStep} editing={editing}
@@ -1304,9 +1616,11 @@ export const OwnerGuideScreen = () => {
                 shareCopied={shareCopied}
                 canCreate={isTeam || isTemplate}
                 onCreate={() => setCreateOpen(true)}
+                showTemplateHint={isTemplate && showTemplateToast}
+                onDismissTemplateHint={() => setShowTemplateToast(false)}
             />
 
-            <main ref={mainRef} className="flex-1 overflow-y-auto scroll-smooth">
+            <main ref={mainRef} className="flex-1 overflow-y-auto overflow-x-hidden rounded-lg bg-[#FDFDFD] shadow-sm scroll-smooth dark:bg-primary">
                 {/* Client guide header — name only; share controls live in the sidebar. */}
                 {!isTemplate && meta && (
                     <div className="border-b border-secondary bg-primary px-8 py-3.5">
@@ -1317,28 +1631,43 @@ export const OwnerGuideScreen = () => {
                     </div>
                 )}
 
-                <motion.div key={currentStep} className="mx-auto max-w-[760px] px-8 py-9 pb-24"
+                <motion.div key={currentStep} className={cx("mx-auto px-8 pb-24", showSplitLayout || step.credSection === "overview" ? "max-w-[1160px]" : "max-w-[760px]")}
                     initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}>
 
-                    {/* breadcrumb */}
-                    <div className="mb-3 flex items-center gap-2 text-[12px] font-medium text-quaternary">
-                        <span>Step {currentStep + 1} of {steps.length}</span>
-                        <span>·</span>
-                        <span>{filledForms} of {formSteps.length} forms filled</span>
+                    {/* Step header — sticky so the title/progress/icon stay visible while
+                        scrolling a long instructions list. Background matches <main> so
+                        the body content doesn't show through as it scrolls underneath.
+                        On the Overview step the outer container is wider (so the body
+                        below can spread out), but the header itself stays pinned to the
+                        original narrower width via this inner max-w wrapper. */}
+                    <div className="sticky top-0 z-10 bg-[#FDFDFD] pt-9 dark:bg-primary">
+                        <div className={step.credSection === "overview" ? "mx-auto max-w-[760px]" : undefined}>
+                            {/* breadcrumb */}
+                            <div className="mb-3 flex items-center gap-2 text-[12px] font-medium text-quaternary">
+                                <span>Step {currentStep + 1} of {steps.length}</span>
+                                <span>·</span>
+                                <span>{filledForms} of {formSteps.length} forms filled</span>
+                            </div>
+
+                            {/* title */}
+                            <div className="mb-4 flex items-center gap-3">
+                                <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-950/40 dark:text-brand-300">
+                                    {(() => { const Icon = STEP_ICON[step.credSection]; return <Icon className="size-5" aria-hidden="true" />; })()}
+                                </span>
+                                {editing ? (
+                                    <input type="text" value={step.title}
+                                        onChange={e => updateField(currentStep, "title", e.target.value)}
+                                        className="w-full border-0 bg-transparent text-[32px] font-bold leading-10 tracking-tight text-primary outline-none"
+                                    />
+                                ) : (
+                                    <h1 className="text-[32px] font-bold leading-10 tracking-tight text-primary">{step.title}</h1>
+                                )}
+                            </div>
+
+                            <hr className="mb-6 border-secondary" />
+                        </div>
                     </div>
-
-                    {/* title */}
-                    {editing ? (
-                        <input type="text" value={step.title}
-                            onChange={e => updateField(currentStep, "title", e.target.value)}
-                            className="mb-4 w-full border-0 bg-transparent text-[32px] font-bold leading-10 tracking-tight text-primary outline-none"
-                        />
-                    ) : (
-                        <h1 className="mb-4 text-[32px] font-bold leading-10 tracking-tight text-primary">{step.title}</h1>
-                    )}
-
-                    <hr className="mb-6 border-secondary" />
 
                     {/* ── Overview step ── */}
                     {step.credSection === "overview" ? (
@@ -1351,18 +1680,34 @@ export const OwnerGuideScreen = () => {
                                     <span className="ml-3 text-[14px] text-tertiary">Loading…</span>
                                 </div>
                             ) : (
-                                <div className="flex flex-col gap-4">
+                                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                                     {steps
                                         .map((s, idx) => ({ s, num: idx })) // zero-indexed to match the sidebar (Welcome = 0, PMS = 1, …)
                                         .filter(({ s }) => CRED_FORM_SECTIONS.includes(s.credSection))
                                         .map(({ s, num }) => (
-                                            <OverviewSection key={s.credSection} num={num} title={s.title} label={CRED_SECTION_LABEL[s.credSection]} locked={locked} rows={[
-                                                { label: "Account User name", value: cred(`${s.credSection}_username`) },
-                                                { label: "Password", value: cred(`${s.credSection}_password`) },
-                                            ]} />
+                                            <OverviewSection key={s.credSection} num={num} title={s.title} label={CRED_SECTION_LABEL[s.credSection]} icon={STEP_ICON[s.credSection]} locked={locked} rows={
+                                                s.credSection === "stripe"
+                                                    ? Array.from({ length: MAX_STRIPE_ACCOUNTS }, (_, i) => i + 1)
+                                                        .filter(n => n === 1 || cred(stripeKeys(n).pk) || cred(stripeKeys(n).sk) || cred(stripeKeys(n).wh))
+                                                        .flatMap(n => {
+                                                            const k = stripeKeys(n);
+                                                            const prefix = n === 1 ? "" : `Account ${n} — `;
+                                                            return [
+                                                                ...(n === 1 ? [] : [{ label: `${prefix}Title`, value: cred(k.title) }]),
+                                                                { label: `${prefix}Publishable Key`, value: cred(k.pk) },
+                                                                { label: `${prefix}Secret Key`, value: cred(k.sk) },
+                                                                { label: `${prefix}Webhook Signing Secret`, value: cred(k.wh) },
+                                                                ...(n === 1 ? [] : [{ label: `${prefix}Note`, value: cred(k.note) }]),
+                                                            ];
+                                                        })
+                                                    : [
+                                                        { label: "Account User name", value: cred(`${s.credSection}_username`) },
+                                                        { label: "Password", value: cred(`${s.credSection}_password`) },
+                                                    ]
+                                            } />
                                         ))}
 
-                                    <div className="mt-2 rounded-2xl border border-secondary bg-primary p-6 text-center">
+                                    <div className="mt-2 rounded-2xl border border-secondary bg-primary p-6 text-center shadow-md transition-shadow duration-200 hover:shadow-xl lg:col-span-2">
                                         {locked ? (
                                             <>
                                                 <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-full bg-success-secondary">
@@ -1391,132 +1736,30 @@ export const OwnerGuideScreen = () => {
                                 </div>
                             )}
                         </>
+                    ) : showSplitLayout ? (
+                        /* ── Regular step, split: scrolling body + sticky credential column ── */
+                        <div className="flex items-stretch gap-8">
+                            <div className="min-w-0 flex-1">{stepBody}</div>
+                            <div className="w-[424px] shrink-0">
+                                {/* top-[135px] clears the sticky step header (breadcrumb +
+                                    icon + title + hr, ~127px tall) above it, so this column
+                                    sticks just below the header instead of hiding underneath
+                                    it. Caps at the viewport so a tall form (e.g. several
+                                    Stripe accounts) scrolls within itself instead of being
+                                    cut off. Padded on the sides/bottom so the card's shadow
+                                    (incl. the hover:shadow-xl bump) has room instead of being
+                                    clipped by this container's own overflow-y-auto edge — top
+                                    padding stays minimal so the card lines up with the body
+                                    column instead of sitting noticeably lower. */}
+                                <div className="sticky top-[135px] max-h-[calc(100vh-11rem)] overflow-y-auto px-8 pt-2 pb-8">{credentialForm}</div>
+                            </div>
+                        </div>
                     ) : (
-                        /* ── Regular step ── */
+                        /* ── Regular step, single column (PMS / Domain — no instructions to
+                            scroll alongside, so the form just stays inline) ── */
                         <>
-                            {/* description */}
-                            <section className="mb-6 rounded-2xl border border-secondary bg-primary p-6">
-                                {editing ? (
-                                    <textarea value={step.description}
-                                        onChange={e => updateField(currentStep, "description", e.target.value)}
-                                        rows={3}
-                                        className="w-full resize-y bg-transparent text-[15px] leading-relaxed text-secondary outline-none"
-                                    />
-                                ) : (
-                                    <p className="text-[15px] leading-relaxed text-secondary">{step.description}</p>
-                                )}
-
-                                {step.benefits && (
-                                    <div className="mt-4 flex flex-col gap-2.5">
-                                        {step.benefits.map((b, i) => (
-                                            <div key={i} className="flex items-start gap-3">
-                                                <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-success-solid">
-                                                    <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6L9 17l-5-5" /></svg>
-                                                </span>
-                                                {editing ? (
-                                                    <input type="text" value={b}
-                                                        onChange={e => updateBenefit(currentStep, i, e.target.value)}
-                                                        className="flex-1 bg-transparent text-[14px] font-medium text-primary outline-none border-b border-transparent focus:border-brand"
-                                                    />
-                                                ) : (
-                                                    <p className="text-[14px] font-medium text-primary">{b}</p>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </section>
-
-                            {/* instructions */}
-                            {step.instructions.length > 0 && (
-                                <section className="mb-6">
-                                    <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-quaternary">Step-by-Step Instructions</h2>
-                                    <div className="flex flex-col gap-3">
-                                        {step.instructions.map((ins, i) => (
-                                            <InstructionRow
-                                                key={ins.id ?? i}
-                                                ins={ins}
-                                                index={i}
-                                                isFirst={i === 0}
-                                                isLast={i === step.instructions.length - 1}
-                                                editing={editing}
-                                                onChangeText={(val) => updateInstruction(currentStep, i, val)}
-                                                onDelete={() => deleteInstruction(currentStep, i)}
-                                                onToggleLock={() => toggleInstructionLock(currentStep, i)}
-                                                onMoveUp={() => moveInstruction(currentStep, i, -1)}
-                                                onMoveDown={() => moveInstruction(currentStep, i, 1)}
-                                                onImageChange={(e) => handleInstructionImage(currentStep, i, e)}
-                                                onLensPosChange={(p) => patchInstruction(currentStep, i, { lensPos: p })}
-                                                onRemoveImage={() => patchInstruction(currentStep, i, { image: undefined, lensPos: undefined })}
-                                            />
-                                        ))}
-                                        {editing && (
-                                            <button type="button"
-                                                onClick={() => updateField(currentStep, "instructions", [...step.instructions, { id: uid(), text: "New instruction" }])}
-                                                className="flex items-center gap-2 rounded-xl border border-dashed border-primary py-2.5 text-[13px] font-medium text-tertiary transition hover:border-brand hover:text-brand-700">
-                                                <span className="flex-1 text-center">+ Add instruction</span>
-                                            </button>
-                                        )}
-                                    </div>
-                                </section>
-                            )}
-
-                            {/* images */}
-                            {(step.images.length > 0 || editing) && (
-                                <section className="mb-6">
-                                    {step.images.length > 0 && (
-                                        <div className="mb-3 flex flex-col gap-3">
-                                            {step.images.map(img => (
-                                                <ImageMagnifier key={img.id} src={img.src} editing={editing}
-                                                    lensPos={img.lensPos}
-                                                    onLensPosChange={p => updateLensPos(currentStep, img.id, p)}
-                                                    onRemove={() => removeImage(currentStep, img.id)}
-                                                />
-                                            ))}
-                                        </div>
-                                    )}
-                                    {editing && (
-                                        <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border-[1.5px] border-dashed border-primary bg-primary py-6 text-[13px] font-medium text-tertiary transition hover:border-brand hover:bg-brand-50 hover:text-brand-700">
-                                            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageFile} />
-                                            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></svg>
-                                            Add reference image
-                                        </label>
-                                    )}
-                                </section>
-                            )}
-
-                            {/* tutorial video */}
-                            {(step.video || editing) && (
-                                <section className="mb-6">
-                                    {editing ? (
-                                        <VideoAttach value={step.video} onChange={(url) => updateField(currentStep, "video", url)} />
-                                    ) : (
-                                        step.video && <VideoEmbed url={step.video} className="mt-4" />
-                                    )}
-                                </section>
-                            )}
-
-                            {/* ── Credential form — uniform Account User name + Password per service ── */}
-                            {!loading && CRED_FORM_SECTIONS.includes(step.credSection) && (() => {
-                                const sec = step.credSection;
-                                const uKey = `${sec}_username`;
-                                const pKey = `${sec}_password`;
-                                return (
-                                    <section className="mb-6 rounded-2xl border border-secondary bg-primary p-6">
-                                        <div className="mb-4 flex items-center justify-between gap-3">
-                                            <h2 className="text-[15px] font-bold text-primary">Enter your account login</h2>
-                                            <StatusBadge sec={sec} />
-                                        </div>
-                                        <div className="flex flex-col gap-4">
-                                            <p className="rounded-lg bg-secondary px-4 py-3 text-[13px] text-tertiary">Enter the account user name and password you use to sign in to this service.</p>
-                                            <CredField label="Account User name" placeholder="you@email.com" value={cred(uKey)} onChange={v => setCred(uKey, v)} />
-                                            <SecretField label="Password" placeholder="Account password" value={cred(pKey)} onChange={v => setCred(pKey, v)} />
-                                            <SaveActions status={saveStatus[sec] ?? "idle"} label="Login" onSave={() => doSave(sec)} onClear={() => doClear(sec, [uKey, pKey])} />
-                                        </div>
-                                    </section>
-                                );
-                            })()}
-
+                            {stepBody}
+                            {credentialForm}
                         </>
                     )}
 
@@ -1559,31 +1802,6 @@ export const OwnerGuideScreen = () => {
                 </button>
             )}
 
-            {/* template hint toast — bottom-left, just above the sidebar's
-                "Create Owner Guide" button it refers to; appears after 2s, dismissible */}
-            <AnimatePresence>
-                {isTemplate && showTemplateToast && (
-                    <motion.div
-                        className="fixed bottom-[76px] left-3 z-[55] w-[264px] max-w-[calc(100vw-1.5rem)] rounded-xl border border-secondary bg-primary p-4 shadow-lg ring-1 ring-black/5"
-                        initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.98 }}
-                        transition={{ type: "spring", stiffness: 320, damping: 26 }}>
-                        <div className="flex items-start gap-3">
-                            <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-600 dark:bg-brand-950/40">
-                                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" /></svg>
-                            </span>
-                            <div className="flex-1">
-                                <p className="text-[13px] font-semibold text-primary">Master template</p>
-                                <p className="mt-0.5 text-[12.5px] leading-relaxed text-tertiary">This is the master template. Use <span className="font-semibold text-secondary">Create Owner Guide</span> in the sidebar to make a private copy to share with a client.</p>
-                            </div>
-                            <button type="button" onClick={() => setShowTemplateToast(false)} title="Dismiss"
-                                className="flex size-6 shrink-0 items-center justify-center rounded-md text-quaternary transition hover:bg-secondary hover:text-secondary">
-                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
-                            </button>
-                        </div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
-
             {/* completion modal */}
             <AnimatePresence>
                 {showComplete && (
@@ -1607,6 +1825,94 @@ export const OwnerGuideScreen = () => {
 
             {/* create-guide popup */}
             <CreateGuideModal open={createOpen} onClose={() => setCreateOpen(false)} onCreated={(s) => { setCreateOpen(false); navigateTo(`/owner-guide/${s}`); }} />
+
+            {/* Stripe accounts popup — every account (starting with the primary,
+                Account 1) side by side in a grid, so clients with several Stripe
+                accounts (separate properties/brands) get room to manage them all. */}
+            <AnimatePresence>
+                {showStripeAccountsModal && (
+                    <motion.div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-4 py-8"
+                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}
+                        onMouseDown={e => { if (e.target === e.currentTarget) setShowStripeAccountsModal(false); }}>
+                        <motion.div className="flex max-h-[85vh] w-full max-w-4xl flex-col rounded-2xl bg-primary shadow-2xl ring-1 ring-secondary"
+                            initial={{ opacity: 0, scale: 0.94, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96, y: 10 }}
+                            transition={{ type: "spring", stiffness: 300, damping: 26 }}>
+                            <div className="flex items-center justify-between gap-3 border-b border-secondary px-6 py-4">
+                                <div>
+                                    <h3 className="text-md font-semibold text-primary">Stripe accounts</h3>
+                                    <p className="mt-0.5 text-sm text-tertiary">For clients with more than one Stripe account — e.g. separate properties or brands.</p>
+                                </div>
+                                <button type="button" onClick={() => setShowStripeAccountsModal(false)} title="Close"
+                                    className="flex size-8 shrink-0 items-center justify-center rounded-lg text-tertiary transition hover:bg-secondary hover:text-primary">
+                                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+                                </button>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto px-6 py-5">
+                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                    {Array.from({ length: stripeAccountsToRender }, (_, i) => i + 1).map(n => {
+                                        const k = stripeKeys(n);
+                                        const isLast = n === stripeAccountsToRender;
+                                        return (
+                                            <div key={n} className="flex flex-col rounded-xl border border-secondary bg-secondary p-4">
+                                                <div className="mb-3 flex items-center justify-between gap-2">
+                                                    <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-quaternary">
+                                                        Account {n}{n === 1 && " (primary)"}
+                                                    </span>
+                                                    {n > 1 && isLast && (
+                                                        <button type="button"
+                                                            onClick={() => {
+                                                                doClear("stripe", [k.pk, k.sk, k.wh, k.title, k.note]);
+                                                                setStripeAccountsShown(s => Math.max(1, Math.min(s, stripeAccountsToRender) - 1));
+                                                            }}
+                                                            className="text-[11px] font-semibold text-error-primary transition hover:underline">
+                                                            Remove
+                                                        </button>
+                                                    )}
+                                                </div>
+                                                <div className="flex flex-col gap-3">
+                                                    <CredField label="Title" placeholder="e.g. Sunset Villas — main property" value={cred(k.title)} onChange={v => setCred(k.title, v)} />
+                                                    <CredField label="Publishable Key" placeholder="pk_live_…" value={cred(k.pk)} onChange={v => setCred(k.pk, v)} />
+                                                    <SecretField label="Secret Key" placeholder="sk_live_…" value={cred(k.sk)} onChange={v => setCred(k.sk, v)} />
+                                                    <SecretField label="Webhook Signing Secret" placeholder="whsec_…" value={cred(k.wh)} onChange={v => setCred(k.wh, v)} />
+                                                    <div className="flex flex-col gap-1.5">
+                                                        <label className="text-[11px] font-semibold uppercase tracking-[0.06em] text-quaternary">Note</label>
+                                                        <textarea rows={2} value={cred(k.note)} onChange={e => setCred(k.note, e.target.value)}
+                                                            placeholder="Optional — what's this account for?"
+                                                            className="w-full flex-1 resize-none rounded-xl border border-secondary bg-primary px-3.5 py-2.5 text-[14px] text-primary outline-none transition duration-100 ease-linear focus:border-brand focus:ring-1 focus:ring-brand placeholder:text-placeholder"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+
+                                    {stripeAccountsToRender < MAX_STRIPE_ACCOUNTS && (
+                                        <button type="button"
+                                            onClick={() => setStripeAccountsShown(Math.min(MAX_STRIPE_ACCOUNTS, stripeAccountsToRender + 1))}
+                                            className="flex min-h-[200px] flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-primary text-[13px] font-semibold text-tertiary transition hover:border-brand hover:bg-brand-50 hover:text-brand-700">
+                                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+                                            Add another account
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="flex items-center justify-end gap-3 border-t border-secondary px-6 py-4">
+                                <button type="button" onClick={() => setShowStripeAccountsModal(false)}
+                                    className="rounded-lg border border-secondary px-4 py-2 text-sm font-semibold text-secondary transition hover:bg-secondary">
+                                    Close
+                                </button>
+                                <button type="button"
+                                    onClick={() => { doSave("stripe"); setShowStripeAccountsModal(false); }}
+                                    className="rounded-lg bg-brand-solid px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90">
+                                    Save
+                                </button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* share-password gate */}
             <AnimatePresence>

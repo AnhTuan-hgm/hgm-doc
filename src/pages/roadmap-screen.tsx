@@ -1,4 +1,5 @@
 import { type ChangeEvent, useEffect, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router";
 import {
     BookOpen01,
     CheckCircle,
@@ -14,6 +15,7 @@ import {
     LinkExternal01,
     Plus,
     Rocket01,
+    Star01,
     Trash01,
     XCircle,
     XClose,
@@ -22,6 +24,7 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { AppShell, CollapsedTopBar, IconRail, NavCollapseButton, RailBottom, useNavCollapsed } from "@/components/application/icon-rail";
 import { PageBanner } from "@/components/application/page-banner";
+import { fetchDynamicSearchItems, STATIC_ITEMS, type SearchItem } from "@/components/application/search-modal";
 import { VideoAttach, VideoEmbed } from "@/components/application/video-block";
 import { Badge, BadgeWithDot } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
@@ -98,6 +101,8 @@ interface RoadmapData {
     log: LogEntry[];
     todos: TodoItem[];
     questions: QuestionItem[];
+    /** Links starred in editing mode so the important ones stand out (Links view). */
+    starredLinks?: string[];
 }
 
 const TIERS: { id: Tier; label: string; badgeColor: "success" | "blue" | "gray"; blurb: string }[] = [
@@ -227,6 +232,7 @@ const DEFAULT_DATA: RoadmapData = {
         { id: uid(), question: "Do you want a notification (email/Slack) when a client submits a request on /requests?", answer: "" },
         { id: uid(), question: "What's the next priority: performance (code-splitting) or new features?", answer: "" },
     ],
+    starredLinks: [],
 };
 
 /** Sidebar is grouped (macOS System Settings style) with dividers between groups.
@@ -235,6 +241,7 @@ const NAV_GROUPS = [
     [
         { id: "overview", label: "Project Overview", icon: BookOpen01 },
         { id: "features", label: "Features", icon: Zap },
+        { id: "links", label: "Links", icon: LinkExternal01 },
     ],
     [
         { id: "todo", label: "To-do", icon: CheckDone01 },
@@ -245,7 +252,10 @@ const NAV_GROUPS = [
         { id: "timeline", label: "Timeline", icon: Hourglass01 },
     ],
 ];
-const SECTIONS = NAV_GROUPS.flat();
+// "Links" swaps the whole main pane to a separate directory view (see activeView
+// below) instead of being a scroll-to section, so it's excluded from the
+// scroll-spy's section list.
+const SECTIONS = NAV_GROUPS.flat().filter((s) => s.id !== "links");
 
 const inputCls =
     "w-full rounded-lg border border-primary bg-primary px-3 py-2 text-sm text-primary placeholder:text-placeholder focus:border-brand focus:outline-none";
@@ -254,13 +264,134 @@ const inputCls =
     label — so scrolling the page reads as moving through distinct blocks
     (Overview, Features, To-do, …) instead of continuously flowing text. */
 const SectionCard = ({ label, children }: { label: string; children: React.ReactNode }) => (
-    <div>
-        <span className="mb-8 inline-flex items-center rounded-full bg-primary-solid px-4 py-1.5 text-xs font-bold tracking-wide text-white uppercase shadow-sm">
+    <div className="flex h-full flex-col">
+        <span className="mb-8 inline-flex w-fit items-center rounded-full bg-primary-solid px-4 py-1.5 text-xs font-bold tracking-wide text-white uppercase shadow-sm">
             {label}
         </span>
-        <div className="rounded-2xl border border-secondary bg-[#FAFAFA] p-6 sm:p-8 dark:bg-secondary">{children}</div>
+        <div className="flex-1 rounded-2xl border border-secondary bg-[#FAFAFA] p-6 sm:p-8 dark:bg-secondary">{children}</div>
     </div>
 );
+
+/** Separate directory view (not a scroll section) listing every page/template/client
+ * page ever created on this site — static routes plus everything sourced from
+ * Supabase, reusing the same enumeration the sitewide search dropdown uses. */
+const LinksView = ({
+    items,
+    loading,
+    editing,
+    starred,
+    onToggleStar,
+}: {
+    items: SearchItem[];
+    loading: boolean;
+    editing: boolean;
+    starred: string[];
+    onToggleStar: (id: string) => void;
+}) => {
+    const navigate = useNavigate();
+
+    const go = (item: SearchItem) => {
+        const p = item.path;
+        if (/^https?:\/\//i.test(p)) {
+            window.open(p, "_blank", "noopener");
+            return;
+        }
+        navigate(p.startsWith("/") ? p : "/" + p);
+    };
+
+    const groups = new Map<string, SearchItem[]>();
+    for (const item of items) {
+        if (!groups.has(item.kind)) groups.set(item.kind, []);
+        groups.get(item.kind)!.push(item);
+    }
+    const starredItems = items.filter((item) => starred.includes(item.id));
+
+    const LinkCard = ({ item }: { item: SearchItem }) => {
+        const isStarred = starred.includes(item.id);
+        return (
+            <div className="group relative">
+                <button
+                    type="button"
+                    onClick={() => go(item)}
+                    className="flex w-full items-start gap-3 rounded-xl border border-secondary bg-primary p-3.5 text-left transition duration-100 ease-linear hover:border-brand/40 hover:bg-secondary"
+                >
+                    <item.icon className="mt-0.5 size-4 shrink-0 text-fg-quaternary" aria-hidden="true" />
+                    <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-primary">{item.title}</p>
+                        {item.subtitle && <p className="truncate text-xs text-tertiary">{item.subtitle}</p>}
+                        <p className="mt-0.5 truncate text-xs text-quaternary">{item.path}</p>
+                    </div>
+                    <LinkExternal01 className="mt-0.5 size-3.5 shrink-0 text-fg-quaternary opacity-0 transition duration-100 ease-linear group-hover:opacity-100" aria-hidden="true" />
+                </button>
+                {editing ? (
+                    <button
+                        type="button"
+                        title={isStarred ? "Unstar" : "Star as important"}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onToggleStar(item.id);
+                        }}
+                        className={cx(
+                            "absolute -top-2 -right-2 flex size-6 items-center justify-center rounded-full border shadow-xs transition duration-100 ease-linear",
+                            isStarred
+                                ? "border-warning-primary bg-warning-solid text-white"
+                                : "border-secondary bg-primary text-fg-quaternary opacity-0 group-hover:opacity-100 hover:text-fg-warning-primary",
+                        )}
+                    >
+                        <Star01 className="size-3.5" fill={isStarred ? "currentColor" : "none"} aria-hidden="true" />
+                    </button>
+                ) : (
+                    isStarred && (
+                        <span className="absolute -top-2 -right-2 flex size-6 items-center justify-center rounded-full border border-warning-primary bg-warning-solid text-white shadow-xs">
+                            <Star01 className="size-3.5" fill="currentColor" aria-hidden="true" />
+                        </span>
+                    )
+                )}
+            </div>
+        );
+    };
+
+    return (
+        <div className="mx-auto w-full max-w-3xl px-6 py-10">
+            <h1 className="text-lg font-semibold text-primary">Links</h1>
+            <p className="mt-1 text-sm text-tertiary">
+                Every page, template, and client page created on this site — grouped by type.
+                {editing && " Hover a card and click the star to mark it important."}
+            </p>
+
+            {loading ? (
+                <div className="mt-8 flex h-32 items-center justify-center text-sm text-tertiary">Loading…</div>
+            ) : (
+                <div className="mt-8 flex flex-col gap-8">
+                    {starredItems.length > 0 && (
+                        <div>
+                            <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold tracking-widest text-warning-primary uppercase">
+                                <Star01 className="size-3.5" fill="currentColor" aria-hidden="true" /> Starred <span className="text-quaternary">({starredItems.length})</span>
+                            </p>
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                {starredItems.map((item) => (
+                                    <LinkCard key={item.id} item={item} />
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    {[...groups.entries()].map(([kind, kindItems]) => (
+                        <div key={kind}>
+                            <p className="mb-3 text-xs font-semibold tracking-widest text-quaternary uppercase">
+                                {kind} <span className="text-quaternary">({kindItems.length})</span>
+                            </p>
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                {kindItems.map((item) => (
+                                    <LinkCard key={item.id} item={item} />
+                                ))}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
 
 export const RoadmapScreen = () => {
     const [data, setData] = useState<RoadmapData>(DEFAULT_DATA);
@@ -269,6 +400,15 @@ export const RoadmapScreen = () => {
     const [loading, setLoading] = useState(true);
     const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
     const [activeSection, setActiveSection] = useState("overview");
+    // "Links" swaps the main pane to a separate directory view instead of
+    // scrolling to a section — everything else stays on the long-scroll doc.
+    // Kept in the URL (?view=links) so the browser Back button restores it after
+    // clicking through to a link instead of resetting to the top of the page.
+    const [searchParams, setSearchParams] = useSearchParams();
+    const [activeView, setActiveView] = useState<"scroll" | "links">(searchParams.get("view") === "links" ? "links" : "scroll");
+    const [linkItems, setLinkItems] = useState<SearchItem[]>([]);
+    const [linksLoaded, setLinksLoaded] = useState(false);
+    const [linksLoading, setLinksLoading] = useState(false);
     const mainRef = useRef<HTMLDivElement>(null);
     const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     // Latest data for the Shift+S flush (the keydown listener is bound once).
@@ -287,6 +427,7 @@ export const RoadmapScreen = () => {
                         overview: stored.overview ?? DEFAULT_DATA.overview,
                         todos: stored.todos ?? DEFAULT_DATA.todos,
                         questions: stored.questions ?? DEFAULT_DATA.questions,
+                        starredLinks: stored.starredLinks ?? DEFAULT_DATA.starredLinks,
                     });
                 }
             })
@@ -324,6 +465,11 @@ export const RoadmapScreen = () => {
                 .then(() => setSaveState("saved"))
                 .catch(() => setSaveState("error"));
         }, 600);
+    };
+
+    const toggleStarLink = (id: string) => {
+        const starred = data.starredLinks ?? [];
+        persist({ ...data, starredLinks: starred.includes(id) ? starred.filter((x) => x !== id) : [...starred, id] });
     };
 
     // Overview ops
@@ -441,15 +587,49 @@ export const RoadmapScreen = () => {
     );
 
     const scrollTo = (id: string) => {
+        const comingFromLinks = activeView === "links";
+        setActiveView("scroll");
         setActiveSection(id);
         // Scroll ONLY the content container — scrollIntoView would also scroll the
         // overflow-hidden page root and drag the icon rail / side menu out of view.
-        const el = document.getElementById(`roadmap-section-${id}`);
-        const container = mainRef.current;
-        if (!el || !container) return;
-        const top = el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - 24;
-        container.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+        const doScroll = () => {
+            const el = document.getElementById(`roadmap-section-${id}`);
+            const container = mainRef.current;
+            if (!el || !container) return;
+            const top = el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - 24;
+            container.scrollTo({ top: Math.max(0, top), behavior: comingFromLinks ? "auto" : "smooth" });
+        };
+        // Coming back from the Links view swaps the whole pane back in — the section
+        // anchors don't exist in the DOM yet at click-time, so wait for the re-render
+        // to commit and paint before measuring/scrolling.
+        if (comingFromLinks) requestAnimationFrame(() => requestAnimationFrame(doScroll));
+        else doScroll();
     };
+
+    const openLinks = () => setActiveView("links");
+
+    // Load the links directory whenever the Links view becomes active — covers
+    // both the nav click and landing here directly via a restored ?view=links URL
+    // (e.g. the browser Back button after following a link out).
+    useEffect(() => {
+        if (activeView !== "links" || linksLoaded) return;
+        setLinksLoaded(true);
+        setLinksLoading(true);
+        fetchDynamicSearchItems()
+            .then((dynamic) => setLinkItems([...STATIC_ITEMS, ...dynamic]))
+            .finally(() => setLinksLoading(false));
+    }, [activeView, linksLoaded]);
+
+    // Keep the URL in sync with the Links view so the browser Back button restores
+    // it after clicking through to a link, instead of resetting to the top of the
+    // page. replace: true keeps every view switch out of the history stack.
+    useEffect(() => {
+        const next = new URLSearchParams(searchParams);
+        if (activeView === "links") next.set("view", "links");
+        else next.delete("view");
+        if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeView]);
 
     // Scroll-spy: as the page scrolls, highlight the side-menu item for the section
     // currently in view (the last heading above the top ~40% of the pane; at the
@@ -495,10 +675,10 @@ export const RoadmapScreen = () => {
         >
             <HighlightPen enabled={editing} />
             {navCollapsed && <CollapsedTopBar title="Project Management" onExpand={toggleNav} />}
-            <div className="flex min-h-0 flex-1">
+            <div className="flex min-h-0 flex-1 gap-2 bg-secondary p-2">
                 {/* Side menu */}
                 {!navCollapsed && (
-                    <aside className="flex w-[240px] shrink-0 flex-col border-r border-secondary bg-primary">
+                    <aside className="flex w-[240px] shrink-0 flex-col overflow-hidden rounded-lg bg-primary shadow-sm">
                         <div className="flex h-[73px] shrink-0 items-center justify-between border-b border-secondary px-5">
                             <h2 className="text-md font-semibold text-primary">Project Management</h2>
                             <NavCollapseButton onClick={toggleNav} />
@@ -523,10 +703,10 @@ export const RoadmapScreen = () => {
                                         >
                                             <button
                                                 type="button"
-                                                onClick={() => scrollTo(s.id)}
+                                                onClick={() => (s.id === "links" ? openLinks() : scrollTo(s.id))}
                                                 className={cx(
                                                     "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-semibold transition duration-100 ease-linear",
-                                                    activeSection === s.id
+                                                    (activeView === "links" ? s.id === "links" : activeSection === s.id)
                                                         ? "bg-secondary_hover text-primary"
                                                         : "text-secondary hover:bg-primary_hover hover:text-primary",
                                                 )}
@@ -543,8 +723,8 @@ export const RoadmapScreen = () => {
                 )}
 
                 {/* Main content */}
-                <main className="flex min-w-0 flex-1 flex-col bg-secondary">
-                    <div ref={mainRef} className="flex-1 overflow-y-auto">
+                <main className="flex min-w-0 flex-1 flex-col">
+                    <div ref={mainRef} className="flex-1 overflow-y-auto overflow-x-hidden rounded-lg bg-primary shadow-sm">
                         <PageBanner
                             breadcrumb={[
                                 { label: "Dashboard", to: "/dashboard", icon: LayoutAlt01 },
@@ -564,7 +744,13 @@ export const RoadmapScreen = () => {
                                 ) : undefined
                             }
                         />
-                        <div className="mx-auto w-full max-w-3xl rounded-3xl border border-secondary bg-primary px-6 py-10 shadow-sm">
+                        {activeView === "links" ? (
+                            <LinksView items={linkItems} loading={linksLoading} editing={editing} starred={data.starredLinks ?? []} onToggleStar={toggleStarLink} />
+                        ) : (
+                        <div className="mx-auto w-full px-6 py-10">
+                            {/* ——— Row 1: Overview + Features (paired so the two shorter sections
+                                sit side by side instead of leaving empty space) ——— */}
+                            <div className="grid grid-cols-1 items-stretch justify-center gap-6 lg:grid-cols-[45%_45%]">
                             {/* ——— Project Overview ——— */}
                             <motion.section
                                 initial={{ opacity: 0, y: 16 }}
@@ -603,7 +789,7 @@ export const RoadmapScreen = () => {
                                 viewport={{ once: true, margin: "-40px" }}
                                 transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
                                 id="roadmap-section-features"
-                                className="mt-16 scroll-mt-6"
+                                className="scroll-mt-6"
                             >
                                 <SectionCard label="Features">
                                     <div className="flex items-center gap-2.5">
@@ -711,7 +897,10 @@ export const RoadmapScreen = () => {
                                     </div>
                                 </SectionCard>
                             </motion.section>
+                            </div>
 
+                            {/* ——— Row 2: To-do + Questions ——— */}
+                            <div className="mt-16 grid grid-cols-1 items-stretch justify-center gap-6 lg:grid-cols-[45%_45%]">
                             {/* ——— To-do ——— */}
                             <motion.section
                                 initial={{ opacity: 0, y: 16 }}
@@ -719,7 +908,7 @@ export const RoadmapScreen = () => {
                                 viewport={{ once: true, margin: "-40px" }}
                                 transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
                                 id="roadmap-section-todo"
-                                className="mt-16 scroll-mt-6"
+                                className="scroll-mt-6"
                             >
                                 <SectionCard label="To-do">
                                     <div className="flex items-center justify-between">
@@ -784,7 +973,7 @@ export const RoadmapScreen = () => {
                                 viewport={{ once: true, margin: "-40px" }}
                                 transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
                                 id="roadmap-section-questions"
-                                className="mt-16 scroll-mt-6"
+                                className="scroll-mt-6"
                             >
                                 <SectionCard label="Questions">
                                     <div className="flex items-center justify-between">
@@ -818,7 +1007,7 @@ export const RoadmapScreen = () => {
                                                 All questions answered — nothing blocking the next round.
                                             </p>
                                         ) : (
-                                            openQuestions.map((q, i) => renderQuestionCard(q, i, false))
+                                            openQuestions.map((q) => renderQuestionCard(q, data.questions.findIndex((x) => x.id === q.id), false))
                                         )}
                                     </div>
 
@@ -851,7 +1040,7 @@ export const RoadmapScreen = () => {
                                                         className="overflow-hidden"
                                                     >
                                                         <div className="mt-3 flex flex-col gap-3">
-                                                            {resolvedQuestions.map((q, i) => renderQuestionCard(q, i, true))}
+                                                            {resolvedQuestions.map((q) => renderQuestionCard(q, data.questions.findIndex((x) => x.id === q.id), true))}
                                                         </div>
                                                     </motion.div>
                                                 )}
@@ -860,7 +1049,10 @@ export const RoadmapScreen = () => {
                                     )}
                                 </SectionCard>
                             </motion.section>
+                            </div>
 
+                            {/* ——— Row 3: Roadmap + Timeline ——— */}
+                            <div className="mt-16 grid grid-cols-1 items-stretch justify-center gap-6 lg:grid-cols-[45%_45%]">
                             {/* ——— Roadmap ——— */}
                             <motion.section
                                 initial={{ opacity: 0, y: 16 }}
@@ -868,7 +1060,7 @@ export const RoadmapScreen = () => {
                                 viewport={{ once: true, margin: "-40px" }}
                                 transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
                                 id="roadmap-section-roadmap"
-                                className="mt-16 scroll-mt-6"
+                                className="scroll-mt-6"
                             >
                                 <SectionCard label="Roadmap">
                                     <div className="flex items-center gap-2.5">
@@ -957,7 +1149,7 @@ export const RoadmapScreen = () => {
                                 viewport={{ once: true, margin: "-40px" }}
                                 transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
                                 id="roadmap-section-timeline"
-                                className="mt-16 scroll-mt-6 pb-6"
+                                className="scroll-mt-6 pb-6"
                             >
                                 <SectionCard label="Timeline">
                                     <div className="flex items-center justify-between">
@@ -1069,7 +1261,9 @@ export const RoadmapScreen = () => {
                                     </div>
                                 </SectionCard>
                             </motion.section>
+                            </div>
                         </div>
+                        )}
                     </div>
                 </main>
 

@@ -209,11 +209,11 @@ export const AppShell = ({
     return (
     <div className={cx("flex h-dvh gap-2.5 overflow-hidden bg-tertiary pt-1 pr-2.5 pb-2.5 sm:gap-3 sm:pr-3 sm:pb-3", showRail ? "pl-0" : "pl-2.5 sm:pl-3")}>
         {showRail && rail}
-        <div className="flex min-h-0 flex-1 flex-col gap-2.5 sm:gap-3">
+        <div className="flex min-h-0 flex-1 flex-col gap-1 sm:gap-1.5">
             {/* Global search + back/forward — only on pages with the department rail.
-                Row height matches the rail's favicon header (73px) so the two line up. */}
+                Row height matches the rail's favicon header (64px) so the two line up. */}
             {rail && (
-                <div className="flex h-[73px] shrink-0 items-center gap-1 px-1">
+                <div className="flex h-16 shrink-0 items-center gap-1 px-1">
                     <button
                         type="button"
                         onClick={() => navigate(-1)}
@@ -283,8 +283,8 @@ export const IconRail = ({
 
     return (
         <aside className="flex h-full w-[88px] shrink-0 flex-col items-center pb-4">
-            {/* Favicon — same header height as the side menu + main content headers */}
-            <div className="flex h-[73px] w-full shrink-0 items-center justify-center">
+            {/* Favicon — matches the global search row's height (icon-rail.tsx) so they line up */}
+            <div className="flex h-16 w-full shrink-0 items-center justify-center">
                 <img
                     src="/hgm logo/Favicon ON LIGHT.svg"
                     alt="HiddenGem"
