@@ -1068,8 +1068,12 @@ export const OwnerGuideScreen = () => {
     const [searchParams, setSearchParams] = useSearchParams();
     const isTemplate = !slug;
     // Credentials are keyed by the guide slug for client guides, or the local
-    // session for the template preview.
-    const [sessionId] = useState(() => slug ?? getOrCreateSession());
+    // session for the template preview. Deliberately NOT a useState: `/owner-guide`
+    // and `/owner-guide/:slug` render the same component type, so React Router
+    // doesn't remount on navigation between them (e.g. right after creating a new
+    // guide) — a useState initializer would freeze on the first slug it ever saw
+    // and every save would silently go to the wrong session_id.
+    const sessionId = slug ?? getOrCreateSession();
 
     const mainRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1614,7 +1618,7 @@ export const OwnerGuideScreen = () => {
                 onToggleSharePw={() => setShowSharePw(s => !s)}
                 onCopyShareLink={copyShareLink}
                 shareCopied={shareCopied}
-                canCreate={isTeam || isTemplate}
+                canCreate={isTeam && isTemplate}
                 onCreate={() => setCreateOpen(true)}
                 showTemplateHint={isTemplate && showTemplateToast}
                 onDismissTemplateHint={() => setShowTemplateToast(false)}
@@ -1643,11 +1647,29 @@ export const OwnerGuideScreen = () => {
                         original narrower width via this inner max-w wrapper. */}
                     <div className="sticky top-0 z-10 bg-[#FDFDFD] pt-9 dark:bg-primary">
                         <div className={step.credSection === "overview" ? "mx-auto max-w-[760px]" : undefined}>
-                            {/* breadcrumb */}
-                            <div className="mb-3 flex items-center gap-2 text-[12px] font-medium text-quaternary">
-                                <span>Step {currentStep + 1} of {steps.length}</span>
-                                <span>·</span>
-                                <span>{filledForms} of {formSteps.length} forms filled</span>
+                            {/* breadcrumb + quick back/next — lets users move between steps
+                                without scrolling to the bottom of a long instructions list. */}
+                            <div className="mb-3 flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2 text-[12px] font-medium text-quaternary">
+                                    <span>Step {currentStep + 1} of {steps.length}</span>
+                                    <span>·</span>
+                                    <span>{filledForms} of {formSteps.length} forms filled</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                    <button type="button" onClick={() => navigate(currentStep - 1)} disabled={currentStep === 0} title="Back"
+                                        className="flex size-7 items-center justify-center rounded-lg border border-secondary text-secondary transition hover:bg-secondary disabled:pointer-events-none disabled:opacity-30">
+                                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M15 18l-6-6 6-6" /></svg>
+                                    </button>
+                                    <button type="button"
+                                        onClick={() => {
+                                            if (currentStep < steps.length - 1) { setVisited(v => new Set(v).add(currentStep)); navigate(currentStep + 1); }
+                                            else setShowComplete(true);
+                                        }}
+                                        title={currentStep < steps.length - 1 ? "Next" : "Complete Onboarding"}
+                                        className="flex size-7 items-center justify-center rounded-lg border border-secondary text-secondary transition hover:bg-secondary">
+                                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M9 6l6 6-6 6" /></svg>
+                                    </button>
+                                </div>
                             </div>
 
                             {/* title */}
