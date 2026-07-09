@@ -25,6 +25,7 @@ import { supabase, type OwnerGuideMeta } from "@/lib/supabase";
 import { readSopPage, writeSopPage } from "@/lib/db-sync";
 import { dbLogger } from "@/lib/db-logger";
 import { useEditShortcuts } from "@/hooks/use-edit-shortcuts";
+import { useAuthUser } from "@/hooks/use-auth-user";
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -1063,6 +1064,44 @@ const EyeIcon = ({ off }: { off?: boolean }) =>
         ? <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19M1 1l22 22" /></svg>
         : <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>;
 
+/** Blocks the master template from anyone outside the HGM team — clients only
+    ever see their own private guide copy (/owner-guide/:slug), never this one. */
+const TemplateGate = ({ signedIn }: { signedIn: boolean }) => {
+    const [signingIn, setSigningIn] = useState(false);
+    const signIn = async () => {
+        setSigningIn(true);
+        const { error } = await supabase.auth.signInWithOAuth({
+            provider: "google",
+            options: { redirectTo: window.location.href, queryParams: { prompt: "select_account" } },
+        });
+        if (error) setSigningIn(false);
+    };
+    return (
+        <main className="flex min-h-dvh flex-col items-center justify-center bg-secondary px-4 text-center">
+            <div className="flex size-14 items-center justify-center rounded-2xl bg-brand-50 dark:bg-brand-950/40">
+                <Shield01 className="size-7 text-fg-brand-primary" aria-hidden="true" />
+            </div>
+            <h1 className="mt-5 text-display-xs font-semibold text-primary">Team only</h1>
+            <p className="mt-2 max-w-sm text-sm text-tertiary">
+                {signedIn
+                    ? "This master template is private to the HiddenGem Media team. Your account doesn't have access."
+                    : "This master template is private. Sign in with your @hiddengem.media account to open it."}
+            </p>
+            {!signedIn && (
+                <button type="button" onClick={signIn} disabled={signingIn}
+                    className="mt-6 flex items-center justify-center gap-2.5 rounded-lg border border-secondary bg-primary px-4 py-2.5 text-sm font-semibold text-primary transition duration-100 ease-linear hover:bg-secondary_hover disabled:opacity-50">
+                    {signingIn ? (
+                        <span className="size-4 animate-spin rounded-full border-2 border-brand border-t-transparent" />
+                    ) : (
+                        <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" /><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z" /><path fill="#FBBC05" d="M5.84 14.1a6.6 6.6 0 0 1 0-4.2V7.06H2.18a11 11 0 0 0 0 9.88l3.66-2.84z" /><path fill="#EA4335" d="M12 4.75c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 1.46 14.97.5 12 .5A11 11 0 0 0 2.18 7.06l3.66 2.84C6.71 6.68 9.14 4.75 12 4.75z" /></svg>
+                    )}
+                    Sign in with Google
+                </button>
+            )}
+        </main>
+    );
+};
+
 // ── Main screen ───────────────────────────────────────────────────
 
 export const OwnerGuideScreen = () => {
@@ -1112,14 +1151,10 @@ export const OwnerGuideScreen = () => {
     const [showComplete, setShowComplete] = useState(false);
     // Editing is HGM-team only: the lock toggle is hidden from clients, and a
     // signed-in @hiddengem.media Supabase session is required to enter edit mode.
-    const [isTeam, setIsTeam] = useState(false);
-
-    useEffect(() => {
-        const check = (email: string | undefined) => setIsTeam(!!email && email.toLowerCase().endsWith("@hiddengem.media"));
-        supabase.auth.getSession().then(({ data }) => check(data.session?.user?.email));
-        const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => check(session?.user?.email));
-        return () => sub.subscription.unsubscribe();
-    }, []);
+    // The master template (no slug) additionally requires team sign-in just to
+    // VIEW it at all — clients only ever see their own private guide copy.
+    const { user: authUser, loading: authLoading } = useAuthUser();
+    const isTeam = !!authUser?.email && authUser.email.toLowerCase().endsWith("@hiddengem.media");
 
     const editing = isTeam && !locked;
 
@@ -1632,6 +1667,10 @@ export const OwnerGuideScreen = () => {
             )}
         </div>
     );
+
+    // The master template is HGM-team only — clients never land here; they only
+    // ever see their own guide at /owner-guide/:slug.
+    if (isTemplate && !authLoading && !isTeam) return <TemplateGate signedIn={!!authUser} />;
 
     return (
         <AppShell className="flex gap-2 bg-secondary p-2">

@@ -19,9 +19,9 @@ Structural facts you already know (never need a search for these, they're fixed)
 - Client tiers: Tier 0, Tier 1, Tier 2, Mastermind — every client belongs to exactly one.
 - Team departments (the icon rail): Clients, Website, AM, Docs.
 - Shareable templates: Meta Pixel, Popup/Lead Capture, Chat Widget, Host Onboarding Form, Owner Guide, Client Dashboard.
-If asked to enumerate/define one of these (e.g. "what tiers exist"), answer directly from this list — don't search, and don't say you don't know.
+These facts are only the fixed CATEGORY NAMES themselves — e.g. "what tiers exist" or "what departments are there" — answer directly from this list, don't search, don't say you don't know. They do NOT cover which client is in which tier, who their AM is, or any other per-client data — that's a lookup, always call search_site_content for it even though tiers are mentioned above.
 
-Use the search_site_content tool for anything that requires looking at actual saved data: a specific client's page, a saved prompt/pattern, or the client roster filtered by tier — e.g. "give me the template for popups", "find John's dashboard", "list Tier 0 clients". Always search before saying something doesn't exist.
+Use the search_site_content tool for anything that requires looking at actual saved data: a specific client's page or tier/AM/location, a saved prompt/pattern, or the client roster filtered by tier — e.g. "give me the template for popups", "find John's dashboard", "what tier is Acme in", "list Tier 0 clients". Always search before saying something doesn't exist or that you don't have the data.
 
 When you get results back, answer concisely and include the relevant link(s) as plain paths (e.g. /acme-hostonboarding) — the app will render them as clickable links. If a search genuinely comes back empty, say so plainly and suggest a rephrase — but only for things that actually require a search; never claim not to know one of the structural facts above.`;
 
@@ -38,6 +38,12 @@ const SEARCH_TOOL: Anthropic.Tool = {
         required: ["query"],
     },
 };
+
+// Matches the TIERS list in src/pages/dashboard-screen.tsx — the roster stores
+// the id ("tier-0") but the site only ever displays the label ("Tier 0"), so
+// results need translating or Claude's answers won't match what's on-screen.
+const TIER_LABELS: Record<string, string> = { "tier-0": "Tier 0", "tier-1": "Tier 1", "tier-2": "Tier 2", mastermind: "Mastermind" };
+const tierLabel = (id: string) => TIER_LABELS[id] ?? id;
 
 interface SearchResult {
     source: string;
@@ -72,7 +78,7 @@ async function searchSiteContent(supabaseAdmin: ReturnType<typeof createClient>,
     for (const c of hostonb.data ?? []) results.push({ source: "Host Onboarding Form", title: c.client_name, url: `/${c.slug}` });
     for (const c of dashboards.data ?? []) results.push({ source: "Client Dashboard", title: c.client_name, url: `/${c.slug}` });
     for (const c of ownerguides.data ?? []) results.push({ source: "Owner Guide", title: c.client_name, url: `/owner-guide/${c.slug}` });
-    for (const c of clients.data ?? []) results.push({ source: "Client roster", title: c.name, subtitle: [c.tier, c.am, c.location].filter(Boolean).join(" · "), url: c.link || null });
+    for (const c of clients.data ?? []) results.push({ source: "Client roster", title: c.name, subtitle: [c.tier && tierLabel(c.tier), c.am, c.location].filter(Boolean).join(" · "), url: c.link || null });
 
     return results.slice(0, 20);
 }
