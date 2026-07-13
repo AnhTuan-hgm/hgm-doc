@@ -1,0 +1,204 @@
+/* HiddenGem Stays — Design Tokens
+ * Colors: Deep forest greens, warm sandy neutrals, soft gold
+ * Type: Fraunces (display serif) + Inter (body sans)
+ */
+
+/* Display serif — Fraunces (CDN, no brand TTF provided yet) */
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400&display=swap');
+
+/* Body sans — Inter, loaded from brand-supplied variable font files */
+@font-face {
+  font-family: 'Inter';
+  src: url('fonts/Inter-VariableFont_opsz_wght.ttf') format('truetype-variations');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Inter';
+  src: url('fonts/Inter-Italic-VariableFont_opsz_wght.ttf') format('truetype-variations');
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+
+:root {
+  /* ── Brand: Forest (primary) ─────────────────────────────────── */
+  --forest-25:  #f3f7f4;
+  --forest-50:  #e6ede7;
+  --forest-100: #c9d8cc;
+  --forest-200: #9bbaa3;
+  --forest-300: #6d9a78;
+  --forest-400: #477a55;
+  --forest-500: #2f5e3f;   /* core brand green */
+  --forest-600: #244c33;
+  --forest-700: #1c3b27;   /* hover / deep */
+  --forest-800: #142a1c;
+  --forest-900: #0c1a11;
+
+  /* ── Brand: Sand (neutrals, warm) ─────────────────────────────── */
+  --sand-25:  #fbf9f5;
+  --sand-50:  #f6f2ea;
+  --sand-100: #ede5d4;
+  --sand-200: #dcd0b5;
+  --sand-300: #c2b393;
+  --sand-400: #a08f6d;
+  --sand-500: #7c6a4b;
+  --sand-600: #5c4e37;
+  --sand-700: #3f3525;
+  --sand-800: #2a2319;
+  --sand-900: #1a1610;
+
+  /* ── Brand: Gold (accent, "the gem") ─────────────────────────── */
+  --gold-25:  #fdf9ec;
+  --gold-50:  #faf1d2;
+  --gold-100: #f3e1a3;
+  --gold-200: #ecca6e;
+  --gold-300: #d6a94a;   /* soft gold */
+  --gold-400: #b68a35;
+  --gold-500: #92701f;
+  --gold-600: #6e5414;
+  --gold-700: #4a380b;
+
+  /* ── Semantic status ─────────────────────────────────────────── */
+  --success: #2f6d46;
+  --warning: #b68a35;
+  --error:   #a8412b;
+  --info:    #2f5e3f;
+
+  /* ── Neutrals (cool, for UI chrome) ───────────────────────────── */
+  --neutral-0:   #ffffff;
+  --neutral-25:  #fbfaf8;
+  --neutral-50:  #f5f3ee;
+  --neutral-100: #ebe7de;
+  --neutral-200: #d5cebd;
+  --neutral-300: #a9a193;
+  --neutral-400: #7a7366;
+  --neutral-500: #544f46;
+  --neutral-700: #2a2720;
+  --neutral-900: #141210;
+
+  /* ── Foreground / Background tokens ───────────────────────────── */
+  --bg-page:     var(--sand-25);
+  --bg-surface:  var(--neutral-0);
+  --bg-raised:   var(--neutral-0);
+  --bg-muted:    var(--sand-50);
+  --bg-inverse:  var(--forest-700);
+
+  --fg-primary:   var(--forest-900);
+  --fg-secondary: var(--neutral-700);
+  --fg-tertiary:  var(--neutral-500);
+  --fg-quaternary:var(--neutral-400);
+  --fg-on-brand:  var(--sand-25);
+  --fg-brand:     var(--forest-500);
+  --fg-accent:    var(--gold-400);
+
+  --border-subtle:  var(--neutral-100);
+  --border-default: var(--neutral-200);
+  --border-strong:  var(--neutral-300);
+  --border-brand:   var(--forest-500);
+
+  /* ── Radii ───────────────────────────────────────────────────── */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;   /* primary card radius */
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+  --radius-pill: 999px;
+
+  /* ── Shadows (soft, layered) ─────────────────────────────────── */
+  --shadow-xs: 0 1px 2px rgba(20, 26, 17, 0.05);
+  --shadow-sm: 0 1px 3px rgba(20, 26, 17, 0.08), 0 1px 2px rgba(20, 26, 17, 0.04);
+  --shadow-md: 0 4px 8px -2px rgba(20, 26, 17, 0.08), 0 2px 4px -2px rgba(20, 26, 17, 0.04);
+  --shadow-lg: 0 12px 16px -4px rgba(20, 26, 17, 0.10), 0 4px 6px -2px rgba(20, 26, 17, 0.04);
+  --shadow-xl: 0 20px 24px -4px rgba(20, 26, 17, 0.10), 0 8px 8px -4px rgba(20, 26, 17, 0.04);
+  --shadow-float: 0 24px 48px -12px rgba(20, 26, 17, 0.18);
+  --shadow-gold-glow: 0 0 0 4px rgba(214, 169, 74, 0.18);
+
+  /* ── Spacing scale (4px base) ─────────────────────────────────── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+
+  /* ── Typography: families ─────────────────────────────────────── */
+  --font-display: 'Fraunces', 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+  --font-body:    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono:    'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+  /* Editorial display — uses Fraunces at low opsz for warmth */
+  --display-2xl: 400 72px/1.05 var(--font-display);
+  --display-xl:  400 60px/1.08 var(--font-display);
+  --display-lg:  400 48px/1.1  var(--font-display);
+  --display-md:  400 36px/1.15 var(--font-display);
+  --display-sm:  500 28px/1.2  var(--font-display);
+
+  /* Body sans */
+  --text-xl: 400 20px/1.5 var(--font-body);
+  --text-lg: 400 18px/1.55 var(--font-body);
+  --text-md: 400 16px/1.5 var(--font-body);
+  --text-sm: 400 14px/1.45 var(--font-body);
+  --text-xs: 500 12px/1.4 var(--font-body);
+
+  /* Display letter-spacing (serif; slightly tight) */
+  --tracking-display: -0.012em;
+  --tracking-body:    -0.003em;
+  --tracking-eyebrow: 0.14em;
+}
+
+/* ─── Semantic element defaults ─────────────────────────────────── */
+html, body {
+  background: var(--bg-page);
+  color: var(--fg-primary);
+  font: var(--text-md);
+  letter-spacing: var(--tracking-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, .h1 { font: var(--display-xl); letter-spacing: var(--tracking-display); color: inherit; margin: 0; }
+h2, .h2 { font: var(--display-lg); letter-spacing: var(--tracking-display); color: inherit; margin: 0; }
+h3, .h3 { font: var(--display-md); letter-spacing: var(--tracking-display); color: inherit; margin: 0; }
+h4, .h4 { font: var(--display-sm); letter-spacing: var(--tracking-display); color: inherit; margin: 0; }
+h5, .h5 { font: 600 20px/1.3 var(--font-body); color: inherit; margin: 0; }
+h6, .h6 { font: 600 16px/1.3 var(--font-body); color: inherit; margin: 0; }
+p        { font: var(--text-md); color: inherit; margin: 0; }
+
+.eyebrow {
+  font: 600 12px/1.2 var(--font-body);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--fg-accent);
+}
+
+.serif-italic { font-family: var(--font-display); font-style: italic; font-weight: 400; }
+
+/* ── Common helpers ──────────────────────────────────────────── */
+.hg-card {
+  background: var(--bg-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.hg-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--sand-50);
+  color: var(--forest-700);
+  font: 500 13px/1 var(--font-body);
+}
+.hg-chip--gem {
+  background: var(--gold-50);
+  color: var(--gold-700);
+  box-shadow: inset 0 0 0 1px var(--gold-200);
+}

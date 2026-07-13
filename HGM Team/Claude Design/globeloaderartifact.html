@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Globe Loader — HiddenGem Stays</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg-page: #fbf9f5;
+    --ink:     #1c3b27;
+  }
+
+  html, body {
+    width: 100%; height: 100%;
+    background: var(--bg-page);
+  }
+
+  .stage {
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--bg-page);
+  }
+
+  .wrap {
+    position: relative;
+    width: 200px; height: 200px;
+  }
+
+  @keyframes whirlspin    { to { transform: rotate(360deg);  } }
+  @keyframes whirlspinrev { to { transform: rotate(-360deg); } }
+
+  .ring {
+    position: absolute; inset: 0;
+    border-radius: 50%;
+    pointer-events: none;
+  }
+
+  .ring--outer {
+    background: conic-gradient(
+      from 0deg,
+      transparent 0deg 150deg,
+      color-mix(in srgb, var(--ink) 28%, transparent) 320deg,
+      color-mix(in srgb, var(--ink) 42%, transparent) 352deg,
+      transparent 360deg
+    );
+    -webkit-mask: radial-gradient(circle 100px at center, transparent 0 95px, #000 96px 99px, transparent 100px);
+            mask: radial-gradient(circle 100px at center, transparent 0 95px, #000 96px 99px, transparent 100px);
+    animation: whirlspinrev 4.4s linear infinite;
+  }
+
+  .ring--inner {
+    background: conic-gradient(
+      from 0deg,
+      transparent 0deg 190deg,
+      color-mix(in srgb, var(--ink) 0%,  transparent) 200deg,
+      color-mix(in srgb, var(--ink) 62%, transparent) 348deg,
+      transparent 360deg
+    );
+    -webkit-mask: radial-gradient(circle 95px at center, transparent 0 90px, #000 91px 94px, transparent 95px);
+            mask: radial-gradient(circle 95px at center, transparent 0 90px, #000 91px 94px, transparent 95px);
+    animation: whirlspin 2.4s linear infinite;
+  }
+
+  canvas { position: absolute; inset: 0; width: 200px; height: 200px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ring { animation: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="wrap" id="wrap">
+    <div class="ring ring--outer" aria-hidden="true"></div>
+    <div class="ring ring--inner" aria-hidden="true"></div>
+    <canvas id="globe" aria-hidden="true"></canvas>
+  </div>
+</div>
+
+<script>
+(async () => {
+  const INK        = '#1c3b27';
+  const SPIN_SPEED = 0.4;
+  const GRATICULE  = true;
+  const LAND_FILL  = false;
+  const REDUCED    = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const existing = [...document.scripts].find(s => s.src === src);
+      if (existing) {
+        if (existing.dataset.loaded === '1') { resolve(); return; }
+        existing.addEventListener('load', resolve);
+        existing.addEventListener('error', reject);
+        return;
+      }
+      const el = document.createElement('script');
+      el.src = src;
+      el.onload = () => { el.dataset.loaded = '1'; resolve(); };
+      el.onerror = reject;
+      document.head.appendChild(el);
+    });
+  }
+
+  try {
+    await loadScript('https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js');
+    await loadScript('https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js');
+
+    const world    = await d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json');
+    const land     = topojson.feature(world, world.objects.countries);
+    const borders  = topojson.mesh(world, world.objects.countries, (a, b) => a !== b);
+    const sphere   = { type: 'Sphere' };
+    const graticule = d3.geoGraticule10();
+
+    const canvas = document.getElementById('globe');
+    const dpr    = window.devicePixelRatio || 1;
+    canvas.width  = 200 * dpr;
+    canvas.height = 200 * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+
+    const projection = d3.geoOrthographic()
+      .scale(86)
+      .translate([100, 100])
+      .clipAngle(90);
+    const path = d3.geoPath(projection, ctx);
+
+    const wrap = document.getElementById('wrap');
+    wrap.style.setProperty('--ink', INK);
+
+    const t0 = performance.now();
+
+    function draw(now) {
+      if (!REDUCED) projection.rotate([(now - t0) / 1000 * 20 * SPIN_SPEED, -16, 0]);
+
+      ctx.clearRect(0, 0, 200, 200);
+      ctx.lineJoin = 'round';
+      ctx.lineCap  = 'round';
+
+      ctx.beginPath(); path(sphere);
+      ctx.globalAlpha = 0.9; ctx.lineWidth = 1.2; ctx.strokeStyle = INK; ctx.stroke();
+
+      if (GRATICULE) {
+        ctx.beginPath(); path(graticule);
+        ctx.globalAlpha = 0.16; ctx.lineWidth = 0.6; ctx.strokeStyle = INK; ctx.stroke();
+      }
+
+      if (LAND_FILL) {
+        ctx.beginPath(); path(land);
+        ctx.globalAlpha = 0.14; ctx.fillStyle = INK; ctx.fill();
+      }
+
+      ctx.beginPath(); path(borders);
+      ctx.globalAlpha = 0.5; ctx.lineWidth = 0.7; ctx.strokeStyle = INK; ctx.stroke();
+
+      ctx.beginPath(); path(land);
+      ctx.globalAlpha = 0.85; ctx.lineWidth = 0.85; ctx.strokeStyle = INK; ctx.stroke();
+
+      ctx.globalAlpha = 1;
+      requestAnimationFrame(draw);
+    }
+
+    requestAnimationFrame(draw);
+  } catch (err) {
+    console.error('GlobeLoader: data failed to load', err);
+  }
+})();
+</script>
+</body>
+</html>

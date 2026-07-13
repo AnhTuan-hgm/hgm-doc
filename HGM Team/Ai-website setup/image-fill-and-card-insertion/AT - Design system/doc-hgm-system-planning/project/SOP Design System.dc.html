@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/hiddengem-stays-design-system-4d25bc67-3850-488c-972e-3f141838323b/colors_and_type.css">
+<script src="_ds/hiddengem-stays-design-system-4d25bc67-3850-488c-972e-3f141838323b/_ds_bundle.js"></script>
+<script src="image-slot.js"></script>
+<style>
+:root{
+  /* ===== Brand — Cerulean Blue (primary = 600) ===== */
+  --brand-25:#f7fafe; --brand-50:#f1f5fd; --brand-100:#dfe7fa; --brand-200:#c6d6f7;
+  --brand-300:#9fbcf1; --brand-400:#7199e9; --brand-500:#5076e1; --brand-600:#3151d3;
+  --brand-700:#3247c3; --brand-800:#2e3b9f; --brand-900:#2a367e; --brand-950:#1e234d;
+  --brand:var(--brand-600);
+  /* ===== Success — Screamin' Green ===== */
+  --success-50:#eefff2; --success-100:#d8ffe2; --success-200:#b3ffc8; --success-300:#78fd9e;
+  --success-400:#36f26c; --success-500:#0df250; --success-600:#03b637; --success-700:#068f2f;
+  --success-800:#0b702a; --success-900:#0b5c25; --success-950:#003412; --success:var(--success-600);
+  /* ===== Warning — Golden Bell ===== */
+  --warning-50:#fdf9ed; --warning-100:#faeecb; --warning-200:#f4db93; --warning-300:#eec45b;
+  --warning-400:#eaae35; --warning-500:#e28e1d; --warning-600:#c86c17; --warning-700:#a64d17;
+  --warning-800:#873d19; --warning-900:#703217; --warning-950:#401808; --warning:var(--warning-500);
+  /* ===== Error — Persian Red ===== */
+  --error-50:#fdf3f3; --error-100:#fce4e4; --error-200:#facece; --error-300:#f5acac;
+  --error-400:#ed7c7c; --error-500:#e15252; --error-600:#cd3232; --error-700:#ad2828;
+  --error-800:#8f2525; --error-900:#772525; --error-950:#400f0f; --error:var(--error-600);
+  --info:var(--brand-600);
+  /* Re-skin the design-system green ("forest") to Success and gold to Warning
+     so every existing usage adopts the new palette automatically. */
+  --forest-50:#eefff2; --forest-100:#d8ffe2; --forest-400:#36f26c;
+  --forest-500:#0b7a31; --forest-600:#068f2f; --forest-700:#0b5c25;
+  --gold-25:#fdf9ed; --gold-50:#fdf9ed; --gold-100:#faeecb; --gold-200:#f4db93;
+  --gold-300:#eec45b; --gold-400:#eaae35; --gold-500:#e28e1d; --gold-600:#c86c17; --gold-700:#a64d17;
+  --font-display:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  --shadow-gold-glow:0 0 0 4px rgba(49,81,211,.22);
+}
+
+/* ===== LIGHT (default) ===== */
+[data-theme="light"]{
+  --bg-page:#f2f3f5; --bg-surface:#ffffff; --bg-raised:#ffffff; --bg-muted:#eceef1;
+  --fg-primary:#11151c; --fg-secondary:#3a4049; --fg-tertiary:#5b6371; --fg-quaternary:#8b93a1;
+  --border-subtle:#e7e9ee; --border-default:#dadde3; --border-strong:#c3c8d1;
+  --sand-25:#f7f8fa; --sand-50:#eef0f3; --sand-100:#e3e6ea; --sand-200:#d3d7dd;
+  --sand-600:#565b63; --sand-700:#383c43;
+  --neutral-0:#ffffff; --neutral-25:#f7f8fa; --neutral-50:#f2f3f5; --neutral-100:#e7e9ee;
+  --neutral-200:#d3d7dd; --neutral-300:#a9aeb8;
+  --stage:#eef0f3; --ink:#141822; --chrome-bg:rgba(242,243,245,.8);
+}
+
+/* ===== DARK ===== */
+[data-theme="dark"]{
+  --bg-page:#0d1014; --bg-surface:#161a21; --bg-raised:#1f242d; --bg-muted:#1e232c;
+  --fg-primary:#eef1f5; --fg-secondary:#c3c9d3; --fg-tertiary:#99a1ae; --fg-quaternary:#6c7480;
+  --border-subtle:#262b34; --border-default:#333a45; --border-strong:#475061;
+  --sand-25:#12161c; --sand-50:#171c24; --sand-100:#222833; --sand-200:#2c3340;
+  --sand-600:#aeb6c2; --sand-700:#d4d9e1;
+  --neutral-0:#161a21; --neutral-25:#161a21; --neutral-50:#1a1f27; --neutral-100:#262b34;
+  --neutral-200:#333a45; --neutral-300:#475061;
+  --stage:#10141a; --ink:#05070b; --chrome-bg:rgba(13,16,20,.72);
+  --brand-25:#121a2e; --brand-50:#16203f; --brand-100:#1d2c54; --brand-700:#9fbcf1;
+  --forest-50:#10241a; --forest-100:#15331f; --forest-600:#36f26c; --forest-700:#78fd9e;
+  --gold-25:#241e10; --gold-50:#241e10; --gold-100:#3a3016; --gold-200:#5a4a1e;
+  --gold-600:#eaae35; --gold-700:#eec45b;
+  --error-50:#2a1414; --error-700:#f5acac;
+}
+
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;height:100%;background:#f2f3f5;}
+[data-theme]{transition:background-color .25s ease,color .25s ease;}
+::-webkit-scrollbar{width:11px;height:11px;}
+::-webkit-scrollbar-thumb{background:var(--neutral-200);border-radius:99px;border:3px solid var(--bg-surface);}
+::-webkit-scrollbar-track{background:transparent;}
+@keyframes hgpulse{0%,100%{opacity:1;}50%{opacity:.4;}}
+</style>
+</helmet>
+
+<div data-theme="{{ theme }}" style="display:flex;height:100vh;width:100%;background:var(--bg-page);color:var(--fg-primary);font-family:var(--font-body);overflow:hidden;letter-spacing:var(--tracking-body)">
+
+  <aside style="width:284px;flex:none;height:100%;background:var(--bg-surface);border-right:1px solid var(--border-subtle);display:flex;flex-direction:column">
+    <div style="padding:22px 20px 18px;border-bottom:1px solid var(--border-subtle)">
+      <sc-if value="{{ isLight }}" hint-placeholder-val="{{ true }}"><img src="assets/logo-light.svg" alt="HiddenGem Media" style="height:28px;width:auto;display:block"></sc-if>
+      <sc-if value="{{ isDark }}" hint-placeholder-val="{{ false }}"><img src="assets/logo-dark.svg" alt="HiddenGem Media" style="height:28px;width:auto;display:block"></sc-if>
+      <div style="font:600 10px/1.3 var(--font-body);letter-spacing:.13em;color:var(--fg-quaternary);margin-top:10px">SOP DESIGN SYSTEM</div>
+    </div>
+    <nav style="flex:1;overflow-y:auto;padding:8px 12px 24px">
+      <sc-for list="{{ navGroups }}" as="grp" hint-placeholder-count="4">
+        <div style="font:600 10px/1 var(--font-body);letter-spacing:.13em;text-transform:uppercase;color:var(--fg-quaternary);padding:18px 12px 8px">{{ grp.label }}</div>
+        <sc-for list="{{ grp.links }}" as="lnk" hint-placeholder-count="3">
+          <a href="#" onClick="{{ lnk.onClick }}" style="{{ lnk.style }}">{{ lnk.label }}</a>
+        </sc-for>
+      </sc-for>
+    </nav>
+    <div style="padding:14px 18px;border-top:1px solid var(--border-subtle);display:flex;align-items:center;gap:8px;font:500 12px/1.3 var(--font-body);color:var(--fg-tertiary)">
+      <span style="width:8px;height:8px;border-radius:50%;background:var(--forest-400);flex:none"></span>
+      Spec v1.0 · for handoff
+    </div>
+  </aside>
+
+  <div ref="{{ setScrollEl }}" style="flex:1;height:100%;overflow-y:auto;position:relative">
+
+    <div style="position:sticky;top:0;z-index:30;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);background:rgba(242,243,245,.8);border-bottom:1px solid var(--border-subtle);padding:13px 48px;display:flex;align-items:center;justify-content:space-between;gap:24px;background:var(--chrome-bg)">
+      <div style="font:500 13px/1.3 var(--font-body);color:var(--fg-tertiary)">HiddenGem Media <span style="color:var(--neutral-300);margin:0 6px">/</span> <span style="color:var(--fg-secondary)">Documentation system</span></div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="display:flex;align-items:center;gap:8px;background:var(--bg-surface);border:1px solid var(--border-default);border-radius:99px;padding:7px 14px;color:var(--fg-tertiary);font:500 13px/1 var(--font-body);min-width:230px">
+          <svg viewBox="0 0 256 256" width="16" height="16" fill="currentColor" style="flex:none;opacity:.7"><path d="M229.66,218.34l-50.07-50.06a88.11,88.11,0,1,0-11.31,11.31l50.06,50.07a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z"></path></svg>
+          Search components &amp; SOPs
+        </div>
+        <button onClick="{{ toggleTheme }}" title="Toggle light / dark" style="width:38px;height:38px;flex:none;border-radius:99px;border:1px solid var(--border-default);background:var(--bg-surface);color:var(--fg-secondary);display:flex;align-items:center;justify-content:center;cursor:pointer">
+          <sc-if value="{{ isLight }}" hint-placeholder-val="{{ true }}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></svg></sc-if>
+          <sc-if value="{{ isDark }}" hint-placeholder-val="{{ false }}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.4"></circle><path d="M12 2.5v2M12 19.5v2M4.5 4.5l1.5 1.5M18 18l1.5 1.5M2.5 12h2M19.5 12h2M4.5 19.5 6 18M18 6l1.5-1.5"></path></svg></sc-if>
+        </button>
+        <span style="display:inline-flex;align-items:center;gap:6px;background:var(--brand-50);color:var(--brand-700);border-radius:99px;padding:7px 13px;font:600 12px/1 var(--font-body)">Cerulean · brand</span>
+      </div>
+    </div>
+
+    <div style="max-width:1080px;margin:0 auto;padding:0 48px 140px">
+
+      <!-- OVERVIEW -->
+      <section data-sec="overview" style="padding:64px 0 48px">
+        <div style="font:600 12px/1 var(--font-body);letter-spacing:.14em;text-transform:uppercase;color:var(--brand-600);margin-bottom:14px">Design system</div>
+        <h1 style="font:var(--display-xl);letter-spacing:var(--tracking-display);max-width:18ch;margin:0">SOPs &amp; step-by-step guides, built from one kit.</h1>
+        <p style="font:var(--text-lg);color:var(--fg-secondary);max-width:62ch;margin:20px 0 0">A shared component library for the documents we hand to clients and teammates. Every guide is assembled from three blocks — <strong style="color:var(--fg-primary)">doc-header</strong>, <strong style="color:var(--fg-primary)">doc-body</strong>, and <strong style="color:var(--fg-primary)">doc-footer</strong> — with a set of modular, drag-and-drop variables inside the body. The team writes in the builder; clients read, check off steps, and sign off.</p>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:36px">
+          <div style="background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);padding:18px;box-shadow:var(--shadow-sm)"><div style="font:var(--display-md);color:var(--brand);letter-spacing:-.02em">3</div><div style="font:500 13px/1.4 var(--font-body);color:var(--fg-tertiary);margin-top:4px">Core document blocks</div></div>
+          <div style="background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);padding:18px;box-shadow:var(--shadow-sm)"><div style="font:var(--display-md);color:var(--brand);letter-spacing:-.02em">14</div><div style="font:500 13px/1.4 var(--font-body);color:var(--fg-tertiary);margin-top:4px">Body variable components</div></div>
+          <div style="background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);padding:18px;box-shadow:var(--shadow-sm)"><div style="font:var(--display-md);color:var(--brand);letter-spacing:-.02em">3</div><div style="font:500 13px/1.4 var(--font-body);color:var(--fg-tertiary);margin-top:4px">Header layout directions</div></div>
+          <div style="background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);padding:18px;box-shadow:var(--shadow-sm)"><div style="font:var(--display-md);color:var(--brand);letter-spacing:-.02em">2</div><div style="font:500 13px/1.4 var(--font-body);color:var(--fg-tertiary);margin-top:4px">Client dashboard views</div></div>
+        </div>
+      </section>
+
+      <!-- FOUNDATIONS -->
+      <section data-sec="foundations" style="padding:48px 0;border-top:1px solid var(--border-subtle)">
+        <div style="font:600 12px/1 var(--font-body);letter-spacing:.14em;text-transform:uppercase;color:var(--brand-600);margin-bottom:8px">Foundations</div>
+        <h2 style="font:var(--display-md);letter-spacing:var(--tracking-display);margin:0">Tokens at a glance</h2>
+        <p style="font:var(--text-md);color:var(--fg-secondary);max-width:62ch;margin:10px 0 28px">Cerulean blue leads. Three status families — success, warning, and error — carry every state, and cool neutral grays hold the surfaces. The whole system ships in light and dark; flip the toggle in the top bar. Inter throughout.</p>
+        <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:20px">
+          <div style="background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);padding:22px;box-shadow:var(--shadow-sm)">
+            <div style="font:600 13px/1 var(--font-body);color:var(--fg-tertiary);margin-bottom:12px">Brand · Cerulean Blue</div>
+            <div style="display:flex;gap:4px;margin-bottom:6px">
+              <div style="flex:1;height:32px;border-radius:6px;background:var(--brand-50)"></div>
+              <div style="flex:1;height:32px;border-radius:6px;background:var(--brand-100)"></div>
+              <div style="flex:1;height:32px;border-radius:6px;background:var(--brand-200)"></div>
+              <div style="flex:1;height:32px;border-radius:6px;background:var(--brand-300)"></div>
+              <div style="flex:1;height:32px;border-radius:6px;background:var(--brand-400)"></div>
+              <div style="flex:1;height:32px;border-radius:6px;background:var(--brand-500)"></div>
+              <div style="flex:1.3;height:32px;border-radius:6px;background:var(--brand-600);box-shadow:0 0 0 2px var(--bg-surface),0 0 0 4px var(--brand-600)"></div>
+              <div style="flex:1;height:32px;border-radius:6px;background:var(--brand-700)"></div>
+              <div style="flex:1;height:32px;border-radius:6px;background:var(--brand-800)"></div>
+              <div style="flex:1;height:32px;border-radius:6px;background:var(--brand-900)"></div>
+            </div>
+            <div style="font:500 11px/1 var(--font-body);color:var(--fg-quaternary);margin-bottom:18px">Primary 600 · #3151D3</div>
+            <div style="font:600 13px/1 var(--font-body);color:var(--fg-tertiary);margin-bottom:11px">Status &amp; neutral</div>
+            <div style="display:flex;flex-direction:column;gap:7px">
+              <div style="display:flex;align-items:center;gap:10px"><span style="width:60px;flex:none;font:500 12px/1 var(--font-body);color:var(--fg-secondary)">Success</span><div style="flex:1;display:flex;gap:4px"><div style="flex:1;height:22px;border-radius:5px;background:var(--success-100)"></div><div style="flex:1;height:22px;border-radius:5px;background:var(--success-300)"></div><div style="flex:1;height:22px;border-radius:5px;background:var(--success-500)"></div><div style="flex:1;height:22px;border-radius:5px;background:var(--success-600)"></div><div style="flex:1;height:22px;border-radius:5px;background:var(--success-800)"></div></div></div>
+              <div style="display:flex;align-items:center;gap:10px"><span style="width:60px;flex:none;font:500 12px/1 var(--font-body);color:var(--fg-secondary)">Warning</span><div style="flex:1;display:flex;gap:4px"><div style="flex:1;height:22px;border-radius:5px;background:var(--warning-100)"></div><div style="flex:1;height:22px;border-radius:5px;background:var(--warning-300)"></div><div style="flex:1;height:22px;border-radius:5px;background:var(--warning-500)"></div><div style="flex:1;height:22px;border-radius:5px;background:var(--warning-600)"></div><div style="flex:1;height:22px;border-radius:5px;background:var(--warning-800)"></div></div></div>
+              <div style="display:flex;align-items:center;gap:10px"><span style="width:60px;flex:none;font:500 12px/1 var(--font-body);color:var(--fg-secondary)">Error</span><div style="flex:1;display:flex;gap:4px"><div style="flex:1;height:22px;border-radius:5px;background:var(--error-100)"></div><div style="flex:1;height:22px;border-radius:5px;background:var(--error-300)"></div><div style="flex:1;height:22px;border-radius:5px;background:var(--error-500)"></div><div style="flex:1;height:22px;border-radius:5px;background:var(--error-600)"></div><div style="flex:1;height:22px;border-radius:5px;background:var(--error-800)"></div></div></div>
+              <div style="display:flex;align-items:center;gap:10px"><span style="width:60px;flex:none;font:500 12px/1 var(--font-body);color:var(--fg-secondary)">Neutral</span><div style="flex:1;display:flex;gap:4px"><div style="flex:1;height:22px;border-radius:5px;background:var(--sand-25);border:1px solid var(--border-subtle)"></div><div style="flex:1;height:22px;border-radius:5px;background:var(--sand-100)"></div><div style="flex:1;height:22px;border-radius:5px;background:var(--neutral-300)"></div><div style="flex:1;height:22px;border-radius:5px;background:var(--sand-600)"></div><div style="flex:1;height:22px;border-radius:5px;background:var(--fg-primary)"></div></div></div>
+            </div>
+          </div>
+          <div style="background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);padding:22px;box-shadow:var(--shadow-sm)">
+            <div style="font:600 13px/1 var(--font-body);color:var(--fg-tertiary);margin-bottom:14px">Type</div>
+            <div style="font:600 26px/1.2 var(--font-body);color:var(--fg-primary);letter-spacing:-.015em">Inter display</div>
+            <div style="font:500 15px/1.4 var(--font-body);color:var(--fg-secondary);margin-top:6px">Inter — body &amp; interface, 16px base</div>
+            <div style="height:1px;background:var(--border-subtle);margin:16px 0"></div>
+            <div style="font:600 13px/1 var(--font-body);color:var(--fg-tertiary);margin-bottom:12px">Radius &amp; spacing</div>
+            <div style="display:flex;align-items:flex-end;gap:8px">
+              <div style="width:34px;height:34px;background:var(--brand-100);border-radius:4px"></div>
+              <div style="width:34px;height:34px;background:var(--brand-100);border-radius:8px"></div>
+              <div style="width:34px;height:34px;background:var(--brand-100);border-radius:12px"></div>
+              <div style="width:34px;height:34px;background:var(--brand-100);border-radius:99px"></div>
+            </div>
+            <div style="font:500 11px/1 var(--font-body);color:var(--fg-quaternary);margin-top:8px">4 · 8 · 12 (cards) · pill · base unit 4px</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ANATOMY -->
+      <section data-sec="anatomy" style="padding:48px 0;border-top:1px solid var(--border-subtle)">
+        <div style="font:600 12px/1 var(--font-body);letter-spacing:.14em;text-transform:uppercase;color:var(--brand-600);margin-bottom:8px">Structure</div>
+        <h2 style="font:var(--display-md);letter-spacing:var(--tracking-display);margin:0">Document anatomy</h2>
+        <p style="font:var(--text-md);color:var(--fg-secondary);max-width:60ch;margin:10px 0 28px">Every SOP is the same three-part stack. The body is a sequence of variable blocks the editor reorders by drag-and-drop.</p>
+        <div style="background:var(--sand-50);border:1px solid var(--border-subtle);border-radius:var(--radius-xl);padding:28px;display:flex;flex-direction:column;gap:14px">
+          <div style="background:var(--brand);color:#fff;border-radius:var(--radius-lg);padding:20px 22px;box-shadow:var(--shadow-sm)">
+            <div style="font:600 11px/1 var(--font-body);letter-spacing:.1em;opacity:.7">DOC-HEADER</div>
+            <div style="font:var(--display-sm);margin-top:6px">Title · category · meta · cover</div>
+          </div>
+          <div style="background:var(--bg-surface);border:1px dashed var(--border-strong);border-radius:var(--radius-lg);padding:20px 22px">
+            <div style="font:600 11px/1 var(--font-body);letter-spacing:.1em;color:var(--fg-tertiary)">DOC-BODY <span style="font-weight:500;color:var(--fg-quaternary);letter-spacing:0;text-transform:none">— drag-and-drop variable blocks</span></div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:14px">
+              <span style="background:var(--brand-50);color:var(--brand-700);border-radius:6px;padding:6px 11px;font:500 12px/1 var(--font-body)">Step</span>
+              <span style="background:var(--brand-50);color:var(--brand-700);border-radius:6px;padding:6px 11px;font:500 12px/1 var(--font-body)">Image</span>
+              <span style="background:var(--brand-50);color:var(--brand-700);border-radius:6px;padding:6px 11px;font:500 12px/1 var(--font-body)">Callout</span>
+              <span style="background:var(--brand-50);color:var(--brand-700);border-radius:6px;padding:6px 11px;font:500 12px/1 var(--font-body)">Checklist</span>
+              <span style="background:var(--brand-50);color:var(--brand-700);border-radius:6px;padding:6px 11px;font:500 12px/1 var(--font-body)">Command</span>
+              <span style="background:var(--brand-50);color:var(--brand-700);border-radius:6px;padding:6px 11px;font:500 12px/1 var(--font-body)">Before / after</span>
+              <span style="background:var(--sand-100);color:var(--sand-700);border-radius:6px;padding:6px 11px;font:500 12px/1 var(--font-body)">+ more</span>
+            </div>
+          </div>
+          <div style="background:var(--forest-600);color:var(--sand-25);border-radius:var(--radius-lg);padding:20px 22px;box-shadow:var(--shadow-sm)">
+            <div style="font:600 11px/1 var(--font-body);letter-spacing:.1em;opacity:.7">DOC-FOOTER</div>
+            <div style="font:var(--display-sm);margin-top:6px">Sign-off · version · last updated</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- DOC-HEADER -->
+      <section data-sec="header" style="padding:48px 0;border-top:1px solid var(--border-subtle)">
+        <div style="font:600 12px/1 var(--font-body);letter-spacing:.14em;text-transform:uppercase;color:var(--brand-600);margin-bottom:8px">Core block · doc-header</div>
+        <h2 style="font:var(--display-md);letter-spacing:var(--tracking-display);margin:0">Header — three directions</h2>
+        <p style="font:var(--text-md);color:var(--fg-secondary);max-width:62ch;margin:10px 0 24px">All three carry the same fields (category, title, meta, difficulty, time). Pick the direction per document type — editorial for client-facing guides, compact for internal SOPs, focused for long multi-step procedures.</p>
+        <div style="display:flex;gap:20px;overflow-x:auto;padding:6px 2px 18px">
+
+          <div style="flex:none;width:430px">
+            <div style="font:600 12px/1 var(--font-body);color:var(--fg-tertiary);margin-bottom:10px">A · Editorial</div>
+            <div style="background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);overflow:hidden;box-shadow:var(--shadow-sm)">
+              <div style="height:150px;background:url(https://images.unsplash.com/photo-1551434678-e076c223a692?w=900&amp;auto=format) center/cover"></div>
+              <div style="padding:22px">
+                <div style="font:600 11px/1 var(--font-body);letter-spacing:.12em;text-transform:uppercase;color:var(--brand-600)">Web setup</div>
+                <div style="font:500 28px/1.15 var(--font-display);letter-spacing:-.01em;margin-top:10px;color:var(--fg-primary)">Set up the Meta Pixel</div>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:16px;font:500 13px/1 var(--font-body);color:var(--fg-tertiary);align-items:center">
+                  <span>8 steps</span><span style="color:var(--neutral-300)">•</span><span>~15 min</span><span style="color:var(--neutral-300)">•</span><span style="color:var(--forest-600);font-weight:600">Beginner</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style="flex:none;width:430px">
+            <div style="font:600 12px/1 var(--font-body);color:var(--fg-tertiary);margin-bottom:10px">B · Compact / tool</div>
+            <div style="background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);padding:22px;box-shadow:var(--shadow-sm)">
+              <div style="font:500 12px/1.3 var(--font-body);color:var(--fg-quaternary)">Guides / Web setup</div>
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-top:12px">
+                <div style="font:600 22px/1.25 var(--font-body);color:var(--fg-primary)">Set up the Meta Pixel</div>
+                <span style="flex:none;background:var(--gold-50);color:var(--gold-700);border-radius:99px;padding:5px 11px;font:600 12px/1 var(--font-body)">Draft</span>
+              </div>
+              <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
+                <span style="display:inline-flex;align-items:center;gap:6px;background:var(--sand-50);border-radius:8px;padding:7px 11px;font:500 12px/1 var(--font-body);color:var(--fg-secondary)"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>15 min</span>
+                <span style="display:inline-flex;align-items:center;gap:6px;background:var(--sand-50);border-radius:8px;padding:7px 11px;font:500 12px/1 var(--font-body);color:var(--fg-secondary)">8 steps</span>
+                <span style="display:inline-flex;align-items:center;gap:6px;background:var(--sand-50);border-radius:8px;padding:7px 11px;font:500 12px/1 var(--font-body);color:var(--fg-secondary)">Beginner</span>
+              </div>
+            </div>
+          </div>
+
+          <div style="flex:none;width:430px">
+            <div style="font:600 12px/1 var(--font-body);color:var(--fg-tertiary);margin-bottom:10px">C · Focused (progress)</div>
+            <div style="background:var(--ink);color:var(--sand-25);border-radius:var(--radius-lg);padding:24px;box-shadow:var(--shadow-sm)">
+              <div style="font:600 11px/1 var(--font-body);letter-spacing:.12em;text-transform:uppercase;color:var(--brand-200)">Web setup · for clients</div>
+              <div style="font:500 26px/1.18 var(--font-display);margin-top:12px">Set up the Meta Pixel</div>
+              <div style="margin-top:20px">
+                <div style="display:flex;justify-content:space-between;font:600 12px/1 var(--font-body);color:var(--brand-100);margin-bottom:7px"><span>Your progress</span><span>3 of 8</span></div>
+                <div style="height:7px;border-radius:99px;background:rgba(255,255,255,.16);overflow:hidden"><div style="width:37%;height:100%;background:var(--brand-300);border-radius:99px"></div></div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- DOC-BODY intro -->
+      <section data-sec="body" style="padding:48px 0;border-top:1px solid var(--border-subtle)">
+        <div style="font:600 12px/1 var(--font-body);letter-spacing:.14em;text-transform:uppercase;color:var(--brand-600);margin-bottom:8px">Core block · doc-body</div>
+        <h2 style="font:var(--display-md);letter-spacing:var(--tracking-display);margin:0">The body is a stack of blocks</h2>
+        <p style="font:var(--text-md);color:var(--fg-secondary);max-width:62ch;margin:10px 0 24px">Editors add, remove, and reorder blocks by dragging the handle. Clients see the rendered result — never the controls. Each block below is documented as its own component.</p>
+        <div style="background:var(--sand-50);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);padding:18px;display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:center;gap:12px;background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:10px;padding:13px 14px">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="var(--neutral-300)"><circle cx="9" cy="6" r="1.6"></circle><circle cx="9" cy="12" r="1.6"></circle><circle cx="9" cy="18" r="1.6"></circle><circle cx="15" cy="6" r="1.6"></circle><circle cx="15" cy="12" r="1.6"></circle><circle cx="15" cy="18" r="1.6"></circle></svg>
+            <span style="font:600 13px/1 var(--font-body);color:var(--brand-700);background:var(--brand-50);padding:5px 10px;border-radius:6px">Step block</span>
+            <span style="font:500 13px/1.4 var(--font-body);color:var(--fg-tertiary)">Copy the Pixel base code into the &lt;head&gt;</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:10px;padding:13px 14px;opacity:.92">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="var(--neutral-300)"><circle cx="9" cy="6" r="1.6"></circle><circle cx="9" cy="12" r="1.6"></circle><circle cx="9" cy="18" r="1.6"></circle><circle cx="15" cy="6" r="1.6"></circle><circle cx="15" cy="12" r="1.6"></circle><circle cx="15" cy="18" r="1.6"></circle></svg>
+            <span style="font:600 13px/1 var(--font-body);color:var(--brand-700);background:var(--brand-50);padding:5px 10px;border-radius:6px">Callout</span>
+            <span style="font:500 13px/1.4 var(--font-body);color:var(--fg-tertiary)">Tip — keep the test event open while you check</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;border:1px dashed var(--border-strong);border-radius:10px;padding:11px 14px;color:var(--fg-quaternary);font:500 13px/1 var(--font-body);justify-content:center">
+            <svg viewBox="0 0 256 256" width="16" height="16" fill="currentColor"><path d="M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z"></path></svg>
+            Add block
+          </div>
+        </div>
+      </section>
+
+      <!-- CHIPS -->
+      <section data-sec="chips" style="padding:48px 0;border-top:1px solid var(--border-subtle)">
+        <div style="font:600 12px/1 var(--font-body);letter-spacing:.14em;text-transform:uppercase;color:var(--brand-600);margin-bottom:8px">Body variable</div>
+        <h3 style="font:var(--display-sm);letter-spacing:var(--tracking-display);margin:0">Chips</h3>
+        <p style="font:var(--text-md);color:var(--fg-secondary);max-width:60ch;margin:8px 0 20px">Labels and tags — categories, statuses, and metadata. Pill radius, 13px medium. Default sand, brand blue, gold for verified, plus semantic status colors.</p>
+        <div style="background:var(--sand-50);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);padding:28px;display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+          <span style="display:inline-flex;align-items:center;gap:6px;background:var(--sand-100);color:var(--sand-700);border-radius:99px;padding:7px 13px;font:500 13px/1 var(--font-body)">Default</span>
+          <span style="display:inline-flex;align-items:center;gap:6px;background:var(--brand-50);color:var(--brand-700);border-radius:99px;padding:7px 13px;font:600 13px/1 var(--font-body)">Web setup</span>
+          <span style="display:inline-flex;align-items:center;gap:6px;background:var(--gold-50);color:var(--gold-700);border-radius:99px;padding:7px 13px;font:600 13px/1 var(--font-body);box-shadow:inset 0 0 0 1px var(--gold-200)"><svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor"><path d="M225.86,102.82c-3.77-3.94-7.67-8-9.14-11.57-1.36-3.27-1.44-8.69-1.52-13.94-.15-9.76-.31-20.82-8-28.51s-18.75-7.85-28.51-8c-5.25-.08-10.67-.16-13.94-1.52-3.56-1.47-7.63-5.37-11.57-9.14C146.28,23.51,138.44,16,128,16s-18.27,7.51-25.18,14.14c-3.94,3.77-8,7.67-11.57,9.14C88,40.64,82.56,40.72,77.31,40.8c-9.76.15-20.82.31-28.51,8S41,67.55,40.8,77.31c-.08,5.25-.16,10.67-1.52,13.94-1.47,3.56-5.37,7.63-9.14,11.57C23.51,109.72,16,117.56,16,128s7.51,18.27,14.14,25.18c3.77,3.94,7.67,8,9.14,11.57,1.36,3.27,1.44,8.69,1.52,13.94.15,9.76.31,20.82,8,28.51s18.75,7.85,28.51,8c5.25.08,10.67.16,13.94,1.52,3.56,1.47,7.63,5.37,11.57,9.14C109.72,232.49,117.56,240,128,240s18.27-7.51,25.18-14.14c3.94-3.77,8-7.67,11.57-9.14,3.27-1.36,8.69-1.44,13.94-1.52,9.76-.15,20.82-.31,28.51-8s7.85-18.75,8-28.51c.08-5.25.16-10.67,1.52-13.94,1.47-3.56,5.37-7.63,9.14-11.57C232.49,146.28,240,138.44,240,128S232.49,109.73,225.86,102.82ZM173.66,98.34a8,8,0,0,1,0,11.32l-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35A8,8,0,0,1,173.66,98.34Z"></path></svg>Verified</span>
+          <span style="display:inline-flex;align-items:center;gap:6px;background:var(--forest-50);color:var(--forest-700);border-radius:99px;padding:7px 13px;font:600 13px/1 var(--font-body)">Done</span>
+          <span style="display:inline-flex;align-items:center;gap:6px;background:var(--error-50);color:var(--error-700);border-radius:99px;padding:7px 13px;font:600 13px/1 var(--font-body)">Blocked</span>
+          <span style="display:inline-flex;align-items:center;gap:7px;background:var(--bg-surface);color:var(--fg-secondary);border:1px solid var(--border-default);border-radius:99px;padding:6px 8px 6px 13px;font:500 13px/1 var(--font-body)">Removable <svg viewBox="0 0 256 256" width="13" height="13" fill="var(--fg-quaternary)"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"></path></svg></span>
+        </div>
+      </section>
+
+      <!-- STEP NUMBERS -->
+      <section data-sec="steps" style="padding:48px 0;border-top:1px solid var(--border-subtle)">
+        <div style="font:600 12px/1 var(--font-body);letter-spacing:.14em;text-transform:uppercase;color:var(--brand-600);margin-bottom:8px">Body variable</div>
+        <h3 style="font:var(--display-sm);letter-spacing:var(--tracking-display);margin:0">Step number indicator</h3>
+        <p style="font:var(--text-md);color:var(--fg-secondary);max-width:60ch;margin:8px 0 20px">Anchors each step. Three states — done (filled + check), current (ring), upcoming (muted). Pairs with the step block to drive the progress bar.</p>
+        <div style="background:var(--sand-50);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);padding:28px;display:flex;gap:40px;align-items:center;flex-wrap:wrap">
+          <div style="display:flex;gap:20px;align-items:center">
+            <div style="display:flex;flex-direction:column;align-items:center;gap:8px"><div style="width:40px;height:40px;border-radius:50%;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 256 256" width="20" height="20" fill="currentColor"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"></path></svg></div><span style="font:500 12px/1 var(--font-body);color:var(--fg-tertiary)">Done</span></div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:8px"><div style="width:40px;height:40px;border-radius:50%;background:#fff;color:var(--brand);border:2px solid var(--brand);display:flex;align-items:center;justify-content:center;font:600 16px/1 var(--font-body);box-shadow:var(--shadow-gold-glow)">2</div><span style="font:500 12px/1 var(--font-body);color:var(--fg-tertiary)">Current</span></div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:8px"><div style="width:40px;height:40px;border-radius:50%;background:var(--sand-100);color:var(--fg-quaternary);display:flex;align-items:center;justify-content:center;font:600 16px/1 var(--font-body)">3</div><span style="font:500 12px/1 var(--font-body);color:var(--fg-tertiary)">Upcoming</span></div>
+          </div>
+          <div style="flex:1;min-width:280px;display:flex;gap:16px;background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:12px;padding:18px">
+            <div style="width:44px;height:44px;flex:none;border-radius:50%;background:#fff;color:var(--brand);border:2px solid var(--brand);display:flex;align-items:center;justify-content:center;font:600 18px/1 var(--font-body)">2</div>
+            <div><div style="font:600 16px/1.3 var(--font-body);color:var(--fg-primary)">Copy the Pixel base code</div><div style="font:400 14px/1.5 var(--font-body);color:var(--fg-secondary);margin-top:4px">Paste it just before the closing &lt;/head&gt; tag on every page.</div></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- MEDIA / IMAGE UPLOAD -->
+      <section data-sec="media" style="padding:48px 0;border-top:1px solid var(--border-subtle)">
+        <div style="font:600 12px/1 var(--font-body);letter-spacing:.14em;text-transform:uppercase;color:var(--brand-600);margin-bottom:8px">Body variable</div>
+        <h3 style="font:var(--display-sm);letter-spacing:var(--tracking-display);margin:0">Image upload block</h3>
+        <p style="font:var(--text-md);color:var(--fg-secondary);max-width:60ch;margin:8px 0 20px">Drag-and-drop target for screenshots. Editors drop an image; it persists. Supports a caption beneath. Try dropping an image onto the slot below.</p>
+        <div style="background:var(--sand-50);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);padding:28px;display:grid;grid-template-columns:1fr 1fr;gap:20px">
+          <div>
+            <div style="position:relative;width:100%;height:200px">
+              <image-slot id="sop-shot-1" style="width:100%;height:100%;display:block" shape="rounded" radius="12" placeholder="Drop a screenshot"></image-slot>
+              <button onClick="{{ openShot1 }}" title="Full view" style="position:absolute;bottom:10px;right:10px;width:30px;height:30px;border-radius:8px;border:none;background:rgba(8,10,14,.55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:3"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg></button>
+            </div>
+            <div style="font:400 13px/1.4 var(--font-body);color:var(--fg-tertiary);margin-top:10px;font-style:italic">Caption — Events Manager, data sources view.</div>
+          </div>
+          <div>
+            <div style="position:relative;width:100%;height:200px">
+              <image-slot id="sop-shot-2" style="width:100%;height:100%;display:block" shape="rounded" radius="12" src="https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=900&amp;auto=format" placeholder="Drop a screenshot"></image-slot>
+              <button onClick="{{ openShot2 }}" title="Full view" style="position:absolute;bottom:10px;right:10px;width:30px;height:30px;border-radius:8px;border:none;background:rgba(8,10,14,.55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:3"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg></button>
+            </div>
+            <div style="font:400 13px/1.4 var(--font-body);color:var(--fg-tertiary);margin-top:10px;font-style:italic">Filled state — double-click to reframe.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- BEFORE / AFTER -->
+      <section data-sec="beforeafter" style="padding:48px 0;border-top:1px solid var(--border-subtle)">
+        <div style="font:600 12px/1 var(--font-body);letter-spacing:.14em;text-transform:uppercase;color:var(--brand-600);margin-bottom:8px">Body variable</div>
+        <h3 style="font:var(--display-sm);letter-spacing:var(--tracking-display);margin:0">Before &amp; after slider</h3>
+        <p style="font:var(--text-md);color:var(--fg-secondary);max-width:60ch;margin:8px 0 20px">Before is black &amp; white; after is full colour, exactly as uploaded. Move your cursor across the image — the divider follows automatically, no clicking needed.</p>
+        <div style="background:var(--sand-50);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);padding:28px">
+          <div ref="{{ setBfEl }}" onMouseMove="{{ bfHover }}" onPointerDown="{{ bfDown }}" style="position:relative;width:100%;max-width:680px;margin:0 auto;height:360px;border-radius:16px;overflow:hidden;cursor:col-resize;user-select:none;touch-action:none;box-shadow:var(--shadow-md)">
+            <div style="position:absolute;inset:0;background:url(https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=1000&amp;auto=format) center/cover"></div>
+            <div style="position:absolute;inset:0;clip-path:{{ bfClip }};background:url(https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=1000&amp;auto=format) center/cover;filter:grayscale(1) contrast(1.03)"></div>
+            <div style="position:absolute;top:14px;left:14px;background:rgba(20,26,17,.5);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);color:#fff;border-radius:99px;padding:6px 13px;font:600 12px/1 var(--font-body);letter-spacing:.02em">Before</div>
+            <div style="position:absolute;top:14px;right:14px;background:rgba(255,255,255,.55);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);color:#1d1d1f;border-radius:99px;padding:6px 13px;font:600 12px/1 var(--font-body);letter-spacing:.02em">After</div>
+            <div style="{{ bfHandleStyle }}">
+              <div style="width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.66);backdrop-filter:blur(12px) saturate(160%);-webkit-backdrop-filter:blur(12px) saturate(160%);box-shadow:0 4px 16px rgba(0,0,0,.24),inset 0 0 0 1px rgba(255,255,255,.7);display:flex;align-items:center;justify-content:center;gap:1px">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#1d1d1f" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14 6l-5 6 5 6"></path></svg>
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#1d1d1f" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 6l5 6-5 6"></path></svg>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- MAGNIFIER -->
+      <section data-sec="magnifier" style="padding:48px 0;border-top:1px solid var(--border-subtle)">
+        <div style="font:600 12px/1 var(--font-body);letter-spacing:.14em;text-transform:uppercase;color:var(--brand-600);margin-bottom:8px">Body variable</div>
+        <h3 style="font:var(--display-sm);letter-spacing:var(--tracking-display);margin:0">Circle zoom magnifier</h3>
+        <p style="font:var(--text-md);color:var(--fg-secondary);max-width:60ch;margin:8px 0 20px">Hover a screenshot to magnify fine UI detail — a 72px circular lens at 1.3× zoom that follows the cursor. Hover the image below.</p>
+        <div style="background:var(--sand-50);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);padding:28px;display:flex;justify-content:center">
+          <div ref="{{ setMagEl }}" onMouseMove="{{ magMove }}" onMouseLeave="{{ magLeave }}" style="position:relative;width:100%;max-width:620px;height:340px;border-radius:12px;overflow:hidden;cursor:crosshair;background:url(https://images.unsplash.com/photo-1449844908441-8829872d2607?w=1200&amp;auto=format) center/cover;box-shadow:var(--shadow-sm)">
+            <sc-if value="{{ magShow }}" hint-placeholder-val="{{ false }}">
+              <div style="{{ lensStyle }}"></div>
+            </sc-if>
+          </div>
+        </div>
+      </section>
+
+      <!-- DATE -->
+      <section data-sec="date" style="padding:48px 0;border-top:1px solid var(--border-subtle)">
+        <div style="font:600 12px/1 var(--font-body);letter-spacing:.14em;text-transform:uppercase;color:var(--brand-600);margin-bottom:8px">Body variable</div>
+        <h3 style="font:var(--display-sm);letter-spacing:var(--tracking-display);margin:0">Date display &amp; difficulty / time badges</h3>
+        <p style="font:var(--text-md);color:var(--fg-secondary);max-width:60ch;margin:8px 0 20px">Dates always include the weekday (“Thu, Apr 24”). Relative form for “last updated.” Difficulty and time sit together in the header.</p>
+        <div style="background:var(--sand-50);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);padding:28px;display:flex;flex-wrap:wrap;gap:14px;align-items:center">
+          <span style="display:inline-flex;align-items:center;gap:8px;background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:8px;padding:9px 13px;font:500 14px/1 var(--font-body);color:var(--fg-secondary)"><svg viewBox="0 0 256 256" width="16" height="16" fill="var(--fg-tertiary)"><path d="M208,32H184V24a8,8,0,0,0-16,0v8H88V24a8,8,0,0,0-16,0v8H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32Zm0,176H48V96H208V208ZM208,80H48V48H72v8a8,8,0,0,0,16,0V48h80v8a8,8,0,0,0,16,0V48h24Z"></path></svg>Thu, Apr 24, 2026</span>
+          <span style="display:inline-flex;align-items:center;gap:7px;font:500 14px/1 var(--font-body);color:var(--fg-tertiary)"><span style="width:7px;height:7px;border-radius:50%;background:var(--forest-400)"></span>Updated 3 days ago</span>
+          <span style="display:inline-flex;align-items:center;gap:7px;background:var(--forest-50);color:var(--forest-700);border-radius:8px;padding:9px 13px;font:600 13px/1 var(--font-body)">Beginner</span>
+          <span style="display:inline-flex;align-items:center;gap:7px;background:var(--bg-surface);border:1px solid var(--border-subtle);color:var(--fg-secondary);border-radius:8px;padding:9px 13px;font:600 13px/1 var(--font-body)"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>~15 min</span>
+        </div>
+      </section>
+
+      <!-- CALLOUTS -->
+      <section data-sec="callouts" style="padding:48px 0;border-top:1px solid var(--border-subtle)">
+        <div style="font:600 12px/1 var(--font-body);letter-spacing:.14em;text-transform:uppercase;color:var(--brand-600);margin-bottom:8px">Body variable</div>
+        <h3 style="font:var(--display-sm);letter-spacing:var(--tracking-display);margin:0">Callout / note blocks</h3>
+        <p style="font:var(--text-md);color:var(--fg-secondary);max-width:60ch;margin:8px 0 20px">Four tones — tip, note, warning, and the gold “we verified this.” Left accent bar, icon, optional title.</p>
+        <div style="background:var(--sand-50);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);padding:28px;display:flex;flex-direction:column;gap:14px">
+          <div style="display:flex;gap:13px;background:var(--brand-25);border:1px solid var(--brand-100);border-left:3px solid var(--brand);border-radius:10px;padding:15px 17px">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="var(--brand-600)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><path d="M9 18h6"></path><path d="M10 21h4"></path><path d="M12 3a6 6 0 0 0-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0 0 12 3z"></path></svg>
+            <div><div style="font:600 14px/1.3 var(--font-body);color:var(--brand-700)">Tip</div><div style="font:400 14px/1.5 var(--font-body);color:var(--fg-secondary);margin-top:3px">Keep the Test Events tab open in another window so you can confirm the pixel fires as you click.</div></div>
+          </div>
+          <div style="display:flex;gap:13px;background:var(--bg-surface);border:1px solid var(--border-subtle);border-left:3px solid var(--neutral-300);border-radius:10px;padding:15px 17px">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="var(--fg-tertiary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5"></path><path d="M12 7.5h.01"></path></svg>
+            <div><div style="font:600 14px/1.3 var(--font-body);color:var(--fg-secondary)">Note</div><div style="font:400 14px/1.5 var(--font-body);color:var(--fg-secondary);margin-top:3px">You only need to install the base pixel once per domain.</div></div>
+          </div>
+          <div style="display:flex;gap:13px;background:var(--gold-25);border:1px solid var(--gold-100);border-left:3px solid var(--gold-300);border-radius:10px;padding:15px 17px">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="var(--gold-600)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>
+            <div><div style="font:600 14px/1.3 var(--font-body);color:var(--gold-700)">Warning</div><div style="font:400 14px/1.5 var(--font-body);color:var(--fg-secondary);margin-top:3px">Don’t paste the pixel inside the &lt;body&gt; — events may double-fire.</div></div>
+          </div>
+          <div style="display:flex;gap:13px;background:var(--forest-50);border:1px solid var(--forest-100);border-left:3px solid var(--forest-400);border-radius:10px;padding:15px 17px">
+            <svg viewBox="0 0 256 256" width="20" height="20" fill="var(--forest-600)" style="flex:none;margin-top:1px"><path d="M225.86,102.82c-3.77-3.94-7.67-8-9.14-11.57-1.36-3.27-1.44-8.69-1.52-13.94-.15-9.76-.31-20.82-8-28.51s-18.75-7.85-28.51-8c-5.25-.08-10.67-.16-13.94-1.52-3.56-1.47-7.63-5.37-11.57-9.14C146.28,23.51,138.44,16,128,16s-18.27,7.51-25.18,14.14c-3.94,3.77-8,7.67-11.57,9.14C88,40.64,82.56,40.72,77.31,40.8c-9.76.15-20.82.31-28.51,8S41,67.55,40.8,77.31c-.08,5.25-.16,10.67-1.52,13.94-1.47,3.56-5.37,7.63-9.14,11.57C23.51,109.72,16,117.56,16,128s7.51,18.27,14.14,25.18c3.77,3.94,7.67,8,9.14,11.57,1.36,3.27,1.44,8.69,1.52,13.94.15,9.76.31,20.82,8,28.51s18.75,7.85,28.51,8c5.25.08,10.67.16,13.94,1.52,3.56,1.47,7.63,5.37,11.57,9.14C109.72,232.49,117.56,240,128,240s18.27-7.51,25.18-14.14c3.94-3.77,8-7.67,11.57-9.14,3.27-1.36,8.69-1.44,13.94-1.52,9.76-.15,20.82-.31,28.51-8s7.85-18.75,8-28.51c.08-5.25.16-10.67,1.52-13.94,1.47-3.56,5.37-7.63,9.14-11.57C232.49,146.28,240,138.44,240,128S232.49,109.73,225.86,102.82ZM173.66,98.34a8,8,0,0,1,0,11.32l-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35A8,8,0,0,1,173.66,98.34Z"></path></svg>
+            <div><div style="font:600 14px/1.3 var(--font-body);color:var(--forest-700)">We verified this</div><div style="font:400 14px/1.5 var(--font-body);color:var(--fg-secondary);margin-top:3px">Tested on a live HiddenGem site — April 2026. Steps match the current Meta interface.</div></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ANNOTATIONS -->
+      <section data-sec="annotations" style="padding:48px 0;border-top:1px solid var(--border-subtle)">
+        <div style="font:600 12px/1 var(--font-body);letter-spacing:.14em;text-transform:uppercase;color:var(--brand-600);margin-bottom:8px">Body variable</div>
+        <h3 style="font:var(--display-sm);letter-spacing:var(--tracking-display);margin:0">Annotations</h3>
+        <p style="font:var(--text-md);color:var(--fg-secondary);max-width:60ch;margin:8px 0 20px">Mark up a screenshot — a yellow sticky callout, a dark tooltip, a hand-drawn arrow, and numbered pins. Drop any of them anywhere over an image.</p>
+        <div style="background:var(--sand-50);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);padding:0;overflow:hidden">
+          <div style="position:relative;height:380px;background:#f4f5f7;background-image:radial-gradient(rgba(20,26,17,.06) 1px,transparent 1px);background-size:22px 22px">
+            <div style="position:absolute;top:42px;left:44px">
+              <div style="background:#fdf3bf;color:#4a4422;border-radius:10px;padding:11px 15px;font:600 14px/1.3 var(--font-body);box-shadow:0 6px 18px rgba(20,26,17,.12);max-width:240px">Step 0: Tell Claude you have a skill</div>
+              <div style="width:14px;height:14px;background:#fdf3bf;transform:rotate(45deg);margin:-7px 0 0 28px;border-radius:2px"></div>
+            </div>
+            <div style="position:absolute;top:46px;left:380px">
+              <div style="background:#1d1d1f;color:#fff;border-radius:9px;padding:9px 14px;font:600 13px/1.3 var(--font-body);box-shadow:0 8px 22px rgba(20,26,17,.28)">This is a tooltip</div>
+              <div style="width:13px;height:13px;background:#1d1d1f;transform:rotate(45deg);margin:-7px auto 0;border-radius:2px"></div>
+            </div>
+            <div style="position:absolute;top:158px;left:70px">
+              <svg width="160" height="64" viewBox="0 0 160 64" fill="none" stroke="#9aa0a8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M8 44 C 46 70, 102 60, 142 18"></path><path d="M122 12 L144 17 L132 38"></path></svg>
+            </div>
+            <div style="position:absolute;top:236px;left:430px;width:34px;height:34px;border-radius:50%;background:#1d1d1f;color:#fff;display:flex;align-items:center;justify-content:center;font:700 14px/1 var(--font-body);box-shadow:0 4px 12px rgba(20,26,17,.3)">1</div>
+            <div style="position:absolute;top:288px;left:320px;width:34px;height:34px;border-radius:50%;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;font:700 14px/1 var(--font-body);box-shadow:0 4px 12px rgba(36,86,192,.4)">2</div>
+            <div style="position:absolute;bottom:24px;right:28px;display:flex;gap:10px;align-items:center;background:rgba(255,255,255,.7);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid var(--border-subtle);border-radius:99px;padding:8px 14px;font:600 12px/1 var(--font-body);color:var(--fg-tertiary)">Sticky · Tooltip · Arrow · Pin</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CHECKLIST -->
+      <section data-sec="checklist" style="padding:48px 0;border-top:1px solid var(--border-subtle)">
+        <div style="font:600 12px/1 var(--font-body);letter-spacing:.14em;text-transform:uppercase;color:var(--brand-600);margin-bottom:8px">Body variable · interactive</div>
+        <h3 style="font:var(--display-sm);letter-spacing:var(--tracking-display);margin:0">Checklist / verification step</h3>
+        <p style="font:var(--text-md);color:var(--fg-secondary);max-width:60ch;margin:8px 0 20px">Checkable sub-items inside a step. Clients tick them off — state feeds the document’s progress. Try it.</p>
+        <div style="background:var(--sand-50);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);padding:28px">
+          <div style="background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:12px;padding:8px;max-width:560px">
+            <sc-for list="{{ checklist }}" as="item" hint-placeholder-count="3">
+              <button onClick="{{ item.onClick }}" style="{{ item.rowStyle }}">
+                <span style="{{ item.boxStyle }}"><svg viewBox="0 0 256 256" width="15" height="15" fill="currentColor"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"></path></svg></span>
+                <span style="{{ item.labelStyle }}">{{ item.label }}</span>
+              </button>
+            </sc-for>
+          </div>
+        </div>
+      </section>
+
+      <!-- COMMAND -->
+      <section data-sec="command" style="padding:48px 0;border-top:1px solid var(--border-subtle)">
+        <div style="font:600 12px/1 var(--font-body);letter-spacing:.14em;text-transform:uppercase;color:var(--brand-600);margin-bottom:8px">Body variable · interactive</div>
+        <h3 style="font:var(--display-sm);letter-spacing:var(--tracking-display);margin:0">Command / code block</h3>
+        <p style="font:var(--text-md);color:var(--fg-secondary);max-width:60ch;margin:8px 0 20px">Monospace, dark surface, one-click copy. For any snippet a client or teammate needs to paste verbatim.</p>
+        <div style="background:var(--sand-50);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);padding:28px">
+          <div style="background:var(--ink);border-radius:12px;overflow:hidden;max-width:640px;box-shadow:var(--shadow-md)">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 15px;border-bottom:1px solid rgba(255,255,255,.09)">
+              <span style="font:600 12px/1 var(--font-mono);color:var(--brand-200);letter-spacing:.04em">pixel.html</span>
+              <button onClick="{{ doCopy }}" style="display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.08);color:#fff;border:none;border-radius:7px;padding:6px 11px;font:600 12px/1 var(--font-body);cursor:pointer">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>
+                {{ copyLabel }}
+              </button>
+            </div>
+            <pre style="margin:0;padding:16px 18px;font:500 13px/1.7 var(--font-mono);color:var(--sand-50);white-space:pre-wrap;overflow-x:auto">fbq('init', '1024327645998112');
+fbq('track', 'PageView');</pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- ATTACHMENT + VIDEO -->
+      <section data-sec="attachment" style="padding:48px 0;border-top:1px solid var(--border-subtle)">
+        <div style="font:600 12px/1 var(--font-body);letter-spacing:.14em;text-transform:uppercase;color:var(--brand-600);margin-bottom:8px">Body variable</div>
+        <h3 style="font:var(--display-sm);letter-spacing:var(--tracking-display);margin:0">Attachment &amp; video embed</h3>
+        <p style="font:var(--text-md);color:var(--fg-secondary);max-width:60ch;margin:8px 0 20px">Downloadable files (templates, PDFs) and an inline video / Loom for steps that are easier shown than told.</p>
+        <div style="background:var(--sand-50);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);padding:28px;display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <div style="display:flex;align-items:center;gap:13px;background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:10px;padding:14px 16px">
+              <div style="width:40px;height:40px;flex:none;border-radius:8px;background:var(--brand-50);color:var(--brand-600);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v5h5"></path><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path></svg></div>
+              <div style="flex:1"><div style="font:600 14px/1.2 var(--font-body);color:var(--fg-primary)">Pixel-setup-checklist.pdf</div><div style="font:500 12px/1.3 var(--font-body);color:var(--fg-quaternary);margin-top:3px">PDF · 248 KB</div></div>
+              <span style="width:36px;height:36px;border-radius:8px;background:var(--sand-50);color:var(--fg-tertiary);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"></path><path d="M7 11l5 5 5-5"></path><path d="M5 20h14"></path></svg></span>
+            </div>
+            <div style="display:flex;align-items:center;gap:13px;background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:10px;padding:14px 16px">
+              <div style="width:40px;height:40px;flex:none;border-radius:8px;background:var(--gold-50);color:var(--gold-600);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v5h5"></path><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path></svg></div>
+              <div style="flex:1"><div style="font:600 14px/1.2 var(--font-body);color:var(--fg-primary)">Brand-assets.zip</div><div style="font:500 12px/1.3 var(--font-body);color:var(--fg-quaternary);margin-top:3px">ZIP · 4.1 MB</div></div>
+              <span style="width:36px;height:36px;border-radius:8px;background:var(--sand-50);color:var(--fg-tertiary);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"></path><path d="M7 11l5 5 5-5"></path><path d="M5 20h14"></path></svg></span>
+            </div>
+          </div>
+          <div style="position:relative;border-radius:12px;overflow:hidden;height:172px;background:url(https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=900&amp;auto=format) center/cover;box-shadow:var(--shadow-sm)">
+            <div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(11,28,68,.55),transparent 60%)"></div>
+            <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center"><div style="width:58px;height:58px;border-radius:50%;background:rgba(255,255,255,.92);display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow-lg)"><svg viewBox="0 0 24 24" width="24" height="24" fill="var(--brand)" stroke="none" style="margin-left:3px"><path d="M8 5v14l11-7z"></path></svg></div></div>
+            <div style="position:absolute;bottom:12px;left:14px;color:#fff;font:600 13px/1 var(--font-body)">Watch — 2:14</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TOC -->
+      <section data-sec="toc" style="padding:48px 0;border-top:1px solid var(--border-subtle)">
+        <div style="font:600 12px/1 var(--font-body);letter-spacing:.14em;text-transform:uppercase;color:var(--brand-600);margin-bottom:8px">Pattern</div>
+        <h3 style="font:var(--display-sm);letter-spacing:var(--tracking-display);margin:0">Table of contents + progress</h3>
+        <p style="font:var(--text-md);color:var(--fg-secondary);max-width:60ch;margin:8px 0 20px">Auto-built from the step blocks. Sticks beside long documents; shows where the reader is and how far is left.</p>
+        <div style="background:var(--sand-50);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);padding:28px;display:flex;justify-content:center">
+          <div style="background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:12px;padding:20px;width:320px;box-shadow:var(--shadow-sm)">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px"><span style="font:600 13px/1 var(--font-body);color:var(--fg-secondary)">On this page</span><span style="font:600 12px/1 var(--font-body);color:var(--brand-600)">3 / 8</span></div>
+            <div style="height:6px;border-radius:99px;background:var(--sand-100);overflow:hidden;margin-bottom:16px"><div style="width:37%;height:100%;background:var(--brand);border-radius:99px"></div></div>
+            <div style="display:flex;flex-direction:column;gap:2px">
+              <div style="display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:7px;font:500 13px/1.3 var(--font-body);color:var(--fg-tertiary)"><span style="width:18px;height:18px;border-radius:50%;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;flex:none"><svg viewBox="0 0 256 256" width="11" height="11" fill="currentColor"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"></path></svg></span>Create a data source</div>
+              <div style="display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:7px;font:500 13px/1.3 var(--font-body);color:var(--fg-tertiary)"><span style="width:18px;height:18px;border-radius:50%;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;flex:none"><svg viewBox="0 0 256 256" width="11" height="11" fill="currentColor"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"></path></svg></span>Name your pixel</div>
+              <div style="display:flex;align-items:center;gap:10px;padding:8px;border-radius:7px;background:var(--brand-25);font:600 13px/1.3 var(--font-body);color:var(--brand-700)"><span style="width:18px;height:18px;border-radius:50%;border:2px solid var(--brand);flex:none"></span>Copy the base code</div>
+              <div style="display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:7px;font:500 13px/1.3 var(--font-body);color:var(--fg-quaternary)"><span style="width:18px;height:18px;border-radius:50%;background:var(--sand-100);flex:none"></span>Fire a test event</div>
+              <div style="display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:7px;font:500 13px/1.3 var(--font-body);color:var(--fg-quaternary)"><span style="width:18px;height:18px;border-radius:50%;background:var(--sand-100);flex:none"></span>Verify in Events Manager</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- DOC-FOOTER -->
+      <section data-sec="footer" style="padding:48px 0;border-top:1px solid var(--border-subtle)">
+        <div style="font:600 12px/1 var(--font-body);letter-spacing:.14em;text-transform:uppercase;color:var(--brand-600);margin-bottom:8px">Core block · doc-footer</div>
+        <h2 style="font:var(--display-md);letter-spacing:var(--tracking-display);margin:0">Footer — sign-off &amp; version</h2>
+        <p style="font:var(--text-md);color:var(--fg-secondary);max-width:62ch;margin:10px 0 24px">Turns a guide into an auditable SOP. The client types their name to acknowledge completion; we stamp the time. Version and last-updated travel with every document.</p>
+        <div style="background:var(--sand-50);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);padding:28px;display:grid;grid-template-columns:1.3fr 1fr;gap:20px;align-items:stretch">
+          <div style="background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:12px;padding:22px;box-shadow:var(--shadow-sm)">
+            <sc-if value="{{ signed }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;align-items:center;gap:13px">
+                <div style="width:44px;height:44px;flex:none;border-radius:50%;background:var(--forest-500);color:#fff;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 256 256" width="22" height="22" fill="currentColor"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"></path></svg></div>
+                <div><div style="font:600 16px/1.3 var(--font-body);color:var(--fg-primary)">Completed by {{ signName }}</div><div style="font:500 13px/1.3 var(--font-body);color:var(--fg-tertiary);margin-top:2px">{{ signTime }}</div></div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ notSigned }}" hint-placeholder-val="{{ true }}">
+              <div style="font:600 15px/1.3 var(--font-body);color:var(--fg-primary)">Mark this SOP as complete</div>
+              <div style="font:400 13px/1.5 var(--font-body);color:var(--fg-tertiary);margin:5px 0 14px">Type your name to acknowledge you’ve finished every step.</div>
+              <div style="display:flex;gap:10px">
+                <input value="{{ signName }}" onInput="{{ onSignInput }}" placeholder="Your name" style="flex:1;border:1px solid var(--border-default);border-radius:8px;padding:11px 13px;font:500 14px/1 var(--font-body);color:var(--fg-primary);background:#fff;outline:none">
+                <button onClick="{{ doSign }}" style="{{ signBtnStyle }}">Mark complete</button>
+              </div>
+            </sc-if>
+          </div>
+          <div style="background:var(--forest-700);color:var(--sand-25);border-radius:12px;padding:22px;display:flex;flex-direction:column;justify-content:center;gap:14px">
+            <div style="display:flex;justify-content:space-between;align-items:center"><span style="font:500 13px/1 var(--font-body);color:var(--forest-100)">Version</span><span style="font:600 14px/1 var(--font-body)">v1.3</span></div>
+            <div style="height:1px;background:rgba(255,255,255,.12)"></div>
+            <div style="display:flex;justify-content:space-between;align-items:center"><span style="font:500 13px/1 var(--font-body);color:var(--forest-100)">Last updated</span><span style="font:600 14px/1 var(--font-body)">Thu, Apr 24, 2026</span></div>
+            <div style="height:1px;background:rgba(255,255,255,.12)"></div>
+            <div style="display:flex;justify-content:space-between;align-items:center"><span style="font:500 13px/1 var(--font-body);color:var(--forest-100)">Owner</span><span style="font:600 14px/1 var(--font-body)">Web team</span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- NOTE TEMPLATE -->
+      <section data-sec="note" style="padding:48px 0;border-top:1px solid var(--border-subtle)">
+        <div style="font:600 12px/1 var(--font-body);letter-spacing:.14em;text-transform:uppercase;color:var(--brand-600);margin-bottom:8px">Pattern · most-used</div>
+        <h2 style="font:var(--display-md);letter-spacing:var(--tracking-display);margin:0">Note template</h2>
+        <p style="font:var(--text-md);color:var(--fg-secondary);max-width:62ch;margin:10px 0 24px">The layout you reach for most — heading, a topic tag, and a numbered content card you annotate over a screenshot. Drop a screenshot into the canvas and mark it up with the annotation widgets.</p>
+        <div style="background: var(--stage); border: 1px solid var(--border-subtle); border-radius: var(--radius-xl); padding: 40px 44px; border-color: #f5f5f5">
+          <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+            <div style="font: 800 46px/1 var(--font-body); letter-spacing: -.035em; color: var(--fg-primary); font-weight: 600">Heading</div>
+            <span style="border:2px solid var(--fg-primary);border-radius:99px;padding:7px 17px;font:700 14px/1 var(--font-body);color:var(--fg-primary)">website</span>
+          </div>
+          <div style="font:500 18px/1.4 var(--font-body);color:var(--fg-tertiary);margin-top:16px">Subheading</div>
+          <span style="display:inline-block;background:var(--fg-primary);color:var(--bg-surface);border-radius:99px;padding:10px 22px;font:700 15px/1 var(--font-body);margin-top:28px">Topic</span>
+          <div style="background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:18px;padding:24px 26px 26px;margin-top:22px;box-shadow:0 1px 3px rgba(20,26,17,.05)">
+            <div style="display:flex;align-items:center;gap:15px;padding-bottom:20px">
+              <div style="width:36px;height:36px;flex:none;border-radius:50%;background:var(--bg-muted);color:var(--fg-secondary);display:flex;align-items:center;justify-content:center;font:600 15px/1 var(--font-body)">1</div>
+              <div style="font: 600 22px/1 var(--font-body); color: var(--fg-primary); font-size: 16px; font-weight: 500">Content</div>
+            </div>
+            <div style="position:relative;border:1px solid var(--border-subtle);border-radius:14px;height:430px;overflow:hidden;background:var(--stage)">
+              <image-slot id="note-canvas" style="position:absolute;inset:0;width:100%;height:100%" shape="rect" placeholder="Drop a screenshot to annotate"></image-slot>
+              <button onClick="{{ openNote }}" title="Full view" style="position:absolute;bottom:12px;right:12px;width:32px;height:32px;border-radius:8px;border:none;background:rgba(8,10,14,.55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:6"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg></button>
+              <div style="position:absolute;top:36px;left:40px;pointer-events:none">
+                <div style="background:#fdf3bf;color:#4a4422;border-radius:10px;padding:11px 15px;font:600 14px/1.3 var(--font-body);box-shadow:0 6px 18px rgba(20,26,17,.12);max-width:230px">Step 0: Tell Claude you have a skill</div>
+                <div style="width:14px;height:14px;background:#fdf3bf;transform:rotate(45deg);margin:-7px 0 0 28px;border-radius:2px"></div>
+              </div>
+              <div style="position:absolute;top:40px;left:360px;pointer-events:none">
+                <div style="background:#1d1d1f;color:#fff;border-radius:9px;padding:9px 14px;font:600 13px/1.3 var(--font-body);box-shadow:0 8px 22px rgba(20,26,17,.28)">This is a tooltip</div>
+                <div style="width:13px;height:13px;background:#1d1d1f;transform:rotate(45deg);margin:-7px auto 0;border-radius:2px"></div>
+              </div>
+              <div style="position:absolute;top:150px;left:64px;pointer-events:none">
+                <svg width="150" height="60" viewBox="0 0 160 64" fill="none" stroke="#9aa0a8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M8 44 C 46 70, 102 60, 142 18"></path><path d="M122 12 L144 17 L132 38"></path></svg>
+              </div>
+              <div style="position:absolute;top:250px;left:430px;width:34px;height:34px;border-radius:50%;background:#1d1d1f;color:#fff;display:flex;align-items:center;justify-content:center;font:700 14px/1 var(--font-body);box-shadow:0 4px 12px rgba(20,26,17,.3);pointer-events:none">1</div>
+              <div style="position:absolute;top:308px;left:300px;width:34px;height:34px;border-radius:50%;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;font:700 14px/1 var(--font-body);box-shadow:0 4px 12px rgba(36,86,192,.4);pointer-events:none">2</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ASSEMBLED -->
+      <section data-sec="assembled" style="padding:48px 0;border-top:1px solid var(--border-subtle)">
+        <div style="font:600 12px/1 var(--font-body);letter-spacing:.14em;text-transform:uppercase;color:var(--brand-600);margin-bottom:8px">Pattern · everything together</div>
+        <h2 style="font:var(--display-md);letter-spacing:var(--tracking-display);margin:0">Assembled SOP</h2>
+        <p style="font:var(--text-md);color:var(--fg-secondary);max-width:62ch;margin:10px 0 24px">Header → body blocks → footer, as a client sees it.</p>
+        <div style="background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:var(--radius-xl);overflow:hidden;box-shadow:var(--shadow-md);max-width:720px;margin:0 auto">
+          <div style="height:140px;background:url(https://images.unsplash.com/photo-1551434678-e076c223a692?w=1000&amp;auto=format) center/cover"></div>
+          <div style="padding:30px 34px 36px">
+            <div style="font:600 11px/1 var(--font-body);letter-spacing:.12em;text-transform:uppercase;color:var(--brand-600)">Web setup</div>
+            <h3 style="font:500 30px/1.15 var(--font-display);letter-spacing:-.01em;margin:10px 0 0;color:var(--fg-primary)">Set up the Meta Pixel</h3>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;font:500 13px/1 var(--font-body);color:var(--fg-tertiary);align-items:center"><span>8 steps</span><span style="color:var(--neutral-300)">•</span><span>~15 min</span><span style="color:var(--neutral-300)">•</span><span style="color:var(--forest-600);font-weight:600">Beginner</span></div>
+            <div style="height:1px;background:var(--border-subtle);margin:24px 0"></div>
+            <div style="display:flex;gap:16px;margin-bottom:22px">
+              <div style="width:38px;height:38px;flex:none;border-radius:50%;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;font:600 16px/1 var(--font-body)">3</div>
+              <div style="flex:1"><div style="font:600 17px/1.3 var(--font-body);color:var(--fg-primary)">Copy the base code into your site</div><p style="font:400 15px/1.6 var(--font-body);color:var(--fg-secondary);margin-top:6px">Paste the snippet just before the closing &lt;/head&gt; tag on every page of your site.</p>
+                <div style="background:var(--ink);border-radius:10px;margin-top:14px;overflow:hidden"><pre style="margin:0;padding:14px 16px;font:500 12.5px/1.7 var(--font-mono);color:var(--sand-50);white-space:pre-wrap">fbq('init', '1024327645998112');
+fbq('track', 'PageView');</pre></div>
+              </div>
+            </div>
+            <div style="display:flex;gap:13px;background:var(--gold-25);border:1px solid var(--gold-100);border-left:3px solid var(--gold-300);border-radius:10px;padding:15px 17px;margin-bottom:24px">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="var(--gold-600)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>
+              <div><div style="font:600 14px/1.3 var(--font-body);color:var(--gold-700)">Warning</div><div style="font:400 14px/1.5 var(--font-body);color:var(--fg-secondary);margin-top:3px">Install the base pixel only once per domain to avoid double-counting.</div></div>
+            </div>
+            <div style="background:var(--forest-700);color:var(--sand-25);border-radius:12px;padding:18px 20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+              <div><div style="font:600 14px/1.2 var(--font-body)">Finished the steps?</div><div style="font:500 12px/1.3 var(--font-body);color:var(--forest-100);margin-top:3px">v1.3 · updated Thu, Apr 24, 2026</div></div>
+              <span style="background:var(--sand-25);color:var(--forest-700);border-radius:8px;padding:9px 15px;font:600 13px/1 var(--font-body)">Mark complete</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- DASHBOARD -->
+      <section data-sec="dashboard" style="padding:48px 0;border-top:1px solid var(--border-subtle)">
+        <div style="font:600 12px/1 var(--font-body);letter-spacing:.14em;text-transform:uppercase;color:var(--brand-600);margin-bottom:8px">Pattern</div>
+        <h2 style="font:var(--display-md);letter-spacing:var(--tracking-display);margin:0">Client dashboard</h2>
+        <p style="font:var(--text-md);color:var(--fg-secondary);max-width:62ch;margin:10px 0 24px">Each client gets their own space. Left — their requests and assigned guides. Right — our response and the SOP. Switch tabs and pick a request.</p>
+        <div style="background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:var(--radius-xl);overflow:hidden;box-shadow:var(--shadow-md);display:flex;height:560px">
+
+          <div style="width:320px;flex:none;border-right:1px solid var(--border-subtle);display:flex;flex-direction:column;background:var(--neutral-25)">
+            <div style="padding:18px 18px 14px;border-bottom:1px solid var(--border-subtle)">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px"><div style="width:34px;height:34px;border-radius:50%;background:var(--brand-100);color:var(--brand-700);display:flex;align-items:center;justify-content:center;font:600 14px/1 var(--font-body)">RC</div><div><div style="font:600 14px/1.2 var(--font-body);color:var(--fg-primary)">Redwood Cabins</div><div style="font:500 11px/1.2 var(--font-body);color:var(--fg-quaternary)">Client workspace</div></div></div>
+              <div style="display:flex;background:var(--sand-100);border-radius:9px;padding:3px">
+                <button onClick="{{ onTabRequests }}" style="{{ tabReqStyle }}">Requests</button>
+                <button onClick="{{ onTabLibrary }}" style="{{ tabLibStyle }}">Library</button>
+              </div>
+            </div>
+            <div style="flex:1;overflow-y:auto">
+              <sc-for list="{{ requests }}" as="r" hint-placeholder-count="4">
+                <button onClick="{{ r.onClick }}" style="{{ r.rowStyle }}">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%"><span style="font:600 14px/1.3 var(--font-body);color:var(--fg-primary)">{{ r.title }}</span><span style="{{ r.dotStyle }}"></span></div>
+                  <div style="display:flex;align-items:center;gap:8px;width:100%"><span style="{{ r.statusStyle }}">{{ r.status }}</span><span style="font:500 12px/1 var(--font-body);color:var(--fg-quaternary)">{{ r.date }}</span></div>
+                </button>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="flex:1;overflow-y:auto;background:var(--bg-page)">
+            <sc-if value="{{ showThread }}" hint-placeholder-val="{{ true }}">
+              <div style="padding:24px 28px">
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:22px">
+                  <div><div style="font:600 11px/1 var(--font-body);letter-spacing:.1em;text-transform:uppercase;color:var(--brand-600)">{{ selItem.type }}</div><h3 style="font:500 24px/1.2 var(--font-display);letter-spacing:-.01em;margin:8px 0 0;color:var(--fg-primary)">{{ selItem.title }}</h3></div>
+                  <span style="{{ selItem.statusStyle }}">{{ selItem.status }}</span>
+                </div>
+
+                <div style="display:flex;gap:12px;margin-bottom:18px">
+                  <div style="width:32px;height:32px;flex:none;border-radius:50%;background:var(--sand-200);color:var(--sand-700);display:flex;align-items:center;justify-content:center;font:600 12px/1 var(--font-body)">RC</div>
+                  <div style="background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:4px 12px 12px 12px;padding:13px 15px;max-width:80%"><div style="font:600 12px/1 var(--font-body);color:var(--fg-tertiary);margin-bottom:5px">Client · {{ selItem.date }}</div><div style="font:400 14px/1.55 var(--font-body);color:var(--fg-secondary)">Hi team — can you walk us through getting this set up? We’d rather not break anything on the live site.</div></div>
+                </div>
+
+                <div style="display:flex;gap:12px;flex-direction:row-reverse;margin-bottom:18px">
+                  <div style="width:32px;height:32px;flex:none;border-radius:50%;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;font:600 12px/1 var(--font-body)">HG</div>
+                  <div style="background:var(--brand);color:#fff;border-radius:12px 4px 12px 12px;padding:13px 15px;max-width:80%"><div style="font:600 12px/1 var(--font-body);color:var(--brand-100);margin-bottom:5px">HiddenGem · just now</div><div style="font:400 14px/1.55 var(--font-body)">Done — here’s the step-by-step. Work through it and check off each step; sign at the bottom when you’re set and we’ll confirm.</div></div>
+                </div>
+
+                <div style="margin-left:44px;background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:12px;overflow:hidden;box-shadow:var(--shadow-sm);max-width:80%">
+                  <div style="height:96px;background:url(https://images.unsplash.com/photo-1551434678-e076c223a692?w=800&amp;auto=format) center/cover"></div>
+                  <div style="padding:15px 17px;display:flex;align-items:center;justify-content:space-between;gap:12px">
+                    <div><div style="font:600 11px/1 var(--font-body);letter-spacing:.1em;text-transform:uppercase;color:var(--brand-600)">SOP</div><div style="font:600 15px/1.25 var(--font-body);color:var(--fg-primary);margin-top:5px">{{ selItem.title }}</div><div style="font:500 12px/1 var(--font-body);color:var(--fg-quaternary);margin-top:5px">8 steps · ~15 min · Beginner</div></div>
+                    <span style="background:var(--brand);color:#fff;border-radius:8px;padding:9px 14px;font:600 13px/1 var(--font-body);flex:none">Open guide</span>
+                  </div>
+                </div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ showLibrary }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:24px 28px">
+                <div style="font:600 16px/1.2 var(--font-body);color:var(--fg-primary);margin-bottom:4px">Assigned guides</div>
+                <div style="font:500 13px/1.4 var(--font-body);color:var(--fg-tertiary);margin-bottom:18px">SOPs we’ve shared with Redwood Cabins.</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+                  <sc-for list="{{ guides }}" as="g" hint-placeholder-count="4">
+                    <div style="background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:12px;padding:16px;box-shadow:var(--shadow-sm)">
+                      <div style="font:600 11px/1 var(--font-body);letter-spacing:.1em;text-transform:uppercase;color:var(--brand-600)">Guide</div>
+                      <div style="font:600 15px/1.3 var(--font-body);color:var(--fg-primary);margin-top:8px">{{ g.title }}</div>
+                      <div style="font:500 12px/1.4 var(--font-body);color:var(--fg-tertiary);margin-top:8px">{{ g.meta }}</div>
+                      <div style="font:500 11px/1.3 var(--font-body);color:var(--fg-quaternary);margin-top:10px">{{ g.updated }}</div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+
+        </div>
+      </section>
+
+    </div>
+  </div>
+  {{ lightboxEl }}
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  state = { active:'overview', theme:'light', bf:50, magShow:false, lensStyle:'', checks:{}, signName:'', signed:false, signTime:'', copied:false, sel:2, tab:'requests', lightbox:null };
+
+  openFull(id){
+    const el = document.getElementById(id);
+    let src = null;
+    if(el){
+      if(el.shadowRoot){ const img = el.shadowRoot.querySelector('img'); if(img && img.getAttribute('src')) src = img.src; }
+      if(!src) src = el.getAttribute('src');
+    }
+    if(src) this.setState({lightbox: src});
+  }
+
+  componentDidMount(){
+    this._spy = () => {
+      const c = this.scrollEl; if(!c) return;
+      const base = c.getBoundingClientRect().top;
+      let cur = this.state.active;
+      c.querySelectorAll('[data-sec]').forEach(s => { if(s.getBoundingClientRect().top - base <= 120) cur = s.getAttribute('data-sec'); });
+      if(cur !== this.state.active) this.setState({active:cur});
+    };
+    if(this.scrollEl) this.scrollEl.addEventListener('scroll', this._spy, {passive:true});
+
+    this._bfm = (e) => {
+      if(!this._bfDrag || !this.bfEl) return;
+      const r = this.bfEl.getBoundingClientRect();
+      let p = (e.clientX - r.left) / r.width * 100;
+      p = Math.max(1.5, Math.min(98.5, p));
+      this.setState({bf:p});
+    };
+    this._bfu = () => {
+      this._bfDrag = false;
+      window.removeEventListener('pointermove', this._bfm);
+      window.removeEventListener('pointerup', this._bfu);
+    };
+  }
+  componentWillUnmount(){ if(this.scrollEl) this.scrollEl.removeEventListener('scroll', this._spy); }
+
+  navTo(id){
+    const c = this.scrollEl; const el = c && c.querySelector('[data-sec="'+id+'"]');
+    if(c && el){ const top = el.getBoundingClientRect().top - c.getBoundingClientRect().top + c.scrollTop - 12; c.scrollTo({top, behavior:'smooth'}); }
+    this.setState({active:id});
+  }
+
+  toggle(id){ this.setState(s => ({checks:{...s.checks, [id]:!s.checks[id]}})); }
+
+  doSign(){
+    if(!this.state.signName.trim()) return;
+    const t = new Date();
+    const fmt = t.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'}) + ' · ' + t.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+    this.setState({signed:true, signTime:fmt});
+  }
+
+  doCopy(){
+    try { navigator.clipboard && navigator.clipboard.writeText("fbq('init', '1024327645998112');\nfbq('track', 'PageView');"); } catch(e){}
+    this.setState({copied:true});
+    clearTimeout(this._ct);
+    this._ct = setTimeout(() => this.setState({copied:false}), 1600);
+  }
+
+  renderVals(){
+    const A = this.state.active;
+    const groups = [
+      ['Get started', [['overview','Overview'],['foundations','Foundations'],['anatomy','Document anatomy']]],
+      ['Core blocks', [['header','doc-header'],['body','doc-body'],['footer','doc-footer']]],
+      ['Body components', [['chips','Chips'],['steps','Step numbers'],['media','Image upload'],['beforeafter','Before / after'],['magnifier','Magnifier'],['date','Date & badges'],['callouts','Callouts'],['annotations','Annotations'],['checklist','Checklist'],['command','Command block'],['attachment','Attachment & video'],['toc','Contents & progress']]],
+      ['Patterns', [['note','Note template'],['assembled','Assembled SOP'],['dashboard','Client dashboard']]]
+    ];
+    const navGroups = groups.map(([label, links]) => ({
+      label,
+      links: links.map(([id, txt]) => ({
+        id, label: txt,
+        onClick: (e) => { if(e) e.preventDefault(); this.navTo(id); },
+        style: 'display:block;padding:8px 12px;border-radius:8px;font:'+(A===id?'600':'500')+' 13px/1.3 var(--font-body);text-decoration:none;margin-bottom:2px;cursor:pointer;transition:background .15s;' + (A===id ? 'background:var(--brand-50);color:var(--brand-700)' : 'color:var(--fg-secondary)')
+      }))
+    }));
+
+    const cl = [
+      ['a','Verify your Meta Business account is active'],
+      ['b','Copy the Pixel base code into the site <head>'],
+      ['c','Fire a test event and confirm it appears in Events Manager']
+    ];
+    const checklist = cl.map(([id, label]) => {
+      const on = !!this.state.checks[id];
+      return {
+        id, label,
+        onClick: () => this.toggle(id),
+        rowStyle: 'display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:none;background:transparent;cursor:pointer;padding:12px 13px;border-radius:9px;font:inherit;'+(on?'':''),
+        boxStyle: 'width:22px;height:22px;flex:none;border-radius:6px;display:flex;align-items:center;justify-content:center;border:2px solid '+(on?'var(--brand)':'var(--border-strong)')+';background:'+(on?'var(--brand)':'#fff')+';color:'+(on?'#fff':'transparent')+';transition:all .15s',
+        labelStyle: 'font:500 14px/1.4 var(--font-body);'+(on?'color:var(--fg-quaternary);text-decoration:line-through':'color:var(--fg-secondary)')
+      };
+    });
+
+    const canSign = !!this.state.signName.trim();
+    const signBtnStyle = 'flex:none;border:none;border-radius:8px;padding:11px 16px;font:600 14px/1 var(--font-body);transition:all .15s;'+(canSign?'background:var(--brand);color:#fff;cursor:pointer':'background:var(--sand-100);color:var(--fg-quaternary);cursor:not-allowed');
+
+    const RAW = [
+      {id:1, title:'Set up the Meta Pixel', type:'Web setup', status:'Awaiting client', date:'Thu, Apr 24', unread:false},
+      {id:2, title:'New owner onboarding', type:'Onboarding', status:'In progress', date:'Wed, Apr 23', unread:true},
+      {id:3, title:'AI website setup', type:'Web setup', status:'Done', date:'Mon, Apr 21', unread:false},
+      {id:4, title:'Reconnect Instagram booking', type:'Support', status:'New', date:'Apr 20', unread:true}
+    ];
+    const sc = (s) => s==='Done' ? 'background:var(--forest-50);color:var(--forest-700)'
+      : s==='In progress' ? 'background:var(--brand-50);color:var(--brand-700)'
+      : s==='New' ? 'background:var(--gold-50);color:var(--gold-700)'
+      : 'background:var(--sand-100);color:var(--sand-700)';
+    const requests = RAW.map(r => ({
+      ...r,
+      onClick: () => this.setState({sel:r.id}),
+      rowStyle: (this.state.sel===r.id ? 'background:var(--brand-25);box-shadow:inset 3px 0 0 var(--brand)' : 'background:transparent') + ';display:flex;flex-direction:column;gap:7px;padding:14px 17px;border:none;border-bottom:1px solid var(--border-subtle);cursor:pointer;width:100%;text-align:left;font:inherit;transition:background .15s',
+      statusStyle: sc(r.status) + ';display:inline-flex;align-items:center;padding:4px 9px;border-radius:99px;font:600 11px/1 var(--font-body)',
+      dotStyle: r.unread ? 'width:8px;height:8px;border-radius:50%;background:var(--brand);flex:none' : 'display:none'
+    }));
+    const selItem = requests.find(r => r.id===this.state.sel) || requests[0];
+
+    const guides = [
+      {title:'Set up the Meta Pixel', meta:'8 steps · ~15 min · Beginner', updated:'Updated Apr 24, 2026'},
+      {title:'Prep your property for a shoot', meta:'12 steps · ~25 min · Beginner', updated:'Updated Apr 18, 2026'},
+      {title:'AI website setup walkthrough', meta:'16 steps · ~40 min · Intermediate', updated:'Updated Apr 12, 2026'},
+      {title:'Reconnect Instagram booking', meta:'5 steps · ~10 min · Beginner', updated:'Updated Apr 9, 2026'}
+    ];
+
+    const tabBtn = (on) => 'flex:1;border:none;border-radius:7px;padding:8px 10px;font:600 12.5px/1 var(--font-body);cursor:pointer;transition:all .15s;'+(on?'background:#fff;color:var(--brand-700);box-shadow:var(--shadow-xs)':'background:transparent;color:var(--fg-tertiary)');
+
+    const bf = this.state.bf;
+
+    return {
+      navGroups,
+      theme: this.state.theme,
+      isDark: this.state.theme === 'dark',
+      isLight: this.state.theme !== 'dark',
+      toggleTheme: () => this.setState(s => ({theme: s.theme === 'dark' ? 'light' : 'dark'})),
+      logoSrc: this.state.theme === 'dark' ? 'assets/logo-dark.svg' : 'assets/logo-light.svg',
+      lightbox: this.state.lightbox,
+      lightboxEl: this.state.lightbox ? React.createElement('div', {
+        onClick: () => this.setState({lightbox:null}),
+        style: {position:'fixed',inset:0,zIndex:1000,background:'rgba(8,10,14,.88)',backdropFilter:'blur(8px)',WebkitBackdropFilter:'blur(8px)',display:'flex',alignItems:'center',justifyContent:'center',padding:'56px',cursor:'zoom-out'}
+      },
+        React.createElement('img', {src:this.state.lightbox, alt:'Full view', style:{maxWidth:'92vw',maxHeight:'88vh',borderRadius:'14px',boxShadow:'0 30px 90px rgba(0,0,0,.6)'}}),
+        React.createElement('button', {onClick:()=>this.setState({lightbox:null}), title:'Close', style:{position:'fixed',top:'24px',right:'24px',width:'44px',height:'44px',borderRadius:'50%',border:'none',background:'rgba(255,255,255,.16)',color:'#fff',fontSize:'20px',lineHeight:'1',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer'}}, '\u2715')
+      ) : null,
+      closeFull: () => this.setState({lightbox:null}),
+      openShot1: () => this.openFull('sop-shot-1'),
+      openShot2: () => this.openFull('sop-shot-2'),
+      openNote: () => this.openFull('note-canvas'),
+      setScrollEl: (el) => { this.scrollEl = el; },
+
+      bfClip: 'inset(0 ' + (100 - bf) + '% 0 0)',
+      bfHandleStyle: 'position:absolute;top:0;bottom:0;left:' + bf + '%;width:3px;background:#fff;transform:translateX(-50%);display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 1px rgba(20,26,17,.12)',
+      setBfEl: (el) => { this.bfEl = el; },
+      bfDown: (e) => {
+        this._bfDrag = true;
+        window.addEventListener('pointermove', this._bfm);
+        window.addEventListener('pointerup', this._bfu);
+        this._bfm(e);
+      },
+      bfHover: (e) => {
+        if(!this.bfEl) return;
+        const r = this.bfEl.getBoundingClientRect();
+        let p = (e.clientX - r.left) / r.width * 100;
+        p = Math.max(1.5, Math.min(98.5, p));
+        this.setState({bf:p});
+      },
+
+      magShow: this.state.magShow,
+      lensStyle: this.state.lensStyle,
+      setMagEl: (el) => { this.magEl = el; },
+      magMove: (e) => {
+        const el = this.magEl; if(!el) return;
+        const r = el.getBoundingClientRect();
+        const x = e.clientX - r.left, y = e.clientY - r.top;
+        const px = Math.max(0, Math.min(100, x / r.width * 100));
+        const py = Math.max(0, Math.min(100, y / r.height * 100));
+        const z = 1.3, lens = 72;
+        const url = 'https://images.unsplash.com/photo-1449844908441-8829872d2607?w=1200&auto=format';
+        const style = 'position:absolute;pointer-events:none;width:'+lens+'px;height:'+lens+'px;left:'+(x - lens/2)+'px;top:'+(y - lens/2)+'px;border-radius:50%;border:3px solid #fff;box-shadow:0 10px 28px rgba(20,26,17,.4),0 0 0 1px rgba(20,26,17,.12);background-image:url('+url+');background-repeat:no-repeat;background-size:'+(r.width*z)+'px '+(r.height*z)+'px;background-position:'+px+'% '+py+'%';
+        this.setState({magShow:true, lensStyle:style});
+      },
+      magLeave: () => this.setState({magShow:false}),
+
+      checklist,
+
+      copyLabel: this.state.copied ? 'Copied' : 'Copy',
+      doCopy: () => this.doCopy(),
+
+      signed: this.state.signed,
+      notSigned: !this.state.signed,
+      signName: this.state.signName,
+      signTime: this.state.signTime,
+      onSignInput: (e) => this.setState({signName: e.target.value}),
+      doSign: () => this.doSign(),
+      signBtnStyle,
+
+      requests,
+      selItem,
+      guides,
+      showThread: this.state.tab === 'requests',
+      showLibrary: this.state.tab === 'library',
+      onTabRequests: () => this.setState({tab:'requests'}),
+      onTabLibrary: () => this.setState({tab:'library'}),
+      tabReqStyle: tabBtn(this.state.tab==='requests'),
+      tabLibStyle: tabBtn(this.state.tab==='library')
+    };
+  }
+}
+</script>
+</body>
+</html>
