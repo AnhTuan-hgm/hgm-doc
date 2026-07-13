@@ -17,6 +17,7 @@ export interface SearchItem {
 
 /** Static, always-available destinations. */
 export const STATIC_ITEMS: SearchItem[] = [
+    { id: "s-home", title: "Home", subtitle: "Mission Control — company at a glance", path: "/home", kind: "Page", icon: Home02 },
     { id: "s-projectmgmt", title: "Project Management", subtitle: "Overview, to-dos, roadmap & timeline", path: "/roadmap", kind: "Page", icon: Flag05 },
     { id: "s-dashboard", title: "Dashboard", subtitle: "Client Support overview", path: "/dashboard", kind: "Page", icon: LayoutAlt01 },
     { id: "s-setup", title: "AI Website Setup", subtitle: "Web Team workflow", path: "/webteam/ai-website-setup", kind: "Page", icon: Code02 },
@@ -30,6 +31,9 @@ export const STATIC_ITEMS: SearchItem[] = [
     { id: "s-emailflow", title: "Welcome Email Flow — Overview", subtitle: "AM email-flow builder project reference", path: "/welcome-email-flow-overview", kind: "Page", icon: Mail01 },
     { id: "s-chatoverview", title: "AI Chat Widget — Overview", subtitle: "Claude-powered chat project reference", path: "/chat-widget-overview", kind: "Page", icon: MessageChatCircle },
     { id: "s-dashoverview", title: "Client Dashboard — Overview", subtitle: "Master Document project reference", path: "/client-dashboard-overview", kind: "Page", icon: LayoutAlt01 },
+    { id: "s-ownerguideoverview", title: "Owner Guide — Overview", subtitle: "Client onboarding guide project reference", path: "/owner-guide-overview", kind: "Page", icon: BookOpen01 },
+    { id: "s-homepageoverview", title: "Homepage — Overview", subtitle: "Company-wide home screen project reference", path: "/homepage-overview", kind: "Page", icon: Home02 },
+    { id: "s-questions", title: "Questions", subtitle: "Every log page's questions in one inbox", path: "/questions", kind: "Page", icon: ClipboardCheck },
     { id: "s-promptlib", title: "Prompt & Pattern Library", subtitle: "Your private prompt/pattern vault", path: "/prompt-library", kind: "Page", icon: BookOpen01 },
 ];
 

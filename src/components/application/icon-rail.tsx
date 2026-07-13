@@ -1,12 +1,16 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
-import { BookOpen01, Briefcase01, ChevronLeft, ChevronRight, Code02, LayoutLeft, Lock01, LockUnlocked01, Moon01, Sun, Users01 } from "@untitledui/icons";
+import { AnimatePresence, motion } from "motion/react";
+import { AlertCircle, Bell01, BookOpen01, Briefcase01, CheckCircle, ChevronLeft, ChevronRight, Code02, HelpCircle, Home02, LayoutLeft, Lock01, LockUnlocked01, Moon01, Sun, Users01 } from "@untitledui/icons";
 import { Avatar } from "@/components/base/avatar/avatar";
 import { useAuthUser } from "@/hooks/use-auth-user";
+import { fetchAttentionItems, type AttentionItem } from "@/lib/notifications";
+import { teamPhoto } from "@/utils/team-photos";
 import { SettingsDialog } from "@/pages/settings-screen";
 import { useTheme } from "@/providers/theme-provider";
 import { HelpMenu } from "@/components/application/help-menu";
 import { SearchBar } from "@/components/application/search-modal";
+import { PageBreadcrumb, type BreadcrumbItem } from "@/components/application/page-breadcrumb";
 import { cx } from "@/utils/cx";
 
 /**
@@ -35,10 +39,131 @@ export const HeaderAvatar = () => {
                 aria-label="Open settings"
                 className="rounded-full outline-focus-ring transition duration-100 ease-linear hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2"
             >
-                <Avatar size="md" src={user.avatarUrl} alt={user.name} initials={initials} />
+                {/* Prefer the Google account photo, then the HGM team headshot, then initials. */}
+                <Avatar size="md" src={user.avatarUrl ?? teamPhoto(user.name)} alt={user.name} initials={initials} />
             </button>
             <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
         </>
+    );
+};
+
+/**
+ * Notification bell — sits in the top bar just left of the account avatar.
+ * Shows everything that needs the team's attention: open Questions across the
+ * project-log pages (HIGH count called out), open docs requests / bug reports,
+ * and the Client List roster gap. Team-only (signed-in @hiddengem.media).
+ */
+const BELL_KIND_ICONS = { questions: HelpCircle, request: AlertCircle, roster: Users01 };
+
+export const HeaderBell = () => {
+    const { user } = useAuthUser();
+    const navigate = useNavigate();
+    const [open, setOpen] = useState(false);
+    const [items, setItems] = useState<AttentionItem[] | null>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
+    const isTeam = !!user?.email && user.email.toLowerCase().endsWith("@hiddengem.media");
+
+    // Load on mount and refresh whenever the panel opens, so the badge is
+    // roughly live without polling.
+    useEffect(() => {
+        if (isTeam) fetchAttentionItems().then(setItems);
+    }, [isTeam]);
+    useEffect(() => {
+        if (open) fetchAttentionItems().then(setItems);
+    }, [open]);
+
+    // Close on outside click (same pattern as HelpMenu).
+    useEffect(() => {
+        if (!open) return;
+        const onDown = (e: MouseEvent) => {
+            if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
+        };
+        document.addEventListener("mousedown", onDown);
+        return () => document.removeEventListener("mousedown", onDown);
+    }, [open]);
+
+    if (!isTeam) return null;
+
+    const count = items?.length ?? 0;
+
+    return (
+        <div ref={containerRef} className="relative">
+            <button
+                type="button"
+                onClick={() => setOpen((v) => !v)}
+                title="Notifications"
+                aria-label={count > 0 ? `Notifications — ${count} items need attention` : "Notifications"}
+                className={cx(
+                    "relative flex size-10 items-center justify-center rounded-full transition duration-100 ease-linear",
+                    open ? "bg-secondary text-fg-secondary" : "bg-primary text-fg-quaternary ring-1 ring-secondary hover:bg-secondary hover:text-fg-secondary",
+                )}
+            >
+                <Bell01 className="size-5" aria-hidden="true" />
+                {count > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-error-solid px-1 text-[10px] font-bold text-white ring-2 ring-bg-primary">
+                        {count > 9 ? "9+" : count}
+                    </span>
+                )}
+            </button>
+
+            <AnimatePresence>
+                {open && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                        transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] }}
+                        className="absolute right-0 top-12 z-50 w-96 overflow-hidden rounded-2xl bg-primary shadow-xl ring-1 ring-secondary"
+                    >
+                        <div className="flex items-center justify-between border-b border-secondary px-4 py-3">
+                            <p className="text-sm font-semibold text-primary">Notifications</p>
+                            {count > 0 && (
+                                <span className="rounded-full bg-secondary px-2 py-0.5 text-xs font-semibold text-tertiary tabular-nums ring-1 ring-secondary">{count}</span>
+                            )}
+                        </div>
+                        <div className="max-h-[420px] overflow-y-auto p-2">
+                            {items == null ? (
+                                <p className="px-3 py-6 text-center text-sm text-quaternary">Loading…</p>
+                            ) : items.length === 0 ? (
+                                <div className="flex flex-col items-center gap-2 px-3 py-8 text-center">
+                                    <CheckCircle className="size-6 text-fg-success-primary" aria-hidden="true" />
+                                    <p className="text-sm font-medium text-primary">All clear</p>
+                                    <p className="text-sm text-tertiary">Nothing needs your attention right now.</p>
+                                </div>
+                            ) : (
+                                items.map((item) => {
+                                    const ItemIcon = BELL_KIND_ICONS[item.kind];
+                                    return (
+                                        <button
+                                            key={item.id}
+                                            type="button"
+                                            onClick={() => {
+                                                setOpen(false);
+                                                navigate(item.to);
+                                            }}
+                                            className="flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left transition duration-100 ease-linear hover:bg-secondary"
+                                        >
+                                            <span
+                                                className={cx(
+                                                    "mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full",
+                                                    item.urgent ? "bg-error-secondary text-fg-error-secondary" : "bg-brand-secondary text-fg-brand-primary",
+                                                )}
+                                            >
+                                                <ItemIcon className="size-4" aria-hidden="true" />
+                                            </span>
+                                            <span className="min-w-0 flex-1">
+                                                <span className="block truncate text-sm font-medium text-primary">{item.title}</span>
+                                                <span className="block text-xs text-tertiary">{item.description}</span>
+                                            </span>
+                                        </button>
+                                    );
+                                })
+                            )}
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </div>
     );
 };
 
@@ -190,6 +315,7 @@ export const AppShell = ({
     className,
     highlightScope,
     headerRight,
+    breadcrumb,
 }: {
     children: ReactNode;
     /** The department icon rail (or any left-of-shell rail) — rendered outside the rounded card. */
@@ -199,6 +325,9 @@ export const AppShell = ({
     highlightScope?: boolean;
     /** Optional right-aligned content in the search-bar row (e.g. account avatar). */
     headerRight?: ReactNode;
+    /** Optional breadcrumb trail shown between the back/forward arrows and the
+        search bar (e.g. Dashboard › Project Logs › Welcome Email Flow). */
+    breadcrumb?: BreadcrumbItem[];
 }) => {
     const navigate = useNavigate();
     // Shift + R hides just the icon rail. The search/back-forward row still shows on
@@ -207,13 +336,13 @@ export const AppShell = ({
     const { collapsed: railCollapsed } = useRailCollapsed();
     const showRail = !!rail && !railCollapsed;
     return (
-    <div className={cx("flex h-dvh gap-2.5 overflow-hidden bg-tertiary pt-1 pr-2.5 pb-2.5 sm:gap-3 sm:pr-3 sm:pb-3", showRail ? "pl-0" : "pl-2.5 sm:pl-3")}>
+    <div className={cx("flex h-dvh gap-2.5 overflow-hidden bg-tertiary pt-1 pr-2.5 pb-2.5 sm:gap-3 sm:pr-3 sm:pb-3 print:h-auto print:overflow-visible print:bg-primary print:p-0", showRail ? "pl-0" : "pl-2.5 sm:pl-3")}>
         {showRail && rail}
-        <div className="flex min-h-0 flex-1 flex-col gap-1 sm:gap-1.5">
+        <div className="flex min-h-0 flex-1 flex-col gap-1 sm:gap-1.5 print:min-h-0">
             {/* Global search + back/forward — only on pages with the department rail.
                 Row height matches the rail's favicon header (64px) so the two line up. */}
             {rail && (
-                <div className="flex h-16 shrink-0 items-center gap-1 px-1">
+                <div className="flex h-16 shrink-0 items-center gap-1 px-1 print:hidden">
                     <button
                         type="button"
                         onClick={() => navigate(-1)}
@@ -230,13 +359,19 @@ export const AppShell = ({
                     >
                         <ChevronRight className="size-4" aria-hidden="true" />
                     </button>
+                    {breadcrumb && breadcrumb.length > 0 && (
+                        <PageBreadcrumb items={breadcrumb} className="ml-1 mr-3 shrink-0" />
+                    )}
                     <SearchBar />
-                    {headerRight && <div className="ml-2 flex shrink-0 items-center gap-2 pr-1">{headerRight}</div>}
+                    <div className="ml-2 flex shrink-0 items-center gap-2 pr-1">
+                        <HeaderBell />
+                        {headerRight}
+                    </div>
                 </div>
             )}
             <div
                 {...(highlightScope ? { "data-highlight-scope": true } : {})}
-                className={cx("min-h-0 flex-1 overflow-hidden rounded-2xl shadow-xl ring-1 ring-secondary", className)}
+                className={cx("min-h-0 flex-1 overflow-hidden rounded-2xl shadow-xl ring-1 ring-secondary print:h-auto print:min-h-0 print:overflow-visible print:rounded-none print:shadow-none print:ring-0", className)}
             >
                 {children}
             </div>
@@ -254,8 +389,10 @@ export const CollapsedTopBar = ({ title, onExpand }: { title: string; onExpand: 
     </div>
 );
 
-/** Department rail shown on every internal HiddenGem team page (not on client-facing pages). */
+/** Department rail shown on every internal HiddenGem team page (not on client-facing pages).
+    "home" is not a department — it always navigates to the /home Mission Control page. */
 export const RAIL_ITEMS = [
+    { id: "home", short: "Home", icon: Home02 },
     { id: "clients", short: "Clients", icon: Users01 },
     { id: "website", short: "Website", icon: Code02 },
     { id: "am", short: "AM", icon: Briefcase01 },
@@ -277,7 +414,10 @@ export const IconRail = ({
     const navigate = useNavigate();
 
     const handle = (id: string) => {
-        if (onSelectDept) onSelectDept(id);
+        // Home is a standalone page, not a dashboard department — always navigate,
+        // even when the host page (dashboard) does in-page dept switching.
+        if (id === "home") navigate("/home");
+        else if (onSelectDept) onSelectDept(id);
         else navigate(`/dashboard?dept=${id}`);
     };
 

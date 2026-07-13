@@ -1,6 +1,6 @@
 ---
 name: startworking
-description: Start-of-day setup for hgm-doc — sync the dev branch, start the dev server, open the Project Management page, and propose today's plan. Use when the user starts working (/startworking).
+description: Start-of-day setup for hgm-doc — sync the dev branch, start the dev server, open the Questions page for review, and propose today's plan. Use when the user starts working (/startworking).
 ---
 
 # Start day
@@ -19,7 +19,7 @@ Get the workspace ready and propose a plan for the day.
 
 3. **Start the dev server** using the /dev skill flow: check port 5180 is free (`lsof -nP -iTCP:5180 -sTCP:LISTEN`), then `npm run dev -- --port 5180 --strictPort` in the background. If a server for THIS project is already on 5180, reuse it.
 
-4. **Open the Project Management page:** `open http://localhost:5180/roadmap` (macOS opens the default browser).
+4. **Open the Questions page:** `open http://localhost:5180/questions` (macOS opens the default browser). This is the one-inbox view of every log page's questions (open + resolved) — AnhTuan answers them here each morning so every project keeps moving. Answers/resolves save straight back to each source page's row.
 
 5. **Build today's plan.** Pull the live content and surface what needs attention:
    - Fetch the roadmap row (creds from `.env.local`):
@@ -28,12 +28,12 @@ Get the workspace ready and propose a plan for the day.
    - Fetch open requests & bug reports:
      `curl -s "$URL/rest/v1/docs_requests?status=eq.open&order=created_at.desc&select=title,priority,requester,created_at" -H "apikey: $KEY" -H "Authorization: Bearer $KEY"`
      → highlight anything titled `[Bug]` or priority high/urgent first.
-   - **Review every active project-log page** — currently `/welcome-email-flow-overview`, `/client-dashboard-overview`, `/chat-widget-overview` (Supabase rows `sop_pages`, slugs `welcome-email-flow-overview` / `client-dashboard-overview` / `chat-widget-overview`). For EACH: fetch `data` and diff against its newest snapshot row (`slug=like.<slug>@*`, latest by slug). Surface anything AnhTuan changed since last session — newly answered Questions, pasted template content, edited sections — plus unchecked build To-dos. These are decisions to acknowledge and act on, never to overwrite.
+   - **Review every active project-log page** — currently `/welcome-email-flow-overview`, `/client-dashboard-overview`, `/chat-widget-overview`, `/owner-guide-overview`, `/homepage-overview` (Supabase rows `sop_pages`, slugs `welcome-email-flow-overview` / `client-dashboard-overview` / `chat-widget-overview` / `owner-guide-overview` / `homepage-overview`). For EACH: fetch `data` and diff against its newest snapshot row (`slug=like.<slug>@*`, latest by slug). Surface anything AnhTuan changed since last session — newly answered Questions, pasted template content, edited sections — plus unchecked build To-dos. These are decisions to acknowledge and act on, never to overwrite.
    - Skim `git log --oneline -10` for where yesterday left off.
 
-6. **Keep the project moving — refresh any fully-answered Questions list.** For EACH of the 4 pages above (`/roadmap` and the 3 project-log pages): check `data.questions`. If EVERY question there already has a non-empty `answer`, append **5 new** unanswered questions — `{ id: <uuid>, question: <text>, answer: "" }` — that YOU decide yourself (don't ask AnhTuan to pick them). Ground each in that specific page's own recent Timeline entries, open to-dos, and the decisions just answered — concrete choices needed before the *next* round of work on that page, not status checks, and not generic/copied from another page's questions. PATCH the row back with the updated `data.questions` (Supabase only is fine here — Firebase re-syncs on the next in-app save). If a page still has ANY unanswered question, leave it alone and add nothing there — this only fires once a page's queue is fully drained, so there's always a fresh batch of decisions waiting and the project never stalls waiting on you to think of what's next.
+6. **Keep the project moving — refresh any fully-answered Questions list.** For EACH of the 6 pages above (`/roadmap` and the 5 project-log pages): check `data.questions`. If EVERY question there already has a non-empty `answer`, append **5 new** unanswered questions — `{ id: <uuid>, question: <text>, answer: "" }` — that YOU decide yourself (don't ask AnhTuan to pick them). Ground each in that specific page's own recent Timeline entries, open to-dos, and the decisions just answered — concrete choices needed before the *next* round of work on that page, not status checks, and not generic/copied from another page's questions. PATCH the row back with the updated `data.questions` (Supabase only is fine here — Firebase re-syncs on the next in-app save). If a page still has ANY unanswered question, leave it alone and add nothing there — this only fires once a page's queue is fully drained, so there's always a fresh batch of decisions waiting and the project never stalls waiting on you to think of what's next.
 
-7. **Suggest the day.** Present a short prioritized list (3–5 items): urgent bugs first, then in-progress roadmap work (including any project-log page when it has new answers or unblocked to-dos), then unfinished to-dos; note unanswered Questions (on any of the 4 pages) that block work, and call out by name any page where you just added a fresh batch of 5 in step 6. End with the dev URL (http://localhost:5180/roadmap) and ask which item to start on.
+7. **Suggest the day.** Present a short prioritized list (3–5 items): urgent bugs first, then in-progress roadmap work (including any project-log page when it has new answers or unblocked to-dos), then unfinished to-dos; note unanswered Questions (on any of the 5 pages) that block work, and call out by name any page where you just added a fresh batch of 5 in step 6. End with the dev URLs (http://localhost:5180/questions for answering, http://localhost:5180/roadmap for the plan) and ask which item to start on.
 
 ## Notes
 - Don't kill dev servers from other projects — only manage hgm-doc's.

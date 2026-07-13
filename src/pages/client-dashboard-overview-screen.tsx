@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { ArrowRight, ArrowUpRight, BookOpen01, Briefcase01, Check, CheckDone01, ChevronDown, ChevronUp, ClipboardCheck, Database01, FileCheck02, HelpCircle, Hourglass01, LayoutAlt01, Plus, Send01, Stars01, Trash01, Users01, Zap } from "@untitledui/icons";
 import { PageBanner } from "@/components/application/page-banner";
 import { AppShell, CollapsedTopBar, IconRail, NavCollapseButton, RailBottom, useNavCollapsed } from "@/components/application/icon-rail";
+import { PriorityFlag, type QuestionPriority } from "@/components/application/priority-flag";
 import { VideoAttach, VideoEmbed } from "@/components/application/video-block";
 import { useEditShortcuts } from "@/hooks/use-edit-shortcuts";
 import { supabase } from "@/lib/supabase";
@@ -22,7 +23,7 @@ const SLUG = "client-dashboard-overview";
 
 type Stage = { label: string; detail: string };
 type Todo = { id: string; text: string; done: boolean };
-type QA = { id: string; question: string; answer: string; video?: string };
+type QA = { id: string; question: string; answer: string; video?: string; resolved?: boolean; priority?: QuestionPriority };
 type LogEntry = { id: string; date: string; title: string; description: string; video?: string };
 
 type DashData = {
@@ -209,6 +210,8 @@ const QuestionCard = ({
     onAnswer,
     onVideo,
     onRemove,
+    onToggleResolved,
+    onPriority,
 }: {
     q: QA;
     /** Position in the full questions array (1-based) — stable across the Open/Resolved
@@ -220,16 +223,28 @@ const QuestionCard = ({
     onAnswer: (v: string) => void;
     onVideo: (v: string | undefined) => void;
     onRemove: () => void;
+    /** Explicit resolve toggle — typing an answer no longer auto-resolves, so a
+        half-formed idea can sit in Open until it's actually checked off. */
+    onToggleResolved: (v: boolean) => void;
+    onPriority: (v: QuestionPriority | undefined) => void;
 }) => (
     <div className={cx("rounded-2xl p-5 ring-1 ring-secondary", resolved ? "bg-secondary" : "bg-primary")}>
         <div className="flex items-start justify-between gap-3">
             <div className="flex min-w-0 flex-1 items-start gap-2">
-                {resolved && <Check className="mt-0.5 size-4 shrink-0 text-fg-success-primary" aria-hidden="true" />}
+                <button type="button" title={resolved ? "Mark as unresolved" : "Mark as resolved"}
+                    onClick={() => onToggleResolved(!resolved)}
+                    className={cx(
+                        "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded border transition duration-100 ease-linear",
+                        resolved ? "border-success bg-success-solid text-white" : "border-secondary bg-primary hover:border-brand",
+                    )}>
+                    {resolved && <Check className="size-3" aria-hidden="true" />}
+                </button>
                 <span className="mt-0.5 shrink-0 text-sm font-semibold text-quaternary tabular-nums">{number}.</span>
                 <div className="min-w-0 flex-1">
                     <EditLine value={q.question} editing={editing} onChange={onQuestion} placeholder="Question…" className="font-medium text-primary" />
                 </div>
             </div>
+            <PriorityFlag value={q.priority} onChange={onPriority} />
             {editing && (
                 <button type="button" title="Remove question" onClick={onRemove} className="shrink-0 text-fg-quaternary hover:text-fg-error-secondary">
                     <Trash01 className="size-4" />
@@ -237,7 +252,7 @@ const QuestionCard = ({
             )}
         </div>
         <div className={cx("mt-3 border-l-2 pl-3", resolved ? "border-success" : "border-brand")}>
-            <EditArea value={q.answer} editing={editing} onChange={onAnswer} placeholder="Unanswered — type the decision here." rows={2} />
+            <EditArea value={q.answer} editing={editing} onChange={onAnswer} placeholder="Type your notes/decision here — check the box above when it's actually resolved." rows={2} />
         </div>
         {editing ? <VideoAttach value={q.video} onChange={onVideo} className="mt-3" /> : q.video && <VideoEmbed url={q.video} className="mt-3" />}
     </div>
@@ -391,9 +406,12 @@ export const ClientDashboardOverviewScreen = () => {
             if (q) Object.assign(q, patch);
         });
     const rmQuestion = (id: string) => update((d) => void (d.questions = d.questions.filter((x) => x.id !== id)));
-    const addQuestion = () => update((d) => void d.questions.push({ id: uid(), question: "", answer: "" }));
+    const addQuestion = () => update((d) => void d.questions.push({ id: uid(), question: "", answer: "", resolved: false }));
 
-    const isAnswered = (q: QA) => !!(q.answer || "").trim();
+    // Explicit `resolved` flag is the source of truth; questions saved before this
+    // field existed fall back to "has an answer" so their current Resolved/Open
+    // placement doesn't change until someone touches the checkbox.
+    const isAnswered = (q: QA) => q.resolved ?? !!(q.answer || "").trim();
     const openQuestions = data.questions.filter((q) => !isAnswered(q));
     const resolvedQuestions = data.questions.filter(isAnswered);
 
@@ -402,6 +420,11 @@ export const ClientDashboardOverviewScreen = () => {
             highlightScope
             className="flex flex-col"
             rail={!navCollapsed && <IconRail activeDept="docs" bottom={<RailBottom editing={editing} onToggleEditing={() => setEditing((e) => !e)} />} />}
+            breadcrumb={[
+                { label: "Dashboard", to: "/dashboard", icon: LayoutAlt01 },
+                { label: "Project Logs", to: "/dashboard?dept=docs&tab=project-logs", icon: ClipboardCheck },
+                { label: "Client Dashboard" },
+            ]}
         >
             <HighlightPen enabled={editing} />
             {navCollapsed && <CollapsedTopBar title="Client Dashboard" onExpand={toggleNav} />}
@@ -769,6 +792,8 @@ export const ClientDashboardOverviewScreen = () => {
                                         onAnswer={(v) => setQuestion(q.id, { answer: v })}
                                         onVideo={(v) => setQuestion(q.id, { video: v })}
                                         onRemove={() => rmQuestion(q.id)}
+                                        onToggleResolved={(v) => setQuestion(q.id, { resolved: v })}
+                                        onPriority={(v) => setQuestion(q.id, { priority: v })}
                                     />
                                 ))
                             )}
@@ -823,6 +848,8 @@ export const ClientDashboardOverviewScreen = () => {
                                                         onAnswer={(v) => setQuestion(q.id, { answer: v })}
                                                         onVideo={(v) => setQuestion(q.id, { video: v })}
                                                         onRemove={() => rmQuestion(q.id)}
+                                                        onToggleResolved={(v) => setQuestion(q.id, { resolved: v })}
+                                                        onPriority={(v) => setQuestion(q.id, { priority: v })}
                                                     />
                                                 ))}
                                             </div>

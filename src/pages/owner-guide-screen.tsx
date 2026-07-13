@@ -13,7 +13,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { Building07, CheckDone01, CloudBlank02, CreditCard01, Database01, Globe01, Mail01, Shield01, Users01 } from "@untitledui/icons";
+import { Building07, CheckDone01, CloudBlank02, CreditCard01, Database01, Download01, Globe01, Mail01, Shield01, Users01 } from "@untitledui/icons";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { AppShell } from "@/components/application/icon-rail";
@@ -96,6 +96,10 @@ function sectionFilledIn(credentials: Creds, sec: string): boolean {
 
 const CONTENT_KEY = "hgm_owner_content_v2";
 const GUIDE_CONTENT_SLUG = "owner-guide-content";
+/** The "Owner Guide Snapshot" — a protected Supabase copy of the complete
+    9-step template (all services incl. PMS/Domain/Cloudflare). The revert button on
+    the template restores from this row after steps get deleted by accident. */
+const SNAPSHOT_SLUG = "owner-guide-content-snapshot";
 const SESSION_KEY = "hgm_owner_session";
 
 const uid = () => Math.random().toString(36).slice(2, 9);
@@ -266,9 +270,9 @@ function seedContent(): StepData[] {
     ] as unknown as StepData[]);
 }
 
-function loadContent(): StepData[] {
+function loadContent(cacheKey: string): StepData[] {
     try {
-        const raw = localStorage.getItem(CONTENT_KEY);
+        const raw = localStorage.getItem(cacheKey);
         if (raw) {
             const d = JSON.parse(raw) as StepData[];
             if (Array.isArray(d) && d.length) return normalizeSteps(d);
@@ -277,8 +281,8 @@ function loadContent(): StepData[] {
     return seedContent();
 }
 
-function saveContent(steps: StepData[]) {
-    try { localStorage.setItem(CONTENT_KEY, JSON.stringify(steps)); } catch {}
+function saveContent(steps: StepData[], cacheKey: string) {
+    try { localStorage.setItem(cacheKey, JSON.stringify(steps)); } catch {}
 }
 
 function emptyOwner(): OwnerData { return { credentials: {}, checklist: {}, notes: {} }; }
@@ -663,6 +667,7 @@ const STEP_ICON: Record<CredSection, typeof Database01> = {
 const Sidebar = ({
     steps, credentials, visited, currentStep, editing,
     onSelect, onMoveStep, onDeleteStep, onAddStep, onNavigateOverview,
+    isTemplate, hiddenSteps, onToggleStepHidden,
     canShare, sharePassword, showSharePw, onToggleSharePw, onCopyShareLink, shareCopied,
     canCreate, onCreate, showTemplateHint, onDismissTemplateHint,
 }: {
@@ -673,9 +678,16 @@ const Sidebar = ({
     editing: boolean;
     onSelect: (i: number) => void;
     onMoveStep: (from: number, dir: -1 | 1) => void;
+    /** Template only — actually deletes the step for everyone. */
     onDeleteStep: (i: number) => void;
     onAddStep: () => void;
     onNavigateOverview: () => void;
+    /** True only for the bare /owner-guide master template. */
+    isTemplate: boolean;
+    /** credSections this specific client guide has hidden — always empty for the template. */
+    hiddenSteps: string[];
+    /** Client guides only — hides/restores a step for THIS client without touching the template. */
+    onToggleStepHidden: (credSection: string) => void;
     /** Share controls (password + copy link) only apply to a real client guide. */
     canShare: boolean;
     sharePassword: string | null;
@@ -731,8 +743,8 @@ const Sidebar = ({
         localStorage.setItem(SIDEBAR_WIDTH_KEY, String(SIDEBAR_DEFAULT_WIDTH));
     };
 
-    // Progress = filled credential forms out of total forms.
-    const formSteps = steps.filter(s => CRED_FORM_SECTIONS.includes(s.credSection));
+    // Progress = filled credential forms out of total forms (excluding steps this client has hidden).
+    const formSteps = steps.filter(s => CRED_FORM_SECTIONS.includes(s.credSection) && !hiddenSteps.includes(s.credSection));
     const filledForms = formSteps.filter(s => sectionFilledIn(credentials, s.credSection)).length;
     const progress = formSteps.length === 0 ? 0 : Math.round((filledForms / formSteps.length) * 100);
 
@@ -744,10 +756,18 @@ const Sidebar = ({
         return "done";
     };
 
+    // Hiding a step for this client renumbers the ones after it (matches how many
+    // are actually visible), instead of leaving a gap at the raw array index.
+    const isHiddenAt = (idx: number) => {
+        const sec = steps[idx]?.credSection;
+        return !isTemplate && sec !== "none" && sec !== "overview" && hiddenSteps.includes(sec);
+    };
+    const visiblePosition = (idx: number) => steps.filter((_, j) => j < idx && !isHiddenAt(j)).length;
+
     const overviewIdx = steps.findIndex(s => s.credSection === "overview");
 
     return (
-        <div className="relative flex h-full shrink-0" style={{ width: sidebarWidth }}>
+        <div className="relative flex h-full shrink-0 print:hidden" style={{ width: sidebarWidth }}>
         <aside className="flex h-full w-full flex-col overflow-hidden rounded-lg bg-primary shadow-sm">
             {/* header */}
             <div className="flex items-center border-b border-secondary px-5 py-4">
@@ -778,21 +798,31 @@ const Sidebar = ({
                     const status = stepStatus(i);
                     const isOverview = s.credSection === "overview";
                     const hasLabel = s.credSection !== "none" && s.credSection !== "overview" && !!CRED_SECTION_LABEL[s.credSection];
+                    // A client guide can hide a step it doesn't need (e.g. no Cloudflare
+                    // account) — Welcome/Review are never hideable, and this never applies
+                    // to the template itself. Hidden steps only ever show up while editing
+                    // (dimmed, with a Restore action) so they're never "gone forever" by accident.
+                    const canHide = !isTemplate && s.credSection !== "none" && s.credSection !== "overview";
+                    const hidden = canHide && hiddenSteps.includes(s.credSection);
+                    if (hidden && !editing) return null;
                     return (
                         <motion.div key={i}
                             variants={{ hidden: { opacity: 0, x: -10 }, show: { opacity: 1, x: 0, transition: { duration: 0.3, ease: [0.22, 1, 0.36, 1] } } }}
                             className={cx(
                             "group relative flex items-center gap-2 rounded-[9px] px-2 py-2 pl-[11px] transition-colors duration-100 ease-linear",
-                            active ? "bg-brand-50 dark:bg-brand-950/40" : "hover:bg-secondary",
+                            !hidden && (active ? "bg-brand-50 dark:bg-brand-950/40" : "hover:bg-secondary"),
                         )}>
                             <span className={cx(
                                 "absolute left-0 top-[7px] bottom-[7px] w-[3px] rounded-r-[3px] transition duration-100",
                                 active ? "bg-brand-600 opacity-100" : "opacity-0",
                             )} />
 
-                            {/* step icon / number */}
-                            <button type="button" onClick={() => onSelect(i)}
-                                className="flex items-center gap-2.5 flex-1 min-w-0 text-left">
+                            {/* step icon / number — the dim goes on this inner button, NOT the
+                                motion.div row: the entrance animation ends at opacity:1 as an
+                                inline style, which would silently override any opacity class
+                                set on the row itself. */}
+                            <button type="button" onClick={() => onSelect(i)} disabled={hidden}
+                                className={cx("flex items-center gap-2.5 flex-1 min-w-0 text-left disabled:cursor-not-allowed", hidden && "opacity-40")}>
                                 <span className={cx(
                                     "flex size-[26px] shrink-0 items-center justify-center rounded-full text-[11px] font-bold transition",
                                     isOverview ? (active ? "bg-brand-600 text-white" : "bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300") :
@@ -804,21 +834,26 @@ const Sidebar = ({
                                         ? <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" /></svg>
                                         : status === "done"
                                             ? <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6L9 17l-5-5" /></svg>
-                                            : i
+                                            : visiblePosition(i)
                                     }
                                 </span>
                                 <div className="flex-1 min-w-0">
-                                    <p className={cx("truncate text-[13px] font-semibold", active ? "text-primary" : "text-secondary")}>
+                                    <p className={cx("truncate text-[13px] font-semibold", hidden ? "text-tertiary line-through" : active ? "text-primary" : "text-secondary")}>
                                         {hasLabel ? CRED_SECTION_LABEL[s.credSection] : s.title}
                                     </p>
                                     {hasLabel && (
-                                        <p className="truncate text-[10.5px] text-quaternary">{s.title}</p>
+                                        <p className="truncate text-[10.5px] text-quaternary">{hidden ? "Hidden for this client" : s.title}</p>
                                     )}
                                 </div>
                             </button>
 
                             {/* edit controls */}
-                            {editing && (
+                            {editing && hidden ? (
+                                <button type="button" title="Restore for this client" onClick={() => onToggleStepHidden(s.credSection)}
+                                    className="flex size-6 shrink-0 items-center justify-center rounded-md text-quaternary transition hover:bg-secondary hover:text-brand-600">
+                                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19M1 1l22 22" /></svg>
+                                </button>
+                            ) : editing && (
                                 <div className="flex shrink-0 items-center gap-0.5">
                                     <button type="button" title="Move up" onClick={() => onMoveStep(i, -1)} disabled={i === 0}
                                         className="flex size-6 items-center justify-center rounded-md text-quaternary transition hover:bg-secondary hover:text-primary disabled:opacity-20">
@@ -828,10 +863,17 @@ const Sidebar = ({
                                         className="flex size-6 items-center justify-center rounded-md text-quaternary transition hover:bg-secondary hover:text-primary disabled:opacity-20">
                                         <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M6 9l6 6 6-6" /></svg>
                                     </button>
-                                    <button type="button" title="Delete step" onClick={() => onDeleteStep(i)}
-                                        className="flex size-6 items-center justify-center rounded-md text-quaternary transition hover:bg-error-primary hover:text-error-primary">
-                                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" /></svg>
-                                    </button>
+                                    {canHide ? (
+                                        <button type="button" title="Hide from this client" onClick={() => onToggleStepHidden(s.credSection)}
+                                            className="flex size-6 items-center justify-center rounded-md text-quaternary transition hover:bg-secondary hover:text-primary">
+                                            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
+                                        </button>
+                                    ) : (
+                                        <button type="button" title="Delete step" onClick={() => onDeleteStep(i)}
+                                            className="flex size-6 items-center justify-center rounded-md text-quaternary transition hover:bg-error-primary hover:text-error-primary">
+                                            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" /></svg>
+                                        </button>
+                                    )}
                                 </div>
                             )}
                         </motion.div>
@@ -1117,11 +1159,19 @@ export const OwnerGuideScreen = () => {
     // and every save would silently go to the wrong session_id.
     const sessionId = slug ?? getOrCreateSession();
 
+    // Each client guide owns its own COPY of the step content (created by the
+    // Create Owner Guide flow under sop_pages slug = guide slug). The screen
+    // reads/writes that copy — never the shared template — so retitling or
+    // editing a client's guide can't leak into the template or other clients,
+    // and template edits can't rewrite guides that already exist (RULE No.1).
+    const contentSlug = slug ?? GUIDE_CONTENT_SLUG;
+    const contentKey = slug ? `${CONTENT_KEY}_${slug}` : CONTENT_KEY;
+
     const mainRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const lockKey = `hgm_owner_locked_${sessionId}`;
-    const [steps, setSteps] = useState<StepData[]>(loadContent);
+    const [steps, setSteps] = useState<StepData[]>(() => loadContent(contentKey));
     const [ownerData, setOwnerData] = useState<OwnerData>(emptyOwner);
     const [meta, setMeta] = useState<OwnerGuideMeta | null>(null);
     const [createOpen, setCreateOpen] = useState(false);
@@ -1216,39 +1266,90 @@ export const OwnerGuideScreen = () => {
         navigator.clipboard.writeText(url).then(() => { setShareCopied(true); setTimeout(() => setShareCopied(false), 2000); });
     };
 
-    // Shared guide content lives in Supabase (with Firebase fallback) so every client sees the team's edits.
+    // Load this page's OWN step content: the template row for /owner-guide, the
+    // guide's own copied row for /owner-guide/:slug. Legacy guides created before
+    // per-guide copies existed fall back to the template's content once — the
+    // publish effect below then materializes their own copy on first save.
+    // Re-runs when contentSlug changes because template → new guide navigation
+    // does NOT remount this component (same route element).
     useEffect(() => {
-        readSopPage(GUIDE_CONTENT_SLUG)
-            .then((data) => {
-                if (data?.data && Array.isArray(data.data) && data.data.length) {
-                    const norm = normalizeSteps(data.data as StepData[]);
-                    setSteps(norm);
-                    saveContent(norm);
+        contentHydrated.current = false;
+        let cancelled = false;
+        const apply = (data: unknown) => {
+            if (cancelled || !data || !Array.isArray(data) || !data.length) return false;
+            const norm = normalizeSteps(data as StepData[]);
+            setSteps(norm);
+            saveContent(norm, contentKey);
+            return true;
+        };
+        (async () => {
+            try {
+                const row = await readSopPage(contentSlug);
+                apply(row?.data);
+            } catch (err) {
+                if (slug) {
+                    try {
+                        const master = await readSopPage(GUIDE_CONTENT_SLUG);
+                        apply(master?.data);
+                    } catch (err2) {
+                        dbLogger.error(`Failed to load guide content from both DBs`, err2 as Error);
+                    }
+                } else {
+                    dbLogger.error(`Failed to load guide content from both DBs`, err as Error);
                 }
-                contentHydrated.current = true;
-            })
-            .catch((err) => {
-                dbLogger.error(`Failed to load guide content from both DBs`, err);
-                contentHydrated.current = true;
-            });
-    }, []);
+            } finally {
+                if (!cancelled) contentHydrated.current = true;
+            }
+        })();
+        return () => { cancelled = true; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [contentSlug]);
 
-    // Debounced publish of guide content to Supabase + Firebase after edits.
+    // Debounced publish of step content after edits — to this page's own row
+    // (template OR the guide's copy), never anyone else's. contentSlug is read
+    // from the closure of the render where `steps` changed, so a pending write
+    // scheduled on the template can't land on a guide navigated to mid-debounce.
     useEffect(() => {
         if (!contentHydrated.current) return;
         const t = setTimeout(() => {
-            writeSopPage(GUIDE_CONTENT_SLUG, steps)
+            writeSopPage(contentSlug, steps)
                 .then(() => { dbLogger.success(`Guide content published`); })
                 .catch((err) => { dbLogger.error(`Failed to save guide content`, err); });
         }, 800);
         return () => clearTimeout(t);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [steps]);
 
     useEffect(() => { localStorage.setItem(lockKey, String(locked)); }, [locked, lockKey]);
 
+    // Steps this specific client guide has hidden (e.g. no Cloudflare account) — never
+    // touches the shared master template or any other client's guide. Only applies to
+    // real client guides, never the template itself.
+    const hiddenSteps = isTemplate ? [] : (meta?.hidden_steps ?? []);
+    const isStepHidden = (i: number) => {
+        const sec = steps[i]?.credSection;
+        return !!sec && sec !== "none" && sec !== "overview" && hiddenSteps.includes(sec);
+    };
+    // Matches the Sidebar's own renumbering — hiding a step shifts the numbers after
+    // it down instead of leaving a gap at the raw array index.
+    const visiblePosition = (idx: number) => steps.filter((_, j) => j < idx && !isStepHidden(j)).length;
+    const toggleStepHidden = async (credSection: string) => {
+        if (isTemplate || !slug) return;
+        const next = hiddenSteps.includes(credSection) ? hiddenSteps.filter(s => s !== credSection) : [...hiddenSteps, credSection];
+        setMeta(m => (m ? { ...m, hidden_steps: next } : m));
+        const { error } = await supabase.from("owner_guides").update({ hidden_steps: next }).eq("slug", slug);
+        if (error) dbLogger.error(`Failed to save hidden_steps for ${slug}`, error);
+    };
+
     const navigate = (i: number) => {
-        const clamped = Math.max(0, Math.min(steps.length - 1, i));
-        setCurrentStep(clamped);
+        let target = Math.max(0, Math.min(steps.length - 1, i));
+        const dir = target >= currentStep ? 1 : -1;
+        while (isStepHidden(target) && target > 0 && target < steps.length - 1) target += dir;
+        if (isStepHidden(target)) {
+            const fallback = steps.findIndex((_, idx) => !isStepHidden(idx));
+            if (fallback !== -1) target = fallback;
+        }
+        setCurrentStep(target);
         mainRef.current?.scrollTo({ top: 0, behavior: "smooth" });
     };
 
@@ -1257,7 +1358,7 @@ export const OwnerGuideScreen = () => {
     const updateField = (idx: number, field: keyof StepData, val: unknown) => {
         setSteps(prev => {
             const next = prev.map((s, i) => i === idx ? { ...s, [field]: val } : s);
-            saveContent(next);
+            saveContent(next, contentKey);
             return next;
         });
     };
@@ -1265,7 +1366,7 @@ export const OwnerGuideScreen = () => {
     const updateInstruction = (si: number, ii: number, val: string) => {
         setSteps(prev => {
             const next = prev.map((s, i) => i !== si ? s : { ...s, instructions: s.instructions.map((ins, j) => j === ii ? { ...ins, text: val } : ins) });
-            saveContent(next);
+            saveContent(next, contentKey);
             return next;
         });
     };
@@ -1273,7 +1374,7 @@ export const OwnerGuideScreen = () => {
     const patchInstruction = (si: number, ii: number, patch: Partial<Instruction>) => {
         setSteps(prev => {
             const next = prev.map((s, i) => i !== si ? s : { ...s, instructions: s.instructions.map((ins, j) => j === ii ? { ...ins, ...patch } : ins) });
-            saveContent(next);
+            saveContent(next, contentKey);
             return next;
         });
     };
@@ -1283,7 +1384,7 @@ export const OwnerGuideScreen = () => {
             const step = prev[si];
             if (step.instructions[ii]?.locked) return prev; // protected — unlock before deleting
             const next = prev.map((s, i) => i !== si ? s : { ...s, instructions: s.instructions.filter((_, j) => j !== ii) });
-            saveContent(next);
+            saveContent(next, contentKey);
             return next;
         });
     };
@@ -1300,7 +1401,7 @@ export const OwnerGuideScreen = () => {
             const reordered = [...list];
             [reordered[ii], reordered[target]] = [reordered[target], reordered[ii]];
             const next = prev.map((s, i) => i !== si ? s : { ...s, instructions: reordered });
-            saveContent(next);
+            saveContent(next, contentKey);
             return next;
         });
     };
@@ -1315,7 +1416,7 @@ export const OwnerGuideScreen = () => {
     const updateBenefit = (si: number, bi: number, val: string) => {
         setSteps(prev => {
             const next = prev.map((s, i) => i !== si || !s.benefits ? s : { ...s, benefits: s.benefits.map((b, j) => j === bi ? val : b) });
-            saveContent(next);
+            saveContent(next, contentKey);
             return next;
         });
     };
@@ -1328,7 +1429,7 @@ export const OwnerGuideScreen = () => {
         setSteps(prev => {
             const next = [...prev];
             [next[from], next[to]] = [next[to], next[from]];
-            saveContent(next);
+            saveContent(next, contentKey);
             if (currentStep === from) setCurrentStep(to);
             else if (currentStep === to) setCurrentStep(from);
             return next;
@@ -1337,12 +1438,36 @@ export const OwnerGuideScreen = () => {
 
     const deleteStep = (i: number) => {
         if (steps.length <= 1) return;
+        // Deleting here edits the shared master template — it disappears for every
+        // client guide, so make absolutely sure before proceeding.
+        if (!window.confirm("Are you sure you want to delete this step?\n\nThis is the master TEMPLATE — once removed, the step (and its instructions/screenshots) disappears for every client guide and you won't be able to undo it.")) return;
         setSteps(prev => {
             const next = prev.filter((_, idx) => idx !== i);
-            saveContent(next);
+            saveContent(next, contentKey);
             return next;
         });
         if (currentStep >= i) setCurrentStep(Math.max(0, currentStep - 1));
+    };
+
+    // Restore the template's steps from the protected "Owner Guide Snapshot"
+    // (all 9 steps incl. PMS/Domain/Cloudflare) — the escape hatch after an
+    // accidental template edit/delete.
+    const revertToSnapshot = async () => {
+        if (!window.confirm("Revert to the Owner Guide Snapshot?\n\nThis replaces the template's current steps with the protected full 9-step version. Client credentials are not affected.")) return;
+        try {
+            const row = await readSopPage(SNAPSHOT_SLUG);
+            if (row?.data && Array.isArray(row.data) && row.data.length) {
+                const norm = normalizeSteps(row.data as StepData[]);
+                setSteps(norm);
+                saveContent(norm, contentKey);
+                setCurrentStep(0);
+            } else {
+                alert("Owner Guide Snapshot not found — nothing was changed.");
+            }
+        } catch (err) {
+            dbLogger.error("Failed to load the Owner Guide Snapshot", err as Error);
+            alert("Couldn't load the Owner Guide Snapshot — nothing was changed.");
+        }
     };
 
     const addStep = () => {
@@ -1356,7 +1481,7 @@ export const OwnerGuideScreen = () => {
         };
         setSteps(prev => {
             const next = [...prev.slice(0, currentStep + 1), newStep, ...prev.slice(currentStep + 1)];
-            saveContent(next);
+            saveContent(next, contentKey);
             return next;
         });
         navigate(currentStep + 1);
@@ -1372,7 +1497,7 @@ export const OwnerGuideScreen = () => {
     const addImage = (si: number, src: string) => {
         setSteps(prev => {
             const next = prev.map((s, i) => i !== si ? s : { ...s, images: [...s.images, { id: uid(), src }] });
-            saveContent(next);
+            saveContent(next, contentKey);
             return next;
         });
     };
@@ -1380,7 +1505,7 @@ export const OwnerGuideScreen = () => {
     const removeImage = (si: number, imgId: string) => {
         setSteps(prev => {
             const next = prev.map((s, i) => i !== si ? s : { ...s, images: s.images.filter(img => img.id !== imgId) });
-            saveContent(next);
+            saveContent(next, contentKey);
             return next;
         });
     };
@@ -1388,7 +1513,7 @@ export const OwnerGuideScreen = () => {
     const updateLensPos = (si: number, imgId: string, lensPos: LensPos) => {
         setSteps(prev => {
             const next = prev.map((s, i) => i !== si ? s : { ...s, images: s.images.map(img => img.id === imgId ? { ...img, lensPos } : img) });
-            saveContent(next);
+            saveContent(next, contentKey);
             return next;
         });
     };
@@ -1471,8 +1596,12 @@ export const OwnerGuideScreen = () => {
     };
 
     const step = steps[currentStep] ?? steps[0];
-    const formSteps = steps.filter(s => CRED_FORM_SECTIONS.includes(s.credSection));
+    const formSteps = steps.filter(s => CRED_FORM_SECTIONS.includes(s.credSection) && !hiddenSteps.includes(s.credSection));
     const filledForms = formSteps.filter(s => sectionFilledIn(ownerData.credentials, s.credSection)).length;
+    // Visible step count/position for this client (hidden steps don't count) — the
+    // template always shows the raw count since nothing is ever hidden there.
+    const visibleStepCount = steps.filter((_, idx) => !isStepHidden(idx)).length;
+    const visibleStepPosition = steps.slice(0, currentStep + 1).filter((_, idx) => !isStepHidden(idx)).length;
 
     // Steps with step-by-step instructions (Netlify, Supabase, Resend, Stripe, Cloudflare) get
     // a sticky credential column beside the scrolling body, so the form is always reachable
@@ -1679,6 +1808,7 @@ export const OwnerGuideScreen = () => {
                 currentStep={currentStep} editing={editing}
                 onSelect={navigate} onMoveStep={moveStep}
                 onDeleteStep={deleteStep} onAddStep={addStep}
+                isTemplate={isTemplate} hiddenSteps={hiddenSteps} onToggleStepHidden={toggleStepHidden}
                 onNavigateOverview={navigateToOverview}
                 canShare={!isTemplate && !!meta}
                 sharePassword={meta?.share_password ?? null}
@@ -1692,7 +1822,7 @@ export const OwnerGuideScreen = () => {
                 onDismissTemplateHint={() => setShowTemplateToast(false)}
             />
 
-            <main ref={mainRef} className="flex-1 overflow-y-auto overflow-x-hidden rounded-lg bg-[#FDFDFD] shadow-sm scroll-smooth dark:bg-primary">
+            <main ref={mainRef} className="flex-1 overflow-y-auto overflow-x-hidden rounded-lg bg-[#FDFDFD] shadow-sm scroll-smooth dark:bg-primary print:overflow-visible print:bg-primary print:shadow-none">
                 {/* Client guide header — name only; share controls live in the sidebar. */}
                 {!isTemplate && meta && (
                     <div className="border-b border-secondary bg-primary px-8 py-3.5">
@@ -1713,17 +1843,17 @@ export const OwnerGuideScreen = () => {
                         On the Overview step the outer container is wider (so the body
                         below can spread out), but the header itself stays pinned to the
                         original narrower width via this inner max-w wrapper. */}
-                    <div className="sticky top-0 z-10 bg-[#FDFDFD] pt-9 dark:bg-primary">
+                    <div className="sticky top-0 z-10 bg-[#FDFDFD] pt-9 dark:bg-primary print:static">
                         <div className={step.credSection === "overview" ? "mx-auto max-w-[760px]" : undefined}>
                             {/* breadcrumb + quick back/next — lets users move between steps
                                 without scrolling to the bottom of a long instructions list. */}
                             <div className="mb-3 flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-2 text-[12px] font-medium text-quaternary">
-                                    <span>Step {currentStep + 1} of {steps.length}</span>
+                                    <span>Step {visibleStepPosition} of {visibleStepCount}</span>
                                     <span>·</span>
                                     <span>{filledForms} of {formSteps.length} forms filled</span>
                                 </div>
-                                <div className="flex items-center gap-1.5">
+                                <div className="flex items-center gap-1.5 print:hidden">
                                     <button type="button" onClick={() => navigate(currentStep - 1)} disabled={currentStep === 0} title="Back"
                                         className="flex size-7 items-center justify-center rounded-lg border border-secondary text-secondary transition hover:bg-secondary disabled:pointer-events-none disabled:opacity-30">
                                         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M15 18l-6-6 6-6" /></svg>
@@ -1762,7 +1892,19 @@ export const OwnerGuideScreen = () => {
                     {/* ── Overview step ── */}
                     {step.credSection === "overview" ? (
                         <>
-                            <p className="mb-6 text-[15px] leading-relaxed text-secondary">{step.description}</p>
+                            <div className="mb-6 flex items-start justify-between gap-4">
+                                <p className="text-[15px] leading-relaxed text-secondary">{step.description}</p>
+                                {/* Team-only — clients never see this. Uses the browser's print
+                                    dialog (Save as PDF) rather than a PDF library, so the exported
+                                    copy always matches whatever's on screen. */}
+                                {isTeam && (
+                                    <button type="button" onClick={() => window.print()}
+                                        className="flex shrink-0 items-center gap-2 rounded-xl border border-secondary bg-primary px-4 py-2.5 text-[13px] font-semibold text-secondary transition hover:bg-secondary print:hidden">
+                                        <Download01 className="size-4" aria-hidden="true" />
+                                        Download PDF
+                                    </button>
+                                )}
+                            </div>
 
                             {loading ? (
                                 <div className="flex items-center justify-center py-12">
@@ -1772,8 +1914,8 @@ export const OwnerGuideScreen = () => {
                             ) : (
                                 <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                                     {steps
-                                        .map((s, idx) => ({ s, num: idx })) // zero-indexed to match the sidebar (Welcome = 0, PMS = 1, …)
-                                        .filter(({ s }) => CRED_FORM_SECTIONS.includes(s.credSection))
+                                        .map((s, idx) => ({ s, num: visiblePosition(idx) })) // matches the sidebar's own renumbering when steps are hidden
+                                        .filter(({ s }) => CRED_FORM_SECTIONS.includes(s.credSection) && !hiddenSteps.includes(s.credSection))
                                         .map(({ s, num }) => (
                                             <OverviewSection key={s.credSection} num={num} title={s.title} label={CRED_SECTION_LABEL[s.credSection]} icon={STEP_ICON[s.credSection]} locked={locked} rows={
                                                 s.credSection === "stripe"
@@ -1862,12 +2004,21 @@ export const OwnerGuideScreen = () => {
                 </motion.div>
             </main>
 
+            {/* floating revert-to-snapshot — template only, sits above the lock */}
+            {isTeam && isTemplate && (
+                <button type="button" onClick={revertToSnapshot}
+                    title="Revert to Owner Guide Snapshot"
+                    className="fixed bottom-[72px] right-5 z-40 flex size-11 items-center justify-center rounded-full bg-primary text-quaternary shadow-lg ring-1 ring-secondary transition duration-100 ease-linear hover:bg-secondary hover:text-secondary print:hidden">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8" /><path d="M3 3v5h5" /></svg>
+                </button>
+            )}
+
             {/* floating lock/unlock — HGM team only */}
             {isTeam && (
                 <button type="button" onClick={() => setLocked(l => !l)}
                     title={locked ? "Unlock editing" : "Lock editing"}
                     className={cx(
-                        "fixed bottom-5 right-5 z-40 flex size-11 items-center justify-center rounded-full shadow-lg ring-1 transition duration-100 ease-linear",
+                        "fixed bottom-5 right-5 z-40 flex size-11 items-center justify-center rounded-full shadow-lg ring-1 transition duration-100 ease-linear print:hidden",
                         editing ? "bg-brand-600 ring-brand-600 text-white hover:bg-brand-700" : "bg-primary ring-secondary text-quaternary hover:bg-secondary hover:text-secondary",
                     )}>
                     {locked ? (

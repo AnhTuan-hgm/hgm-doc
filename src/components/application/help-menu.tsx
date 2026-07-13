@@ -19,6 +19,7 @@ const SHORTCUTS: { keys: string[]; label: string }[] = [
     { keys: ["Shift", "B"], label: "Show / hide the menu" },
     { keys: ["Shift", "R"], label: "Show / hide the icon rail" },
     { keys: ["Shift", "Q"], label: "Open / close the AI chat" },
+    { keys: ["Ctrl", "B"], label: "Go to the Dashboard" },
 ];
 
 /** Shared modal shell (same pattern as DocsRequestModal). */

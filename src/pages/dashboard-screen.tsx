@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { AppShell, CollapsedTopBar, HeaderAvatar, IconRail, NavCollapseButton, useNavCollapsed } from "@/components/application/icon-rail";
 import { HelpMenu } from "@/components/application/help-menu";
+import { Select } from "@/components/base/select/select";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowUpRight, Award01, BookOpen01, Briefcase01, Check, ChevronDown, ClipboardCheck, Code02, Diamond01, Edit01, FilePlus02, FolderClosed, Grid01, Home02, Image01, LayoutAlt01, List, Lock01, LockUnlocked01, Mail01, MarkerPin01, MessageChatCircle, Plus, SearchSm, Share07, Star01, Trash01, Trophy01, Users01, XClose } from "@untitledui/icons";
 import { supabase, type ChatWidgetPageData, type ClientPageData, type ClientRecord, type HostOnboardingPageData, type LeadCapturePageData, type OverviewCard, type OwnerGuideMeta, type OverviewTab } from "@/lib/supabase";
@@ -10,6 +11,7 @@ import { useAuthUser } from "@/hooks/use-auth-user";
 import { useEditShortcuts } from "@/hooks/use-edit-shortcuts";
 import { useTheme } from "@/providers/theme-provider";
 import { compressImageFile } from "@/utils/compress-image";
+import { teamPhoto } from "@/utils/team-photos";
 import { cx } from "@/utils/cx";
 
 const PASSWORDS = ["ANHTUAN", "HGTEAM"];
@@ -171,11 +173,42 @@ interface Department {
 /** Fixed client tiers for the Client List page (grouped in the sidebar). */
 const TIERS: { id: string; label: string; icon: typeof Share07 }[] = [
     { id: "tier-0", label: "Tier 0", icon: Trophy01 },
-    { id: "tier-1", label: "Tier 1", icon: Star01 },
-    { id: "tier-2", label: "Tier 2", icon: Award01 },
+    { id: "tier-1", label: "Tier 1", icon: Award01 },
+    { id: "tier-2", label: "Tier 2", icon: Star01 },
     { id: "mastermind", label: "Mastermind", icon: Diamond01 },
 ];
 const tierLabel = (id: string) => TIERS.find((t) => t.id === id)?.label ?? "Tier 0";
+
+/** Client lifecycle + onboarding phases — drive the /home Mission Control page. */
+const CLIENT_STATUSES = [
+    { id: "existing", label: "Existing" },
+    { id: "onboarding", label: "Onboarding" },
+    { id: "offboarding", label: "Offboarding" },
+];
+export const ONBOARDING_PHASES = [
+    { emoji: "✍️", label: "Signing On" },
+    { emoji: "🧠", label: "Marketing Strategy" },
+    { emoji: "⚙️", label: "Technical Setup" },
+    { emoji: "📸", label: "Content Creation" },
+    { emoji: "🎨", label: "Funnel Setup" },
+    { emoji: "🚀", label: "Marketing Launch" },
+];
+
+/** The real HGM roster (hiddengem.media/team) — canonical names for the client
+    assignment dropdowns so per-person counts never fragment on typos. AMs pair
+    with a Marketing Assistant to handle each client. */
+// Gillian Conley is Operations Manager, not an AM — deliberately not listed.
+export const ACCOUNT_MANAGERS = [
+    "Makenna Moran",
+    "Alicia Morin",
+    "Charlotte Pickering",
+    "Ananya Arora",
+    "Nicole Araya",
+    "Chiara Henry",
+    "Kristal Puguan",
+];
+export const MARKETING_ASSISTANTS = ["Vicky Si", "Lily Phanthavong", "Lucca Maggiolo"];
+export const WEB_TEAM = ["AnhTuan Bui", "Brandon Nguyen", "Leshan Patterson", "Kyle Zinger"];
 
 const DEPARTMENTS: Department[] = [
     {
@@ -2108,9 +2141,20 @@ const OverviewContent = ({ department, tab, editing, isOwner }: { department: De
 
 /* ── Clients (Client List) ────────────────────────────────────────── */
 
-type ClientFilter = { type: "tier" | "am"; value: string };
+type ClientFilter = { type: "tier" | "am" | "ma"; value: string };
 
 /** Create/edit modal for a client record. Mirrors AddCardModal. */
+/** Dropdown options for a person field: None + the canonical roster, plus the
+    currently-saved name when it isn't on the roster (legacy free-typed values
+    stay visible instead of silently reading as unassigned). */
+const NONE_KEY = "__none__";
+const personItems = (roster: string[], current: string) => {
+    const names = [...roster];
+    const cur = current.trim();
+    if (cur && !names.includes(cur)) names.push(cur);
+    return [{ id: NONE_KEY, label: "None" }, ...names.map((n) => ({ id: n, label: n, avatarUrl: teamPhoto(n) }))];
+};
+
 const ClientModal = ({
     initial,
     onClose,
@@ -2122,8 +2166,13 @@ const ClientModal = ({
 }) => {
     const [name, setName] = useState(initial?.name ?? "");
     const [tier, setTier] = useState(initial?.tier ?? "tier-0");
+    const [status, setStatus] = useState(initial?.status ?? "existing");
+    const [phase, setPhase] = useState<number | null>(initial?.onboarding_phase ?? null);
     const [am, setAm] = useState(initial?.am ?? "");
+    const [ma, setMa] = useState(initial?.marketing_assistant ?? "");
     const [location, setLocation] = useState(initial?.location ?? "");
+    const [webProject, setWebProject] = useState(initial?.web_project ?? "");
+    const [webManager, setWebManager] = useState(initial?.web_manager ?? "");
     const [link, setLink] = useState(initial?.link ?? "");
     const [cover, setCover] = useState(initial?.cover_url ?? "");
     const [saving, setSaving] = useState(false);
@@ -2146,8 +2195,14 @@ const ClientModal = ({
             await onSave({
                 name: name.trim(),
                 tier,
+                status,
+                // Phase only means something while onboarding — clear it otherwise.
+                onboarding_phase: status === "onboarding" ? phase : null,
                 am: am.trim(),
+                marketing_assistant: ma.trim(),
                 location: location.trim(),
+                web_project: webProject.trim(),
+                web_manager: webManager.trim(),
                 link: link.trim(),
                 cover_url: cover,
                 starred: initial?.starred ?? false,
@@ -2220,9 +2275,82 @@ const ClientModal = ({
                         </div>
                     </div>
                     <div>
-                        <label htmlFor="client-am" className="mb-1.5 block text-sm font-medium text-secondary">Account manager</label>
-                        <input id="client-am" type="text" value={am} onChange={(e) => setAm(e.target.value)} placeholder="e.g. Makenna Moran"
-                            className="w-full rounded-lg border border-secondary px-3 py-2 text-sm text-primary placeholder:text-placeholder outline-none transition duration-100 ease-linear focus:border-brand focus:ring-1 focus:ring-brand" />
+                        <label className="mb-1.5 block text-sm font-medium text-secondary">Status</label>
+                        <div className="flex flex-wrap gap-1.5">
+                            {CLIENT_STATUSES.map((s) => (
+                                <button
+                                    key={s.id}
+                                    type="button"
+                                    onClick={() => setStatus(s.id)}
+                                    className={cx(
+                                        "rounded-full px-3 py-1 text-xs font-medium transition duration-100 ease-linear",
+                                        status === s.id ? "bg-brand-solid text-white" : "bg-secondary text-tertiary ring-1 ring-secondary hover:text-secondary",
+                                    )}
+                                >
+                                    {s.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                    {status === "onboarding" && (
+                        <div>
+                            <label className="mb-1.5 block text-sm font-medium text-secondary">Onboarding phase</label>
+                            <div className="flex flex-wrap gap-1.5">
+                                {ONBOARDING_PHASES.map((p, i) => (
+                                    <button
+                                        key={i}
+                                        type="button"
+                                        title={`Phase ${i} — ${p.label}`}
+                                        onClick={() => setPhase(i)}
+                                        className={cx(
+                                            "rounded-full px-2.5 py-1 text-xs font-medium transition duration-100 ease-linear",
+                                            phase === i ? "bg-brand-solid text-white" : "bg-secondary text-tertiary ring-1 ring-secondary hover:text-secondary",
+                                        )}
+                                    >
+                                        {i} {p.emoji}
+                                    </button>
+                                ))}
+                            </div>
+                            <p className="mt-1.5 text-xs text-quaternary">
+                                {phase != null ? `Phase ${phase} — ${ONBOARDING_PHASES[phase].label}` : "Pick where this client is in onboarding."}
+                            </p>
+                        </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-3">
+                        <Select
+                            label="Account manager"
+                            placeholder="Select AM"
+                            items={personItems(ACCOUNT_MANAGERS, am)}
+                            selectedKey={am.trim() || NONE_KEY}
+                            onSelectionChange={(k) => setAm(k === NONE_KEY ? "" : String(k ?? ""))}
+                        >
+                            {(item) => <Select.Item id={item.id} avatarUrl={item.avatarUrl}>{item.label}</Select.Item>}
+                        </Select>
+                        <Select
+                            label="Marketing assistant"
+                            placeholder="Select MA"
+                            items={personItems(MARKETING_ASSISTANTS, ma)}
+                            selectedKey={ma.trim() || NONE_KEY}
+                            onSelectionChange={(k) => setMa(k === NONE_KEY ? "" : String(k ?? ""))}
+                        >
+                            {(item) => <Select.Item id={item.id} avatarUrl={item.avatarUrl}>{item.label}</Select.Item>}
+                        </Select>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label htmlFor="client-webproject" className="mb-1.5 block text-sm font-medium text-secondary">Web project <span className="font-normal text-quaternary">(optional)</span></label>
+                            <input id="client-webproject" type="text" value={webProject} onChange={(e) => setWebProject(e.target.value)} placeholder="e.g. Ai Website"
+                                className="w-full rounded-lg border border-secondary px-3 py-2 text-sm text-primary placeholder:text-placeholder outline-none transition duration-100 ease-linear focus:border-brand focus:ring-1 focus:ring-brand" />
+                        </div>
+                        <Select
+                            label="Web manager"
+                            placeholder="Select web manager"
+                            items={personItems(WEB_TEAM, webManager)}
+                            selectedKey={webManager.trim() || NONE_KEY}
+                            onSelectionChange={(k) => setWebManager(k === NONE_KEY ? "" : String(k ?? ""))}
+                        >
+                            {(item) => <Select.Item id={item.id} avatarUrl={item.avatarUrl}>{item.label}</Select.Item>}
+                        </Select>
                     </div>
                     <div>
                         <label htmlFor="client-location" className="mb-1.5 block text-sm font-medium text-secondary">Location</label>
@@ -2433,7 +2561,22 @@ const SidebarGroup = ({ label, children }: { label: string; children: React.Reac
     </div>
 );
 
-const NavItem = ({ active, icon: Icon, label, count, onClick }: { active: boolean; icon: typeof Share07; label: string; count: number; onClick: () => void }) => (
+const NavItem = ({
+    active,
+    icon: Icon,
+    photo,
+    label,
+    count,
+    onClick,
+}: {
+    active: boolean;
+    icon: typeof Share07;
+    /** Team headshot — replaces the icon when we have one (people rows). */
+    photo?: string;
+    label: string;
+    count: number;
+    onClick: () => void;
+}) => (
     <motion.button
         type="button"
         variants={{ hidden: { opacity: 0, x: -10 }, show: { opacity: 1, x: 0, transition: { duration: 0.3, ease: [0.22, 1, 0.36, 1] } } }}
@@ -2443,7 +2586,11 @@ const NavItem = ({ active, icon: Icon, label, count, onClick }: { active: boolea
             active ? "bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300" : "text-secondary hover:bg-secondary hover:text-primary",
         )}
     >
-        <Icon className="size-4 shrink-0" aria-hidden="true" />
+        {photo ? (
+            <img src={photo} alt={label} className="size-5 shrink-0 rounded-full object-cover ring-1 ring-secondary" draggable={false} />
+        ) : (
+            <Icon className="size-4 shrink-0" aria-hidden="true" />
+        )}
         <span className="flex-1 truncate">{label}</span>
         <span className={cx("text-xs tabular-nums", active ? "text-brand-700 dark:text-brand-300" : "text-quaternary")}>{count}</span>
     </motion.button>
@@ -2489,11 +2636,18 @@ const ClientListContent = ({
             });
     }, []);
 
-    // Account managers present in the data (for the "By AM" group).
-    const ams = [...new Set(clients.map((c) => c.am.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    // Sidebar people groups: the full canonical roster first (so every AM/MA is
+    // listed even with 0 clients), then any extra names found in the data
+    // (legacy free-typed values like "Anna" stay reachable until normalized).
+    const extraNames = (roster: string[], names: (string | undefined)[]) =>
+        [...new Set(names.map((n) => (n ?? "").trim()).filter(Boolean))].filter((n) => !roster.includes(n)).sort((a, b) => a.localeCompare(b));
+    const ams = [...ACCOUNT_MANAGERS, ...extraNames(ACCOUNT_MANAGERS, clients.map((c) => c.am))];
+    const mas = [...MARKETING_ASSISTANTS, ...extraNames(MARKETING_ASSISTANTS, clients.map((c) => c.marketing_assistant))];
 
     const filtered = clients.filter((c) =>
-        filter.type === "tier" ? c.tier === filter.value : c.am.trim() === filter.value,
+        filter.type === "tier" ? c.tier === filter.value
+        : filter.type === "am" ? c.am.trim() === filter.value
+        : (c.marketing_assistant ?? "").trim() === filter.value,
     );
     // Starred clients always pin to the top; the dropdown decides the order within.
     const tierRank = (id: string) => {
@@ -2567,7 +2721,7 @@ const ClientListContent = ({
                 </div>
                 <nav className="flex-1 overflow-y-auto px-3 py-4">
                     <motion.div
-                        className="flex flex-col gap-8"
+                        className="flex flex-col"
                         initial="hidden"
                         animate="show"
                         variants={{ show: { transition: { staggerChildren: 0.05 } } }}
@@ -2585,20 +2739,39 @@ const ClientListContent = ({
                             ))}
                         </SidebarGroup>
 
-                        {ams.length > 0 && (
-                            <SidebarGroup label="By AM">
-                                {ams.map((am) => (
-                                    <NavItem
-                                        key={am}
-                                        active={filter.type === "am" && filter.value === am}
-                                        icon={Users01}
-                                        label={am}
-                                        count={clients.filter((c) => c.am.trim() === am).length}
-                                        onClick={() => setFilter({ type: "am", value: am })}
-                                    />
-                                ))}
-                            </SidebarGroup>
-                        )}
+                        {/* Divider between groups (macOS System Settings style) */}
+                        <div className="mx-1 my-4 h-px bg-border-secondary" />
+
+                        <SidebarGroup label="By Account Manager">
+                            {ams.map((am) => (
+                                <NavItem
+                                    key={am}
+                                    active={filter.type === "am" && filter.value === am}
+                                    icon={Users01}
+                                    photo={teamPhoto(am)}
+                                    label={am}
+                                    count={clients.filter((c) => c.am.trim() === am).length}
+                                    onClick={() => setFilter({ type: "am", value: am })}
+                                />
+                            ))}
+                        </SidebarGroup>
+
+                        <div className="mx-1 my-4 h-px bg-border-secondary" />
+
+                        {/* MAs pair with AMs on each client — same grouping, own section. */}
+                        <SidebarGroup label="By Marketing Assistant">
+                            {mas.map((ma) => (
+                                <NavItem
+                                    key={ma}
+                                    active={filter.type === "ma" && filter.value === ma}
+                                    icon={Edit01}
+                                    photo={teamPhoto(ma)}
+                                    label={ma}
+                                    count={clients.filter((c) => (c.marketing_assistant ?? "").trim() === ma).length}
+                                    onClick={() => setFilter({ type: "ma", value: ma })}
+                                />
+                            ))}
+                        </SidebarGroup>
                     </motion.div>
                 </nav>
             </aside>
@@ -2913,7 +3086,12 @@ const DashboardLayout = () => {
 
 /* ── Page export ──────────────────────────────────────────────────── */
 
-export const DashboardScreen = () => {
+/**
+ * Team gate — Google (@hiddengem.media) OR team password. Shared by /dashboard
+ * and /home: one unlock (sessionStorage flag) covers every gated page, and the
+ * Google OAuth redirect returns to whichever page started the sign-in.
+ */
+export const TeamGate = ({ children }: { children: ReactNode }) => {
     const [unlocked, setUnlocked] = useState(
         () => sessionStorage.getItem("hgm_dashboard_unlocked") === "1",
     );
@@ -2927,7 +3105,7 @@ export const DashboardScreen = () => {
 
     // On load and on sign-in (incl. the async return from Google OAuth): if there's a
     // session, only let @hiddengem.media accounts in — otherwise sign out and show an
-    // error. Subscribing to auth changes ensures we land on the dashboard as soon as
+    // error. Subscribing to auth changes ensures we land on the page as soon as
     // the OAuth session is ready, instead of only checking once on mount.
     useEffect(() => {
         const admit = (email: string | undefined) => {
@@ -2957,7 +3135,7 @@ export const DashboardScreen = () => {
         const { error } = await supabase.auth.signInWithOAuth({
             provider: "google",
             options: {
-                redirectTo: `${window.location.origin}/dashboard`,
+                redirectTo: `${window.location.origin}${window.location.pathname}`,
                 // hd hints Google to prefer the workspace domain; real enforcement is the check above.
                 queryParams: { hd: ALLOWED_DOMAIN, prompt: "select_account" },
             },
@@ -2970,7 +3148,7 @@ export const DashboardScreen = () => {
     };
 
     return unlocked ? (
-        <DashboardLayout />
+        <>{children}</>
     ) : (
         <PasswordGate
             onUnlock={handleUnlock}
@@ -2980,3 +3158,9 @@ export const DashboardScreen = () => {
         />
     );
 };
+
+export const DashboardScreen = () => (
+    <TeamGate>
+        <DashboardLayout />
+    </TeamGate>
+);

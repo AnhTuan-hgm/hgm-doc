@@ -1,6 +1,6 @@
-import { StrictMode } from "react";
+import { StrictMode, useEffect } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Route, Routes, useLocation } from "react-router";
+import { BrowserRouter, Route, Routes, useLocation, useNavigate } from "react-router";
 import { LandingScreen } from "@/pages/landing-screen";
 
 import { TemplateScreen } from "@/pages/template-screen";
@@ -19,12 +19,17 @@ import { ClientScreen } from "@/pages/client-screen";
 import { ChatWidgetScreen } from "@/pages/chat-widget-screen";
 import { ChatWidgetOverviewScreen } from "@/pages/chat-widget-overview-screen";
 import { ClientDashboardOverviewScreen } from "@/pages/client-dashboard-overview-screen";
+import { OwnerGuideOverviewScreen } from "@/pages/owner-guide-overview-screen";
+import { HomepageOverviewScreen } from "@/pages/homepage-overview-screen";
+import { HomeScreen } from "@/pages/home-screen";
+import { QuestionsScreen } from "@/pages/questions-screen";
 import { SettingsScreen } from "@/pages/settings-screen";
 import { RoadmapScreen } from "@/pages/roadmap-screen";
 import { ThemeToggle } from "@/components/base/theme-toggle/theme-toggle";
 import { HelpMenu } from "@/components/application/help-menu";
 import { AiChatWidget } from "@/components/application/ai-chat-widget";
 import { NotFound } from "@/pages/not-found";
+import { useAuthUser } from "@/hooks/use-auth-user";
 import { RouteProvider } from "@/providers/router-provider";
 import { ThemeProvider, useTheme } from "@/providers/theme-provider";
 import "@/styles/globals.css";
@@ -33,7 +38,7 @@ import "@/styles/globals.css";
 // floating toggle is hidden there to avoid duplicates. The account avatar is NOT
 // shown globally — it's a team-only settings shortcut that lives in the dashboard
 // rail, and it must never appear on client-facing pages (owner guides, popups, etc.).
-const PAGES_WITHOUT_FLOATING_CHROME = ["/designsystem", "/home2", "/dashboard", "/webteam/ai-website-setup", "/template-1", "/welcome-email-flow-overview", "/prompt-library", "/settings", "/roadmap", "/chat-widget-overview", "/client-dashboard-overview"];
+const PAGES_WITHOUT_FLOATING_CHROME = ["/designsystem", "/home", "/home2", "/dashboard", "/webteam/ai-website-setup", "/template-1", "/welcome-email-flow-overview", "/prompt-library", "/settings", "/roadmap", "/chat-widget-overview", "/client-dashboard-overview", "/homepage-overview", "/questions"];
 
 // The floating "?" help menu is a team tool. It renders ONLY on internal team
 // pages and is hidden on every client-facing page — all client slugs
@@ -49,6 +54,7 @@ const PAGES_WITH_HELP_MENU = ["/", "/requests", "/settings", "/designsystem", "/
 // The AI chat widget takes over the floating bottom-right slot on pages that
 // have the icon rail (Help moved into the rail there — see above).
 const PAGES_WITH_CHAT_WIDGET = [
+    "/home",
     "/dashboard",
     "/roadmap",
     "/webteam/ai-website-setup",
@@ -56,6 +62,9 @@ const PAGES_WITH_CHAT_WIDGET = [
     "/welcome-email-flow-overview",
     "/chat-widget-overview",
     "/client-dashboard-overview",
+    "/owner-guide-overview",
+    "/homepage-overview",
+    "/questions",
 ];
 
 const GlobalThemeToggle = () => {
@@ -80,6 +89,32 @@ const GlobalChatWidget = () => {
     return <AiChatWidget />;
 };
 
+// Global navigation hotkeys — Ctrl+B jumps to the team dashboard from anywhere.
+// Gated to signed-in @hiddengem.media members (same gate as the help menu) so a
+// client on an owner guide or popup page can never be pulled onto a team page.
+const GlobalHotkeys = () => {
+    const navigate = useNavigate();
+    const { user } = useAuthUser();
+    const isTeam = !!user?.email && user.email.toLowerCase().endsWith("@hiddengem.media");
+
+    useEffect(() => {
+        if (!isTeam) return;
+        const onKey = (e: KeyboardEvent) => {
+            const el = document.activeElement as HTMLElement | null;
+            const typing = !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+            if (typing || !e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+            if (e.key === "b" || e.key === "B") {
+                e.preventDefault();
+                navigate("/dashboard");
+            }
+        };
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, [isTeam, navigate]);
+
+    return null;
+};
+
 createRoot(document.getElementById("root")!).render(
     <StrictMode>
         <ThemeProvider>
@@ -88,10 +123,12 @@ createRoot(document.getElementById("root")!).render(
                     <GlobalThemeToggle />
                     <GlobalHelpMenu />
                     <GlobalChatWidget />
+                    <GlobalHotkeys />
                     <Routes>
                         <Route path="/" element={<LandingScreen />} />
 
                         <Route path="/template" element={<TemplateScreen />} />
+                        <Route path="/home" element={<HomeScreen />} />
                         <Route path="/dashboard" element={<DashboardScreen />} />
                         <Route path="/webteam/ai-website-setup" element={<AiWebsiteSetupScreen />} />
                         <Route path="/template-1" element={<TemplateOneScreen />} />
@@ -109,6 +146,9 @@ createRoot(document.getElementById("root")!).render(
                         <Route path="/chat-widget" element={<ChatWidgetScreen isTemplate />} />
                         <Route path="/chat-widget-overview" element={<ChatWidgetOverviewScreen />} />
                         <Route path="/client-dashboard-overview" element={<ClientDashboardOverviewScreen />} />
+                        <Route path="/owner-guide-overview" element={<OwnerGuideOverviewScreen />} />
+                        <Route path="/homepage-overview" element={<HomepageOverviewScreen />} />
+                        <Route path="/questions" element={<QuestionsScreen />} />
                         <Route path="/:clientSlug" element={<ClientScreen />} />
                         <Route path="*" element={<NotFound />} />
                     </Routes>

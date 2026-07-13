@@ -2,6 +2,7 @@ import { type ChangeEvent, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import {
     BookOpen01,
+    Check,
     CheckCircle,
     CheckDone01,
     ChevronDown,
@@ -25,6 +26,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { AppShell, CollapsedTopBar, IconRail, NavCollapseButton, RailBottom, useNavCollapsed } from "@/components/application/icon-rail";
 import { PageBanner } from "@/components/application/page-banner";
 import { fetchDynamicSearchItems, STATIC_ITEMS, type SearchItem } from "@/components/application/search-modal";
+import { PriorityFlag, type QuestionPriority } from "@/components/application/priority-flag";
 import { VideoAttach, VideoEmbed } from "@/components/application/video-block";
 import { Badge, BadgeWithDot } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
@@ -72,6 +74,11 @@ interface QuestionItem {
     image?: string;
     /** Optional video URL (Loom link or uploaded mp4). */
     video?: string;
+    /** Explicit resolve flag — typing an answer no longer auto-resolves a question,
+        so a half-formed idea can sit in Open until it's actually checked off. */
+    resolved?: boolean;
+    /** HIGH / MEDIUM / LOW answer-first flag — shared with the /questions inbox. */
+    priority?: QuestionPriority;
 }
 
 interface FeatureItem {
@@ -506,7 +513,7 @@ export const RoadmapScreen = () => {
     // Question ops
     const updateQuestion = (id: string, patch: Partial<QuestionItem>) =>
         persist({ ...data, questions: data.questions.map((q) => (q.id === id ? { ...q, ...patch } : q)) });
-    const addQuestion = () => persist({ ...data, questions: [...data.questions, { id: uid(), question: "", answer: "" }] });
+    const addQuestion = () => persist({ ...data, questions: [...data.questions, { id: uid(), question: "", answer: "", resolved: false }] });
     const deleteQuestion = (id: string) => persist({ ...data, questions: data.questions.filter((q) => q.id !== id) });
     const handleQuestionImage = (id: string, e: ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -520,6 +527,16 @@ export const RoadmapScreen = () => {
     // list and the collapsed Resolved / History list. `resolved` tints answered ones.
     const renderQuestionCard = (q: RoadmapData["questions"][number], displayIndex: number, resolved: boolean) => (
         <div key={q.id} className={cx("rounded-xl border border-secondary p-4 shadow-xs", resolved ? "bg-secondary" : "bg-primary")}>
+            <div className="flex items-start gap-3">
+                <button type="button" title={resolved ? "Mark as unresolved" : "Mark as resolved"}
+                    onClick={() => updateQuestion(q.id, { resolved: !resolved })}
+                    className={cx(
+                        "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded border transition duration-100 ease-linear",
+                        resolved ? "border-success bg-success-solid text-white" : "border-secondary bg-primary hover:border-brand",
+                    )}>
+                    {resolved && <Check className="size-3" aria-hidden="true" />}
+                </button>
+                <div className="min-w-0 flex-1">
             {editing ? (
                 <div className="flex items-start gap-3">
                     <div className="flex flex-1 flex-col gap-2">
@@ -583,6 +600,9 @@ export const RoadmapScreen = () => {
                     {q.video && <VideoEmbed url={q.video} className="mt-3" />}
                 </>
             )}
+                </div>
+                <PriorityFlag value={q.priority} onChange={(v) => updateQuestion(q.id, { priority: v })} />
+            </div>
         </div>
     );
 
@@ -664,14 +684,23 @@ export const RoadmapScreen = () => {
     const shippedCount = data.log.length;
     const doneCount = data.todos.filter((t) => t.done).length;
     const answeredCount = data.questions.filter((q) => q.answer?.trim()).length;
-    const openQuestions = data.questions.filter((q) => !q.answer?.trim());
-    const resolvedQuestions = data.questions.filter((q) => q.answer?.trim());
+    // Explicit `resolved` flag is the source of truth; questions saved before this
+    // field existed fall back to "has an answer" so their current Resolved/Open
+    // placement doesn't change until someone touches the checkbox.
+    const isQuestionResolved = (q: QuestionItem) => q.resolved ?? !!q.answer?.trim();
+    const openQuestions = data.questions.filter((q) => !isQuestionResolved(q));
+    const resolvedQuestions = data.questions.filter(isQuestionResolved);
 
     return (
         <AppShell
             highlightScope
             className="flex flex-col"
             rail={!navCollapsed && <IconRail activeDept="docs" bottom={<RailBottom editing={editing} onToggleEditing={() => setEditing((e) => !e)} />} />}
+            breadcrumb={[
+                { label: "Dashboard", to: "/dashboard", icon: LayoutAlt01 },
+                { label: "Project Logs", to: "/dashboard?dept=docs&tab=project-logs", icon: ClipboardCheck },
+                { label: "Project Management" },
+            ]}
         >
             <HighlightPen enabled={editing} />
             {navCollapsed && <CollapsedTopBar title="Project Management" onExpand={toggleNav} />}
@@ -747,7 +776,7 @@ export const RoadmapScreen = () => {
                         {activeView === "links" ? (
                             <LinksView items={linkItems} loading={linksLoading} editing={editing} starred={data.starredLinks ?? []} onToggleStar={toggleStarLink} />
                         ) : (
-                        <div className="mx-auto w-full px-6 py-10">
+                        <div className="mx-auto w-full max-w-[1600px] px-6 py-10">
                             {/* ——— Row 1: Overview + Features (paired so the two shorter sections
                                 sit side by side instead of leaving empty space) ——— */}
                             <div className="grid grid-cols-1 items-stretch justify-center gap-6 lg:grid-cols-[45%_45%]">

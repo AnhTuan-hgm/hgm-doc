@@ -54,6 +54,12 @@ export interface ClientRecord {
     link?: string; // optional link to their dashboard / any page
     starred?: boolean;
     created_at?: string;
+    /** Homepage (Mission Control) fields — see migration 20260712090000. */
+    status?: string; // existing | onboarding | offboarding (missing = existing)
+    onboarding_phase?: number | null; // 0–5, only meaningful while onboarding
+    web_project?: string; // website project name (set = Web Team has it in flight)
+    web_manager?: string; // Web Team member managing that project
+    marketing_assistant?: string; // MA paired with the AM on this client
 }
 
 /** An entry in the private Prompt & Pattern Library (/prompt-library). */
@@ -81,6 +87,9 @@ export interface OwnerGuideMeta {
     client_name: string;
     share_password?: string;
     created_at?: string;
+    /** credSections hidden from this specific client's guide (e.g. they don't use
+        Cloudflare) — never affects the shared master template or other clients. */
+    hidden_steps?: string[];
 }
 
 export interface DocsRequest {

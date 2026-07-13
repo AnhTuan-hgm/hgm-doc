@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowRight, ArrowUpRight, BookOpen01, Check, CheckDone01, ChevronDown, ClipboardCheck, Copy01, HelpCircle, Hourglass01, LayoutAlt01, Mail01, Plus, Send01, Trash01, Users01 } from "@untitledui/icons";
+import { ArrowRight, ArrowUpRight, BookOpen01, Check, CheckDone01, ChevronDown, ClipboardCheck, Database01, FileCheck02, HelpCircle, Hourglass01, LayoutAlt01, Lock01, Plus, Send01, Shield01, Trash01, Users01 } from "@untitledui/icons";
 import { PageBanner } from "@/components/application/page-banner";
 import { AppShell, CollapsedTopBar, IconRail, NavCollapseButton, RailBottom, useNavCollapsed } from "@/components/application/icon-rail";
 import { PriorityFlag, type QuestionPriority } from "@/components/application/priority-flag";
@@ -12,27 +12,26 @@ import { cx } from "@/utils/cx";
 import { HighlightPen, renderHighlights } from "@/utils/highlight";
 
 /**
- * Living reference page for the Welcome Email Flow builder project.
- * AnhTuan + Claude use it to track decisions, the 3 master email templates,
- * open questions and build progress. Content persists to sop_pages (slug below),
- * mirroring how /roadmap stores its data.
+ * Living reference page for the Owner Guide project — the client-facing
+ * onboarding guide that collects account credentials. Decisions (incl. RULE
+ * No.1), safeguards, open questions and build progress live here. Content
+ * persists to sop_pages (slug below), mirroring how /roadmap stores its data.
  */
-const SLUG = "welcome-email-flow-overview";
+const SLUG = "owner-guide-overview";
 
 /* ── Types ───────────────────────────────────────────────────────── */
 
-type EmailTpl = { label: string; goal: string; subject: string; body: string };
+type Stage = { label: string; detail: string };
 type Todo = { id: string; text: string; done: boolean };
 type QA = { id: string; question: string; answer: string; video?: string; resolved?: boolean; priority?: QuestionPriority };
 type LogEntry = { id: string; date: string; title: string; description: string; video?: string };
 
-type FlowData = {
+type GuideData = {
     overview: string;
     bannerUrl?: string;
-    waits: string[]; // timing chips between the 3 emails
-    emails: EmailTpl[];
-    workflow: string[];
-    sidemenu: string[];
+    stages: Stage[];
+    steps: string[];
+    rules: string[];
     todos: Todo[];
     questions: QA[];
     log: LogEntry[];
@@ -40,79 +39,98 @@ type FlowData = {
 
 const uid = () => "id" + Math.random().toString(36).slice(2, 9);
 
-function seed(): FlowData {
+function seed(): GuideData {
     return {
         overview:
-            "An internal tool for Account Managers to draft a client's 3-email welcome flow — Promotion, Reminder, Last Chance — in one place, per client. " +
-            "It is a drafting tool: AMs copy the finished subject and body of each email into GoHighLevel, which does the actual sending. " +
-            "The builder will live inside each client's dashboard (a side-menu section), is created automatically with the client dashboard, and each flow is shareable with the client.",
-        waits: ["wait — days?", "wait — days?"],
-        emails: [
-            {
-                label: "Email 1 · Promotion",
-                goal: "Introduce the offer and get the first click.",
-                subject: "",
-                body: "",
-            },
-            {
-                label: "Email 2 · Reminder",
-                goal: "Nudge people who didn't open or click Email 1.",
-                subject: "",
-                body: "",
-            },
-            {
-                label: "Email 3 · Last Chance",
-                goal: "Urgency — the offer is about to end.",
-                subject: "",
-                body: "",
-            },
+            "The Owner Guide is the client-facing onboarding guide that collects the account logins powering each Ai Website — PMS, Netlify, Supabase, Resend, Stripe, the domain registrar, and Cloudflare. " +
+            "The team keeps ONE master template (/owner-guide, team sign-in only); each client gets a private copy at /owner-guide/{slug} protected by a share password. " +
+            "Clients work through the steps, enter their credentials, and Review & Submit locks the submission. " +
+            "Credentials live in owner_onboarding (keyed by the guide slug); step content/instructions are shared from the template row (owner-guide-content in sop_pages).",
+        stages: [
+            { label: "Master template", detail: "One shared 9-step guide, team-only" },
+            { label: "Client copy", detail: "Private /owner-guide/{slug} + share password" },
+            { label: "Client fills in", detail: "Credentials per step, saved to owner_onboarding" },
+            { label: "Review & Submit", detail: "Locks the submission — values masked" },
         ],
-        workflow: [
-            "Open the client's dashboard and pick “Welcome Flow Email” in the side menu.",
-            "Fill in the offer details for this client (promotion, deadline, links).",
-            "Adjust the 3 pre-loaded templates — subject and body per email.",
-            "Copy each finished email into GoHighLevel and schedule the flow there.",
-            "Share the flow page with the client for review if needed.",
+        steps: [
+            "0 — New Ai Website (welcome, roles & what to prepare)",
+            "1 — PMS (Property Management System)",
+            "2 — Netlify Hosting",
+            "3 — Supabase Database",
+            "4 — Resend (email)",
+            "5 — Stripe Payments (multi-account supported)",
+            "6 — Domain Registrar",
+            "7 — Cloudflare",
+            "8 — Review & Submit",
         ],
-        sidemenu: ["Client Overview — general information about the client", "Welcome Flow Email — this builder", "Communication Log", "… (not finalized)"],
+        rules: [
+            "RULE No.1 — once a client submits (locks) their guide, nothing about it may change again. Not the values, not the visible steps — for anyone, including the HGM team.",
+            "The master template is team-only (@hiddengem.media Google sign-in). Clients only ever see their own /owner-guide/{slug} link — entering the share password never grants team powers.",
+            "On client guides, steps are HIDDEN per client (eye icon, restorable), never deleted. Real deletion exists only on the template — and asks for confirmation, because it removes the step for every guide.",
+            "\"Owner Guide Snapshot\" — a protected backup of the full 9-step template (sop_pages: owner-guide-content-snapshot). The revert button above the lock icon on the template restores it. It does NOT auto-update — refresh it after meaningful template rewrites.",
+            "Client credentials (owner_onboarding) are separate from step content — a broken template can hide sections, but the submitted values survive underneath.",
+            "Download PDF on Review & Submit is team-only; clients never see it.",
+        ],
         todos: [
-            { id: uid(), text: "AnhTuan: paste the 3 existing email templates below (Content for Email 1/2/3)", done: false },
-            { id: uid(), text: "Finalize the client-dashboard side menu sections", done: false },
-            { id: uid(), text: "Decide the timing between emails (wait days)", done: false },
-            { id: uid(), text: "Data model: where flows are stored (extend dashboard_pages.data vs. new welcome_flows table)", done: false },
-            { id: uid(), text: "Build the side-menu layout into the client dashboard page", done: false },
-            { id: uid(), text: "Build the Welcome Flow builder section (3 editable emails + copy buttons)", done: false },
-            { id: uid(), text: "Client-facing shareable view of the flow", done: false },
+            { id: uid(), text: "Per-client steps snapshot at submission — the RULE No.1 architecture fix so template edits can never affect already-submitted guides (est. ~2–2.5h)", done: false },
+            { id: uid(), text: "Store submitted/locked state server-side — it's currently localStorage per browser, so there's no reliable record of WHICH guides are actually submitted", done: false },
+            { id: uid(), text: "Rewrite the Domain & Cloudflare instruction text (reconstructed placeholders since the 2026-07-09 restore), then refresh the Owner Guide Snapshot", done: false },
+            { id: uid(), text: "Add real screenshots to the PMS / Domain / Cloudflare steps so they match the quality of the other steps", done: false },
         ],
         questions: [
             {
                 id: uid(),
-                question: "When the client views a shared flow, is it read-only (review/approve) or can they edit anything?",
+                question: "RULE No.1 scope: should the team's own unlock button stop working once a client submits, or is it only template edits that must never leak through?",
                 answer: "",
             },
             {
                 id: uid(),
-                question: "What are the final side-menu sections for the client dashboard? (Client Overview / Welcome Flow Email / Communication Log / …)",
+                question: "When should a guide freeze its step structure — at creation (copy of the template that day) or at submission?",
                 answer: "",
             },
             {
                 id: uid(),
-                question: "How many days between Email 1 → 2 and Email 2 → 3? Fixed for everyone or set per client?",
+                question: "What should the final Domain and Cloudflare instructions say? (current text is a reconstructed placeholder, not the original wording)",
                 answer: "",
             },
             {
                 id: uid(),
-                question: "Do the templates use placeholders (e.g. {client}, {offer}, {deadline}) the AM fills once, or does the AM edit the full text directly?",
+                question: "Should the team get a notification (email or dashboard badge) when a client completes Review & Submit?",
+                answer: "",
+            },
+            {
+                id: uid(),
+                question: "Should completed guides archive or expire their share link once the website has launched, so credentials aren't reachable by URL forever?",
                 answer: "",
             },
         ],
         log: [
             {
                 id: uid(),
-                date: "2026-07-03",
-                title: "Project page created",
+                date: "2026-06-20",
+                title: "Owner Guide first built",
+                description: "Step content, credential forms and reordering shipped; per-client copies with share passwords followed on 2026-06-22.",
+            },
+            {
+                id: uid(),
+                date: "2026-07-08",
+                title: "Redesign + critical session bug fixed",
                 description:
-                    "Captured the concept: AM drafting tool for a 3-email welcome flow (Promotion → Reminder → Last Chance), copy-to-GoHighLevel output, lives in the client dashboard side menu, shareable per client.",
+                    "2-column Review & Submit with per-step icons, full-width image lightbox, quick Back/Next in the sticky header, multi-Stripe-account support. Fixed a real data-loss bug: creating a guide then filling it immediately saved credentials under a stray session id instead of the guide's slug. The master template was gated to team sign-in.",
+            },
+            {
+                id: uid(),
+                date: "2026-07-09",
+                title: "Template incident → RULE No.1 declared",
+                description:
+                    "Editing the master template accidentally deleted the PMS, Domain and Cloudflare steps — which instantly hid those sections (and already-submitted data) on every live client guide. Credentials were verified intact in owner_onboarding and the steps were restored the same day (Domain/Cloudflare text reconstructed). AnhTuan declared RULE No.1: submitted client documents can never be changed by anyone, including the team.",
+            },
+            {
+                id: uid(),
+                date: "2026-07-10",
+                title: "Safeguards shipped + project page created",
+                description:
+                    "Owner Guide Snapshot backup with a one-click revert button on the template, a confirmation dialog before any template step delete, per-client hide-a-step (hidden_steps — hide instead of delete, restorable, renumbers cleanly), and a team-only Download PDF on Review & Submit. This project log page was created.",
             },
         ],
     };
@@ -179,26 +197,6 @@ const EditLine = ({
     ) : (
         <span className={cx("text-sm text-secondary", !value && "italic text-quaternary", className)}>{value ? renderHighlights(value) : placeholder}</span>
     );
-
-const CopyBtn = ({ text, label = "Copy" }: { text: string; label?: string }) => {
-    const [copied, setCopied] = useState(false);
-    return (
-        <button
-            type="button"
-            disabled={!text}
-            onClick={() => {
-                navigator.clipboard.writeText(text).then(() => {
-                    setCopied(true);
-                    setTimeout(() => setCopied(false), 1500);
-                });
-            }}
-            className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-brand-secondary transition duration-100 ease-linear hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-brand-950/40"
-        >
-            {copied ? <Check className="size-3.5" aria-hidden="true" /> : <Copy01 className="size-3.5" aria-hidden="true" />}
-            {copied ? "Copied!" : label}
-        </button>
-    );
-};
 
 const SectionHeader = ({ id, number, title, hint }: { id: string; number: string; title: string; hint?: string }) => (
     <div id={id} className="scroll-mt-6">
@@ -276,10 +274,9 @@ const QuestionCard = ({
 const NAV_GROUPS = [
     [
         { id: "s-overview", label: "Overview", icon: BookOpen01 },
-        { id: "s-flow", label: "The Flow", icon: Send01 },
-        { id: "s-emails", label: "Email Templates", icon: Mail01 },
-        { id: "s-workflow", label: "How AMs use it", icon: Users01 },
-        { id: "s-sidemenu", label: "Dashboard side menu", icon: LayoutAlt01 },
+        { id: "s-flow", label: "How it works", icon: Send01 },
+        { id: "s-steps", label: "The 9 steps", icon: FileCheck02 },
+        { id: "s-rules", label: "Rules & Safeguards", icon: Shield01 },
     ],
     [
         { id: "s-todos", label: "Build To-dos", icon: CheckDone01 },
@@ -291,8 +288,10 @@ const NAV_GROUPS = [
 ];
 const SECTIONS = NAV_GROUPS.flat();
 
-export const WelcomeEmailFlowOverviewScreen = () => {
-    const [data, setData] = useState<FlowData>(seed);
+const STAGE_ICONS = [BookOpen01, Users01, Database01, Lock01];
+
+export const OwnerGuideOverviewScreen = () => {
+    const [data, setData] = useState<GuideData>(seed);
     const [editing, setEditing] = useState(false);
     const { collapsed: navCollapsed, toggle: toggleNav } = useNavCollapsed();
     const [activeSection, setActiveSection] = useState(SECTIONS[0].id);
@@ -311,7 +310,7 @@ export const WelcomeEmailFlowOverviewScreen = () => {
                 .from("sop_pages")
                 .upsert({ slug: SLUG, data, updated_at: new Date().toISOString() }, { onConflict: "slug" })
                 .then(({ error }) => {
-                    if (error) console.error("[welcome-flow save]", error);
+                    if (error) console.error("[owner-guide-overview save]", error);
                 });
             setEditing(false);
         },
@@ -325,8 +324,8 @@ export const WelcomeEmailFlowOverviewScreen = () => {
             .eq("slug", SLUG)
             .maybeSingle()
             .then(({ data: row, error }) => {
-                const d = row?.data as FlowData | undefined;
-                if (!error && d && Array.isArray(d.emails)) setData(d);
+                const d = row?.data as GuideData | undefined;
+                if (!error && d && Array.isArray(d.todos)) setData(d);
                 hydratedRef.current = true;
             });
     }, []);
@@ -339,15 +338,15 @@ export const WelcomeEmailFlowOverviewScreen = () => {
                 .from("sop_pages")
                 .upsert({ slug: SLUG, data, updated_at: new Date().toISOString() }, { onConflict: "slug" })
                 .then(({ error }) => {
-                    if (error) console.error("[welcome-flow autosave]", error);
+                    if (error) console.error("[owner-guide-overview autosave]", error);
                 });
         }, 1000);
         return () => clearTimeout(t);
     }, [data]);
 
-    const update = (mutator: (draft: FlowData) => void) =>
+    const update = (mutator: (draft: GuideData) => void) =>
         setData((prev) => {
-            const next = JSON.parse(JSON.stringify(prev)) as FlowData;
+            const next = JSON.parse(JSON.stringify(prev)) as GuideData;
             mutator(next);
             return next;
         });
@@ -382,9 +381,9 @@ export const WelcomeEmailFlowOverviewScreen = () => {
     }, []);
 
     /* list helpers */
-    const setLine = (list: "workflow" | "sidemenu", i: number, v: string) => update((d) => void (d[list][i] = v));
-    const addLine = (list: "workflow" | "sidemenu") => update((d) => void d[list].push(""));
-    const rmLine = (list: "workflow" | "sidemenu", i: number) => update((d) => void d[list].splice(i, 1));
+    const setLine = (list: "steps" | "rules", i: number, v: string) => update((d) => void (d[list][i] = v));
+    const addLine = (list: "steps" | "rules") => update((d) => void d[list].push(""));
+    const rmLine = (list: "steps" | "rules", i: number) => update((d) => void d[list].splice(i, 1));
 
     /* questions — edited by id so the open / resolved split stays stable across renders */
     const setQuestion = (id: string, patch: Partial<QA>) =>
@@ -410,17 +409,18 @@ export const WelcomeEmailFlowOverviewScreen = () => {
             breadcrumb={[
                 { label: "Dashboard", to: "/dashboard", icon: LayoutAlt01 },
                 { label: "Project Logs", to: "/dashboard?dept=docs&tab=project-logs", icon: ClipboardCheck },
-                { label: "Welcome Email Flow" },
+                { label: "Owner Guide" },
             ]}
         >
             <HighlightPen enabled={editing} />
-            {navCollapsed && <CollapsedTopBar title="Welcome Email Flow" onExpand={toggleNav} />}
+            {navCollapsed && <CollapsedTopBar title="Owner Guide" onExpand={toggleNav} />}
             <div className="flex min-h-0 flex-1 gap-2 bg-secondary p-2">
+
             {/* Section nav */}
             {!navCollapsed && (
             <aside className="hidden h-full w-60 shrink-0 flex-col overflow-hidden rounded-lg bg-primary shadow-sm md:flex">
                 <div className="flex h-[73px] shrink-0 items-center justify-between border-b border-secondary px-5">
-                    <h2 className="text-md font-semibold text-primary">Welcome Email Flow</h2>
+                    <h2 className="text-md font-semibold text-primary">Owner Guide</h2>
                     <NavCollapseButton onClick={toggleNav} />
                 </div>
                 <motion.nav
@@ -462,10 +462,10 @@ export const WelcomeEmailFlowOverviewScreen = () => {
                     breadcrumb={[
                         { label: "Dashboard", to: "/dashboard", icon: LayoutAlt01 },
                         { label: "Project Logs", to: "/dashboard?dept=docs&tab=project-logs", icon: ClipboardCheck },
-                        { label: "Welcome Email Flow" },
+                        { label: "Owner Guide" },
                     ]}
-                    title="Welcome Email Flow — Overview"
-                    subtitle="AM email-flow builder — project reference"
+                    title="Owner Guide — Overview"
+                    subtitle="Client onboarding & credential collection — project reference"
                     imageUrl={data.bannerUrl}
                     editing={editing}
                     onImageChange={(url) => update((d) => void (d.bannerUrl = url || undefined))}
@@ -484,36 +484,36 @@ export const WelcomeEmailFlowOverviewScreen = () => {
                     {/* Intro */}
                     <div>
                         <p className="text-md text-tertiary">
-                            Living reference for the AM email-flow builder. Decisions, templates and progress live here — Claude reads this page when
-                            working on the feature.
+                            Living reference for the Owner Guide project. Rules (incl. RULE No.1), safeguards, open questions and build progress live
+                            here — Claude reads this page when working on the feature.
                         </p>
                         <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
                             <button
                                 type="button"
-                                onClick={() => navigate("/client-dashboard#flow")}
+                                onClick={() => navigate("/owner-guide")}
                                 className="inline-flex items-center gap-2 rounded-lg bg-brand-solid px-4 py-2.5 text-sm font-semibold text-white shadow-xs transition duration-100 ease-linear hover:bg-brand-solid_hover"
                             >
-                                <Mail01 className="size-4" aria-hidden="true" />
-                                Open the live builder
+                                <BookOpen01 className="size-4" aria-hidden="true" />
+                                Open the master template
                                 <ArrowUpRight className="size-4" aria-hidden="true" />
                             </button>
                             <span className="text-xs text-tertiary">
-                                Opens the master client dashboard → “Welcome Flow Email” in the side menu.
+                                Team-only. Client guides are managed from Dashboard → Owner Guides.
                             </span>
                         </div>
                     </div>
 
                     {/* 01 Overview */}
                     <section>
-                        <SectionHeader id="s-overview" number="01" title="Overview" hint="What this tool is and the decisions made so far." />
+                        <SectionHeader id="s-overview" number="01" title="Overview" hint="What the Owner Guide is and where its data lives." />
                         <div className="mt-4 rounded-2xl bg-primary p-5 ring-1 ring-secondary">
                             <EditArea value={data.overview} editing={editing} onChange={(v) => update((d) => void (d.overview = v))} rows={6} />
                         </div>
                         <div className="mt-4 grid gap-3 sm:grid-cols-3">
                             {[
-                                ["Serves", "Account Managers"],
-                                ["Output", "Copy into GoHighLevel"],
-                                ["Lives in", "Client dashboard side menu"],
+                                ["Serves", "Clients (owners)"],
+                                ["Credentials in", "Supabase (owner_onboarding)"],
+                                ["Step content in", "sop_pages (owner-guide-content)"],
                             ].map(([k, v]) => (
                                 <div key={k} className="rounded-xl bg-primary px-4 py-3 ring-1 ring-secondary">
                                     <p className="text-xs font-semibold uppercase tracking-wide text-quaternary">{k}</p>
@@ -523,109 +523,101 @@ export const WelcomeEmailFlowOverviewScreen = () => {
                         </div>
                     </section>
 
-                    {/* 02 The Flow */}
+                    {/* 02 How it works */}
                     <section>
-                        <SectionHeader id="s-flow" number="02" title="The Flow" hint="Three emails, in order, with a wait between each." />
+                        <SectionHeader id="s-flow" number="02" title="How it works" hint="From the master template to a locked client submission." />
                         <div className="mt-5 flex flex-col items-stretch gap-3 md:flex-row md:items-center">
-                            {data.emails.map((e, i) => (
-                                <div key={e.label} className="flex flex-1 flex-col gap-2 md:contents">
-                                    <div className="flex flex-1 flex-col items-center gap-2 rounded-2xl bg-primary px-4 py-5 text-center ring-1 ring-secondary">
-                                        <span className="flex size-9 items-center justify-center rounded-full bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300">
-                                            <Mail01 className="size-4" aria-hidden="true" />
-                                        </span>
-                                        <p className="text-sm font-semibold text-primary">{e.label}</p>
-                                        <p className="text-xs text-tertiary">{e.goal}</p>
-                                    </div>
-                                    {i < data.waits.length && (
-                                        <div className="flex items-center justify-center gap-1 md:flex-col md:px-1">
-                                            <ArrowRight className="size-4 shrink-0 rotate-90 text-fg-quaternary md:rotate-0" aria-hidden="true" />
+                            {data.stages.map((s, i) => {
+                                const StageIcon = STAGE_ICONS[i % STAGE_ICONS.length];
+                                return (
+                                    <div key={i} className="flex flex-1 flex-col gap-2 md:contents">
+                                        <div className="flex flex-1 flex-col items-center gap-2 rounded-2xl bg-primary px-4 py-5 text-center ring-1 ring-secondary">
+                                            <span className="flex size-9 items-center justify-center rounded-full bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300">
+                                                <StageIcon className="size-4" aria-hidden="true" />
+                                            </span>
                                             {editing ? (
-                                                <input
-                                                    type="text"
-                                                    value={data.waits[i]}
-                                                    onChange={(ev) => update((d) => void (d.waits[i] = ev.target.value))}
-                                                    className="w-24 rounded-md border border-secondary bg-primary px-1.5 py-0.5 text-center text-[11px] text-secondary outline-none focus:border-brand"
-                                                />
+                                                <>
+                                                    <EditLine
+                                                        value={s.label}
+                                                        editing={editing}
+                                                        onChange={(v) => update((d) => void (d.stages[i].label = v))}
+                                                        placeholder="Stage…"
+                                                        className="text-center font-semibold"
+                                                    />
+                                                    <EditLine
+                                                        value={s.detail}
+                                                        editing={editing}
+                                                        onChange={(v) => update((d) => void (d.stages[i].detail = v))}
+                                                        placeholder="Detail…"
+                                                        className="text-center text-xs"
+                                                    />
+                                                </>
                                             ) : (
-                                                <span className="whitespace-nowrap rounded-full bg-secondary px-2 py-0.5 text-[11px] font-medium text-tertiary">{renderHighlights(data.waits[i])}</span>
+                                                <>
+                                                    <p className="text-sm font-semibold text-primary">{renderHighlights(s.label)}</p>
+                                                    <p className="text-xs text-tertiary">{renderHighlights(s.detail)}</p>
+                                                </>
                                             )}
                                         </div>
-                                    )}
-                                </div>
-                            ))}
+                                        {i < data.stages.length - 1 && (
+                                            <div className="flex items-center justify-center md:px-1">
+                                                <ArrowRight className="size-4 shrink-0 rotate-90 text-fg-quaternary md:rotate-0" aria-hidden="true" />
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
                         </div>
                     </section>
 
-                    {/* 03 Email templates */}
+                    {/* 03 The 9 steps */}
                     <section>
                         <SectionHeader
-                            id="s-emails"
+                            id="s-steps"
                             number="03"
-                            title="Email Templates"
-                            hint="The 3 master templates. AnhTuan: unlock editing and paste the existing templates here — Claude reviews and updates from this."
+                            title="The 9 steps"
+                            hint="The full template — clients can have steps hidden individually, but the template always keeps all 9."
                         />
-                        <div className="mt-5 flex flex-col gap-6">
-                            {data.emails.map((e, i) => (
-                                <div key={e.label} className="rounded-2xl bg-primary p-5 ring-1 ring-secondary">
-                                    <div className="flex items-center justify-between gap-3">
-                                        <span className="inline-flex items-center rounded-full bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700 dark:bg-brand-950/40 dark:text-brand-300">
-                                            {e.label}
-                                        </span>
-                                        <CopyBtn text={e.subject && e.body ? `Subject: ${e.subject}\n\n${e.body}` : ""} label="Copy email" />
-                                    </div>
-
-                                    <div className="mt-4">
-                                        <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-quaternary">Goal</p>
-                                        <EditLine value={e.goal} editing={editing} onChange={(v) => update((d) => void (d.emails[i].goal = v))} />
-                                    </div>
-
-                                    <div className="mt-4">
-                                        <div className="mb-1 flex items-center justify-between">
-                                            <p className="text-xs font-semibold uppercase tracking-wide text-quaternary">Subject</p>
-                                            <CopyBtn text={e.subject} />
+                        <div className="mt-4 rounded-2xl bg-primary p-5 ring-1 ring-secondary">
+                            <ul className="flex flex-col gap-2">
+                                {data.steps.map((item, i) => (
+                                    <li key={i} className="flex items-center gap-2">
+                                        <span className="size-1.5 shrink-0 rounded-full bg-brand-solid" />
+                                        <div className="min-w-0 flex-1">
+                                            <EditLine value={item} editing={editing} onChange={(v) => setLine("steps", i, v)} placeholder="Step…" />
                                         </div>
-                                        <EditLine
-                                            value={e.subject}
-                                            editing={editing}
-                                            onChange={(v) => update((d) => void (d.emails[i].subject = v))}
-                                            placeholder="Subject line — paste here"
-                                        />
-                                    </div>
-
-                                    <div className="mt-4">
-                                        <div className="mb-1 flex items-center justify-between">
-                                            <p className="text-xs font-semibold uppercase tracking-wide text-quaternary">Content for Email {i + 1}</p>
-                                            <CopyBtn text={e.body} />
-                                        </div>
-                                        <EditArea
-                                            value={e.body}
-                                            editing={editing}
-                                            onChange={(v) => update((d) => void (d.emails[i].body = v))}
-                                            placeholder={`Content for Email ${i + 1}: paste the existing template here.`}
-                                            rows={8}
-                                        />
-                                    </div>
-                                </div>
-                            ))}
+                                        {editing && (
+                                            <button type="button" title="Remove step" onClick={() => rmLine("steps", i)} className="text-fg-quaternary hover:text-fg-error-secondary">
+                                                <Trash01 className="size-4" />
+                                            </button>
+                                        )}
+                                    </li>
+                                ))}
+                            </ul>
+                            {editing && (
+                                <button type="button" onClick={() => addLine("steps")} className="mt-3 flex items-center gap-1.5 text-sm font-semibold text-brand-secondary hover:underline">
+                                    <Plus className="size-4" /> Add step
+                                </button>
+                            )}
                         </div>
                     </section>
 
-                    {/* 04 Workflow */}
+                    {/* 04 Rules & Safeguards */}
                     <section>
-                        <SectionHeader id="s-workflow" number="04" title="How AMs use it" hint="The intended end-to-end workflow once the builder ships." />
+                        <SectionHeader id="s-rules" number="04" title="Rules & Safeguards" hint="Hard rules the feature must never violate, and the protections built after the 2026-07-09 template incident." />
                         <div className="mt-4 rounded-2xl bg-primary p-5 ring-1 ring-secondary">
                             <ol className="flex flex-col gap-2.5">
-                                {data.workflow.map((step, i) => (
+                                {data.rules.map((rule, i) => (
                                     <li key={i} className="flex items-start gap-3">
                                         <span className="mt-px flex size-5 shrink-0 items-center justify-center rounded-md bg-brand-50 text-xs font-semibold text-brand-700 tabular-nums dark:bg-brand-950/50 dark:text-brand-300">
                                             {i + 1}
                                         </span>
                                         <div className="flex min-w-0 flex-1 items-center gap-2">
                                             <div className="min-w-0 flex-1">
-                                                <EditLine value={step} editing={editing} onChange={(v) => setLine("workflow", i, v)} placeholder="Step…" />
+                                                <EditLine value={rule} editing={editing} onChange={(v) => setLine("rules", i, v)} placeholder="Rule…" />
                                             </div>
                                             {editing && (
-                                                <button type="button" title="Remove step" onClick={() => rmLine("workflow", i)} className="text-fg-quaternary hover:text-fg-error-secondary">
+                                                <button type="button" title="Remove rule" onClick={() => rmLine("rules", i)} className="text-fg-quaternary hover:text-fg-error-secondary">
                                                     <Trash01 className="size-4" />
                                                 </button>
                                             )}
@@ -635,47 +627,15 @@ export const WelcomeEmailFlowOverviewScreen = () => {
                             </ol>
                         </div>
                         {editing && (
-                            <button type="button" onClick={() => addLine("workflow")} className="mt-3 flex items-center gap-1.5 text-sm font-semibold text-brand-secondary hover:underline">
-                                <Plus className="size-4" /> Add step
+                            <button type="button" onClick={() => addLine("rules")} className="mt-3 flex items-center gap-1.5 text-sm font-semibold text-brand-secondary hover:underline">
+                                <Plus className="size-4" /> Add rule
                             </button>
                         )}
                     </section>
 
-                    {/* 05 Side menu proposal */}
+                    {/* 05 To-dos */}
                     <section>
-                        <SectionHeader
-                            id="s-sidemenu"
-                            number="05"
-                            title="Client dashboard side menu"
-                            hint="Proposed sections for the per-client dashboard. NOT finalized — edit freely."
-                        />
-                        <div className="mt-4 rounded-2xl bg-primary p-5 ring-1 ring-secondary">
-                            <ul className="flex flex-col gap-2">
-                                {data.sidemenu.map((item, i) => (
-                                    <li key={i} className="flex items-center gap-2">
-                                        <span className="size-1.5 shrink-0 rounded-full bg-brand-solid" />
-                                        <div className="min-w-0 flex-1">
-                                            <EditLine value={item} editing={editing} onChange={(v) => setLine("sidemenu", i, v)} placeholder="Menu item…" />
-                                        </div>
-                                        {editing && (
-                                            <button type="button" title="Remove item" onClick={() => rmLine("sidemenu", i)} className="text-fg-quaternary hover:text-fg-error-secondary">
-                                                <Trash01 className="size-4" />
-                                            </button>
-                                        )}
-                                    </li>
-                                ))}
-                            </ul>
-                            {editing && (
-                                <button type="button" onClick={() => addLine("sidemenu")} className="mt-3 flex items-center gap-1.5 text-sm font-semibold text-brand-secondary hover:underline">
-                                    <Plus className="size-4" /> Add item
-                                </button>
-                            )}
-                        </div>
-                    </section>
-
-                    {/* 06 To-dos */}
-                    <section>
-                        <SectionHeader id="s-todos" number="06" title="Build To-dos" hint="Checklist to ship the feature. Tick items as they land." />
+                        <SectionHeader id="s-todos" number="05" title="Build To-dos" hint="Checklist to finish hardening the feature. Tick items as they land." />
                         <div className="mt-4 flex flex-col gap-1.5">
                             {data.todos.map((t, i) => (
                                 <div key={t.id} className="flex items-center gap-3 rounded-xl bg-primary px-4 py-2.5 ring-1 ring-secondary">
@@ -718,11 +678,11 @@ export const WelcomeEmailFlowOverviewScreen = () => {
                         )}
                     </section>
 
-                    {/* 07 Questions */}
+                    {/* 06 Questions */}
                     <section>
                         <SectionHeader
                             id="s-questions"
-                            number="07"
+                            number="06"
                             title="Open Questions"
                             hint="Answer inline — decisions live here so nothing gets lost in chat. Answered questions move to Resolved / History below (nothing is deleted)."
                         />
@@ -810,9 +770,9 @@ export const WelcomeEmailFlowOverviewScreen = () => {
                         )}
                     </section>
 
-                    {/* 08 Timeline */}
+                    {/* 07 Timeline */}
                     <section>
-                        <SectionHeader id="s-log" number="08" title="Timeline" hint="Build log — updated as the feature progresses." />
+                        <SectionHeader id="s-log" number="07" title="Timeline" hint="Build log — updated as the feature progresses." />
                         <div className="mt-4 flex flex-col gap-3">
                             <AnimatePresence>
                                 {data.log.map((e) => (
