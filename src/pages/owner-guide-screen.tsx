@@ -1212,6 +1212,11 @@ export const OwnerGuideScreen = () => {
     useEditShortcuts({ enabled: isTeam, onToggle: () => setLocked((v) => !v), onSave: () => setLocked(true) });
 
     const contentHydrated = useRef(false);
+    // Counts setSteps calls made by HYDRATION so the publish effect can skip
+    // them — merely VIEWING a guide must never write content back to the DB
+    // (the old echo-write rewrote rows on every page load, incl. submitted
+    // client guides — a RULE No.1 hazard and a race between open tabs).
+    const skipPublish = useRef(0);
 
     useEffect(() => {
         dbLoad(sessionId).then(data => {
@@ -1278,6 +1283,7 @@ export const OwnerGuideScreen = () => {
         const apply = (data: unknown) => {
             if (cancelled || !data || !Array.isArray(data) || !data.length) return false;
             const norm = normalizeSteps(data as StepData[]);
+            skipPublish.current += 1; // hydration, not a user edit — don't publish it back
             setSteps(norm);
             saveContent(norm, contentKey);
             return true;
@@ -1311,6 +1317,12 @@ export const OwnerGuideScreen = () => {
     // scheduled on the template can't land on a guide navigated to mid-debounce.
     useEffect(() => {
         if (!contentHydrated.current) return;
+        // Hydration-driven setSteps must not round-trip to the DB — only real
+        // edits publish. Viewing a guide is now strictly read-only.
+        if (skipPublish.current > 0) {
+            skipPublish.current -= 1;
+            return;
+        }
         const t = setTimeout(() => {
             writeSopPage(contentSlug, steps)
                 .then(() => { dbLogger.success(`Guide content published`); })

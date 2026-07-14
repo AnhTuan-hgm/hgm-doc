@@ -30,7 +30,19 @@ export async function readSopPage(slug: string) {
       const docSnap = await getDoc(docRef);
 
       if (docSnap.exists()) {
-        return docSnap.data();
+        // Normalize to the Supabase row shape ({ slug, data, ... }) so callers
+        // reading `row.data` work on both paths. Legacy Firebase docs were
+        // written as a SPREAD of the payload ({...data}) — when the payload was
+        // an array (owner-guide steps) that produced numeric keys, so rebuild
+        // the array from them.
+        const raw = docSnap.data() as Record<string, unknown>;
+        if (raw && "data" in raw) return { slug, ...raw };
+        const numericKeys = Object.keys(raw ?? {}).filter((k) => /^\d+$/.test(k));
+        if (numericKeys.length) {
+          const arr = numericKeys.sort((a, b) => Number(a) - Number(b)).map((k) => raw[k]);
+          return { slug, data: arr, updated_at: raw.updated_at };
+        }
+        return { slug, data: raw };
       } else {
         throw new Error("Document not found in Firebase either");
       }
@@ -64,10 +76,15 @@ export async function writeSopPage(slug: string, data: any) {
   }
 
   try {
-    // Always write to Firebase as backup (even if Supabase succeeded)
+    // Always write to Firebase as backup (even if Supabase succeeded).
+    // Keep the payload under a `data` field (NOT spread — spreading an array
+    // produced numeric keys) and JSON round-trip it: Firestore rejects
+    // `undefined` field values anywhere in the tree, which made every guide
+    // backup silently fail for months.
     dbLogger.dualWrite("sop_pages", "update", "firebase");
     const docRef = doc(firestore, "sop_pages", slug);
-    await setDoc(docRef, { ...data, updated_at: new Date().toISOString() });
+    const clean = JSON.parse(JSON.stringify(data));
+    await setDoc(docRef, { data: clean, updated_at: new Date().toISOString() });
     dbLogger.success(`sop_pages:${slug} written to Firebase`);
     fbSuccess = true;
   } catch (fbErr) {
