@@ -4,7 +4,7 @@ import { AppShell, CollapsedTopBar, HeaderAvatar, IconRail, NavCollapseButton, u
 import { HelpMenu } from "@/components/application/help-menu";
 import { Select } from "@/components/base/select/select";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowUpRight, Award01, BookOpen01, Briefcase01, Check, ChevronDown, ClipboardCheck, Code02, Diamond01, Edit01, FilePlus02, FolderClosed, Grid01, Home02, Image01, LayoutAlt01, List, Lock01, LockUnlocked01, Mail01, MarkerPin01, MessageChatCircle, Plus, SearchSm, Share07, Star01, Trash01, Trophy01, Users01, XClose } from "@untitledui/icons";
+import { ArrowUpRight, Award01, BookOpen01, Briefcase01, Check, ChevronDown, ClipboardCheck, Code02, Edit01, FilePlus02, FolderClosed, Grid01, Home02, Image01, LayoutAlt01, List, Lock01, LockUnlocked01, Mail01, MarkerPin01, MessageChatCircle, Plus, SearchSm, Share07, Star01, Trash01, Trophy01, Users01, XClose } from "@untitledui/icons";
 import { supabase, type ChatWidgetPageData, type ClientPageData, type ClientRecord, type HostOnboardingPageData, type LeadCapturePageData, type OverviewCard, type OwnerGuideMeta, type OverviewTab } from "@/lib/supabase";
 import { createBlankTemplateData, isReservedSlug, slugify } from "@/pages/template-one-screen";
 import { useAuthUser } from "@/hooks/use-auth-user";
@@ -175,7 +175,6 @@ const TIERS: { id: string; label: string; icon: typeof Share07 }[] = [
     { id: "tier-0", label: "Tier 0", icon: Trophy01 },
     { id: "tier-1", label: "Tier 1", icon: Award01 },
     { id: "tier-2", label: "Tier 2", icon: Star01 },
-    { id: "mastermind", label: "Mastermind", icon: Diamond01 },
 ];
 const tierLabel = (id: string) => TIERS.find((t) => t.id === id)?.label ?? "Tier 0";
 

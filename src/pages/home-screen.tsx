@@ -1,7 +1,7 @@
 import { useEffect, useState, type FC } from "react";
 import { useNavigate } from "react-router";
 import { animate, motion } from "motion/react";
-import { ArrowUpRight, Award01, Diamond01, Globe01, HelpCircle, Home02, Plus, Rocket02, Star01, Trophy01, UserCheck01, UserMinus01, Users01 } from "@untitledui/icons";
+import { ArrowUpRight, Award01, Globe01, HelpCircle, Home02, Plus, Rocket02, Star01, Trophy01, UserCheck01, UserMinus01, Users01 } from "@untitledui/icons";
 import { Avatar } from "@/components/base/avatar/avatar";
 import { AppShell, CollapsedTopBar, HeaderAvatar, IconRail, RailBottom, useNavCollapsed } from "@/components/application/icon-rail";
 import { ONBOARDING_PHASES, TeamGate } from "@/pages/dashboard-screen";
@@ -30,7 +30,6 @@ const TIER_META: { id: string; label: string; icon: FC<{ className?: string }> }
     { id: "tier-0", label: "Tier 0", icon: Trophy01 },
     { id: "tier-1", label: "Tier 1", icon: Award01 },
     { id: "tier-2", label: "Tier 2", icon: Star01 },
-    { id: "mastermind", label: "Mastermind", icon: Diamond01 },
 ];
 
 /** Log pages whose open questions feed the header chip (same set as /questions). */

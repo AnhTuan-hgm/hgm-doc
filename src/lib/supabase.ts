@@ -47,7 +47,7 @@ export interface OverviewCard {
 export interface ClientRecord {
     id: string;
     name: string;
-    tier: string; // tier-0 | tier-1 | tier-2 | mastermind
+    tier: string; // tier-0 | tier-1 | tier-2
     am: string; // account manager name
     location: string;
     cover_url?: string;
