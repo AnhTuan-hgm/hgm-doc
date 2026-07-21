@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { BarChartSquare02, Camera01, Check, CheckDone01, ChevronDown, ClipboardCheck, FilterFunnel01, HelpCircle, Home02, Hourglass01, LayoutAlt01, Lightbulb01, PenTool01, Plus, Rocket02, Settings01, Trash01, Users01 } from "@untitledui/icons";
+import { BarChartSquare02, Camera01, Check, CheckDone01, ChevronDown, ClipboardCheck, FilterFunnel01, Flag05, HelpCircle, Home02, Hourglass01, LayoutAlt01, Lightbulb01, PenTool01, Plus, Rocket02, Settings01, Trash01, Users01 } from "@untitledui/icons";
+import { MilestonesPanel, type Milestone, type WaitingItem } from "@/components/application/milestones-panel";
 import { PageBanner } from "@/components/application/page-banner";
 import { AppShell, CollapsedTopBar, IconRail, NavCollapseButton, RailBottom, useNavCollapsed } from "@/components/application/icon-rail";
 import { PriorityFlag, type QuestionPriority } from "@/components/application/priority-flag";
@@ -29,6 +30,9 @@ type LogEntry = { id: string; date: string; title: string; description: string; 
 type HomeData = {
     overview: string;
     bannerUrl?: string;
+    /** Build milestones + what the project is currently waiting on. */
+    milestones: Milestone[];
+    waiting: WaitingItem[];
     /** The stat blocks the homepage will show (v1 idea). */
     shows: string[];
     /** Onboarding phases — Phase number = position in this list (0-based). */
@@ -49,6 +53,18 @@ function seed(): HomeData {
             "It shows how many existing clients we serve (split by tier), how many clients are onboarding and where each sits in the 6 onboarding phases, " +
             "who is offboarding, how the client load is spread across Account Managers, and which website projects the Web Team is building and who manages each. " +
             "It gets its own HOME icon at the top of the department icon rail. The roster currently counts 47 clients (existing + onboarding).",
+        milestones: [
+            { id: uid(), label: "M1 · Data model decided — clients table with tier / status / phase / AM", status: "done" },
+            { id: uid(), label: "M2 · Mission Control built at /home (tier stats, onboarding pipeline, AM workload)", status: "done" },
+            { id: uid(), label: "M3 · All 47 clients filed with tier, phase & Account Manager", status: "done" },
+            { id: uid(), label: "M4 · Notification bell, real team headshots & grouped sidebar", status: "done" },
+            { id: uid(), label: "M5 · Web Team panel filled + /home as the team's default landing", status: "next" },
+        ],
+        waiting: [
+            { id: uid(), text: "File which of the 47 clients have website projects in flight — web_project / web_manager are empty on every row, so the Web Team panel is blank" },
+            { id: uid(), text: "Decide whether /home becomes the team's default landing (post-sign-in redirect + the Ctrl+B target) instead of /dashboard" },
+            { id: uid(), text: "Define what Tier 0 / 1 / 2 actually mean so the homepage can show a small legend for new team members" },
+        ],
         shows: [
             "Existing clients — total count split by tier (Tier 0 / Tier 1 / Tier 2 / Mastermind, matching the dashboard Client List)",
             "Onboarding clients — how many, and where each sits across the 6 phases (Phase 0–5)",
@@ -306,6 +322,7 @@ const QuestionCard = ({
 const NAV_GROUPS = [
     [
         { id: "s-overview", label: "Overview", icon: Home02 },
+        { id: "s-milestones", label: "Milestones", icon: Flag05 },
         { id: "s-shows", label: "What it shows", icon: BarChartSquare02 },
         { id: "s-phases", label: "Onboarding phases", icon: Rocket02 },
         { id: "s-clients", label: "Client roster", icon: Users01 },
@@ -356,7 +373,9 @@ export const HomepageOverviewScreen = () => {
             .maybeSingle()
             .then(({ data: row, error }) => {
                 const d = row?.data as HomeData | undefined;
-                if (!error && d && Array.isArray(d.todos)) setData(d);
+                // Merge over the seed so rows saved before newer sections existed
+                // (e.g. milestones/waiting) still get those sections' defaults.
+                if (!error && d && Array.isArray(d.todos)) setData({ ...seed(), ...d });
                 hydratedRef.current = true;
             });
     }, []);
@@ -461,9 +480,9 @@ export const HomepageOverviewScreen = () => {
                     variants={{ show: { transition: { staggerChildren: 0.05 } } }}
                 >
                     {NAV_GROUPS.map((group, gi) => (
-                        <div key={gi}>
+                        <div key={gi} className="space-y-1">
                             {/* Divider between groups (macOS System Settings style) */}
-                            {gi > 0 && <div className="mx-3 my-2.5 h-px bg-border-secondary" />}
+                            {gi > 0 && <div className="mx-3 my-3 h-px bg-border-secondary" />}
                             {group.map((s) => (
                                 <motion.button
                                     key={s.id}
@@ -471,7 +490,7 @@ export const HomepageOverviewScreen = () => {
                                     onClick={() => goTo(s.id)}
                                     variants={{ hidden: { opacity: 0, x: -8 }, show: { opacity: 1, x: 0 } }}
                                     className={cx(
-                                        "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium transition duration-100 ease-linear",
+                                        "flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition duration-100 ease-linear",
                                         activeSection === s.id
                                             ? "bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300"
                                             : "text-secondary hover:bg-secondary_hover hover:text-primary",
@@ -541,11 +560,25 @@ export const HomepageOverviewScreen = () => {
                         </div>
                     </section>
 
-                    {/* 02 What it shows */}
+                    {/* 02 Milestones */}
+                    <section>
+                        <SectionHeader id="s-milestones" number="02" title="Milestones" hint="The build at a glance — what's shipped, in flight, and what it's waiting on." />
+                        <div className="mt-4">
+                            <MilestonesPanel
+                                milestones={data.milestones}
+                                waiting={data.waiting}
+                                editing={editing}
+                                onMilestones={(m) => update((d) => void (d.milestones = m))}
+                                onWaiting={(w) => update((d) => void (d.waiting = w))}
+                            />
+                        </div>
+                    </section>
+
+                    {/* 03 What it shows */}
                     <section>
                         <SectionHeader
                             id="s-shows"
-                            number="02"
+                            number="03"
                             title="What the homepage shows (v1)"
                             hint="AnhTuan's first idea — the general-information blocks, in priority order."
                         />
@@ -573,11 +606,11 @@ export const HomepageOverviewScreen = () => {
                         </div>
                     </section>
 
-                    {/* 03 Onboarding phases */}
+                    {/* 04 Onboarding phases */}
                     <section>
                         <SectionHeader
                             id="s-phases"
-                            number="03"
+                            number="04"
                             title="Onboarding phases"
                             hint="Every onboarding client moves through these 6 phases — the homepage shows where each client sits."
                         />
@@ -619,11 +652,11 @@ export const HomepageOverviewScreen = () => {
                         </div>
                     </section>
 
-                    {/* 04 Client roster */}
+                    {/* 05 Client roster */}
                     <section>
                         <SectionHeader
                             id="s-clients"
-                            number="04"
+                            number="05"
                             title={`Client roster (${data.clients.length})`}
                             hint="Existing + onboarding clients, as shared on 2026-07-12. Tier / status / phase / AM per client is still to be filed (see To-dos)."
                         />
@@ -653,9 +686,9 @@ export const HomepageOverviewScreen = () => {
                         </div>
                     </section>
 
-                    {/* 05 To-dos */}
+                    {/* 06 To-dos */}
                     <section>
-                        <SectionHeader id="s-todos" number="05" title="Build To-dos" hint="Checklist to get the homepage shipped. Tick items as they land." />
+                        <SectionHeader id="s-todos" number="06" title="Build To-dos" hint="Checklist to get the homepage shipped. Tick items as they land." />
                         <div className="mt-4 flex flex-col gap-1.5">
                             {data.todos.map((t, i) => (
                                 <div key={t.id} className="flex items-center gap-3 rounded-xl bg-primary px-4 py-2.5 ring-1 ring-secondary">
@@ -698,11 +731,11 @@ export const HomepageOverviewScreen = () => {
                         )}
                     </section>
 
-                    {/* 06 Questions */}
+                    {/* 07 Questions */}
                     <section>
                         <SectionHeader
                             id="s-questions"
-                            number="06"
+                            number="07"
                             title="Open Questions"
                             hint="Answer inline — decisions live here so nothing gets lost in chat. Answered questions move to Resolved / History below (nothing is deleted)."
                         />
@@ -790,9 +823,9 @@ export const HomepageOverviewScreen = () => {
                         )}
                     </section>
 
-                    {/* 07 Timeline */}
+                    {/* 08 Timeline */}
                     <section>
-                        <SectionHeader id="s-log" number="07" title="Timeline" hint="Build log — updated as the project progresses." />
+                        <SectionHeader id="s-log" number="08" title="Timeline" hint="Build log — updated as the project progresses." />
                         <div className="mt-4 flex flex-col gap-3">
                             <AnimatePresence>
                                 {data.log.map((e) => (

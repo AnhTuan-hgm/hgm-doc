@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowRight, ArrowUpRight, BookOpen01, Check, CheckDone01, ChevronDown, ClipboardCheck, Copy01, HelpCircle, Hourglass01, LayoutAlt01, Mail01, Plus, Send01, Trash01, Users01 } from "@untitledui/icons";
+import { ArrowRight, ArrowUpRight, BookOpen01, Check, CheckDone01, ChevronDown, ClipboardCheck, Copy01, Flag05, HelpCircle, Hourglass01, LayoutAlt01, Mail01, Plus, Send01, Trash01, Users01 } from "@untitledui/icons";
+import { MilestonesPanel, type Milestone, type WaitingItem } from "@/components/application/milestones-panel";
 import { PageBanner } from "@/components/application/page-banner";
 import { AppShell, CollapsedTopBar, IconRail, NavCollapseButton, RailBottom, useNavCollapsed } from "@/components/application/icon-rail";
 import { PriorityFlag, type QuestionPriority } from "@/components/application/priority-flag";
@@ -29,6 +30,9 @@ type LogEntry = { id: string; date: string; title: string; description: string; 
 type FlowData = {
     overview: string;
     bannerUrl?: string;
+    /** Build milestones + what the project is currently waiting on. */
+    milestones: Milestone[];
+    waiting: WaitingItem[];
     waits: string[]; // timing chips between the 3 emails
     emails: EmailTpl[];
     workflow: string[];
@@ -46,6 +50,18 @@ function seed(): FlowData {
             "An internal tool for Account Managers to draft a client's 3-email welcome flow — Promotion, Reminder, Last Chance — in one place, per client. " +
             "It is a drafting tool: AMs copy the finished subject and body of each email into GoHighLevel, which does the actual sending. " +
             "The builder will live inside each client's dashboard (a side-menu section), is created automatically with the client dashboard, and each flow is shareable with the client.",
+        milestones: [
+            { id: uid(), label: "M1 · Foundation — project page, flow data model, versioning & daily review", status: "done" },
+            { id: uid(), label: "M2 · Builder V1 — Email 1/2/3 tabs, WYSIWYG editor, mobile/desktop preview", status: "done" },
+            { id: uid(), label: "M3 · GHL images phase 1 — image slots accept pasted GoHighLevel URLs", status: "done" },
+            { id: uid(), label: "M4 · Client share view — view-only + 'Suggest changes' comment panel", status: "progress" },
+            { id: uid(), label: "M5 · Push to GoHighLevel + AM notification rail + client sign-in gate", status: "next" },
+        ],
+        waiting: [
+            { id: uid(), text: "AnhTuan: create a Private Integration token (medias.readonly) in one test client's GHL sub-account — stored as a Supabase secret, never in chat" },
+            { id: uid(), text: "Decide the push shape — 3 GHL email templates the AM wires up, or a ready-made workflow with the 1-day waits pre-configured" },
+            { id: uid(), text: "Pick the pilot client for the first end-to-end run (AM drafts → client reviews → push to GHL)" },
+        ],
         waits: ["wait — days?", "wait — days?"],
         emails: [
             {
@@ -276,6 +292,7 @@ const QuestionCard = ({
 const NAV_GROUPS = [
     [
         { id: "s-overview", label: "Overview", icon: BookOpen01 },
+        { id: "s-milestones", label: "Milestones", icon: Flag05 },
         { id: "s-flow", label: "The Flow", icon: Send01 },
         { id: "s-emails", label: "Email Templates", icon: Mail01 },
         { id: "s-workflow", label: "How AMs use it", icon: Users01 },
@@ -326,7 +343,9 @@ export const WelcomeEmailFlowOverviewScreen = () => {
             .maybeSingle()
             .then(({ data: row, error }) => {
                 const d = row?.data as FlowData | undefined;
-                if (!error && d && Array.isArray(d.emails)) setData(d);
+                // Merge over the seed so rows saved before newer sections existed
+                // (e.g. milestones/waiting) still get those sections' defaults.
+                if (!error && d && Array.isArray(d.emails)) setData({ ...seed(), ...d });
                 hydratedRef.current = true;
             });
     }, []);
@@ -430,9 +449,9 @@ export const WelcomeEmailFlowOverviewScreen = () => {
                     variants={{ show: { transition: { staggerChildren: 0.05 } } }}
                 >
                     {NAV_GROUPS.map((group, gi) => (
-                        <div key={gi}>
+                        <div key={gi} className="space-y-1">
                             {/* Divider between groups (macOS System Settings style) */}
-                            {gi > 0 && <div className="mx-3 my-2.5 h-px bg-border-secondary" />}
+                            {gi > 0 && <div className="mx-3 my-3 h-px bg-border-secondary" />}
                             {group.map((s) => (
                                 <motion.button
                                     key={s.id}
@@ -440,7 +459,7 @@ export const WelcomeEmailFlowOverviewScreen = () => {
                                     onClick={() => goTo(s.id)}
                                     variants={{ hidden: { opacity: 0, x: -8 }, show: { opacity: 1, x: 0 } }}
                                     className={cx(
-                                        "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium transition duration-100 ease-linear",
+                                        "flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition duration-100 ease-linear",
                                         activeSection === s.id
                                             ? "bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300"
                                             : "text-secondary hover:bg-secondary_hover hover:text-primary",
@@ -523,9 +542,23 @@ export const WelcomeEmailFlowOverviewScreen = () => {
                         </div>
                     </section>
 
-                    {/* 02 The Flow */}
+                    {/* 02 Milestones */}
                     <section>
-                        <SectionHeader id="s-flow" number="02" title="The Flow" hint="Three emails, in order, with a wait between each." />
+                        <SectionHeader id="s-milestones" number="02" title="Milestones" hint="The build at a glance — what's shipped, in flight, and what it's waiting on." />
+                        <div className="mt-4">
+                            <MilestonesPanel
+                                milestones={data.milestones}
+                                waiting={data.waiting}
+                                editing={editing}
+                                onMilestones={(m) => update((d) => void (d.milestones = m))}
+                                onWaiting={(w) => update((d) => void (d.waiting = w))}
+                            />
+                        </div>
+                    </section>
+
+                    {/* 03 The Flow */}
+                    <section>
+                        <SectionHeader id="s-flow" number="03" title="The Flow" hint="Three emails, in order, with a wait between each." />
                         <div className="mt-5 flex flex-col items-stretch gap-3 md:flex-row md:items-center">
                             {data.emails.map((e, i) => (
                                 <div key={e.label} className="flex flex-1 flex-col gap-2 md:contents">
@@ -556,11 +589,11 @@ export const WelcomeEmailFlowOverviewScreen = () => {
                         </div>
                     </section>
 
-                    {/* 03 Email templates */}
+                    {/* 04 Email templates */}
                     <section>
                         <SectionHeader
                             id="s-emails"
-                            number="03"
+                            number="04"
                             title="Email Templates"
                             hint="The 3 master templates. AnhTuan: unlock editing and paste the existing templates here — Claude reviews and updates from this."
                         />
@@ -610,9 +643,9 @@ export const WelcomeEmailFlowOverviewScreen = () => {
                         </div>
                     </section>
 
-                    {/* 04 Workflow */}
+                    {/* 05 Workflow */}
                     <section>
-                        <SectionHeader id="s-workflow" number="04" title="How AMs use it" hint="The intended end-to-end workflow once the builder ships." />
+                        <SectionHeader id="s-workflow" number="05" title="How AMs use it" hint="The intended end-to-end workflow once the builder ships." />
                         <div className="mt-4 rounded-2xl bg-primary p-5 ring-1 ring-secondary">
                             <ol className="flex flex-col gap-2.5">
                                 {data.workflow.map((step, i) => (
@@ -641,11 +674,11 @@ export const WelcomeEmailFlowOverviewScreen = () => {
                         )}
                     </section>
 
-                    {/* 05 Side menu proposal */}
+                    {/* 06 Side menu proposal */}
                     <section>
                         <SectionHeader
                             id="s-sidemenu"
-                            number="05"
+                            number="06"
                             title="Client dashboard side menu"
                             hint="Proposed sections for the per-client dashboard. NOT finalized — edit freely."
                         />
@@ -673,9 +706,9 @@ export const WelcomeEmailFlowOverviewScreen = () => {
                         </div>
                     </section>
 
-                    {/* 06 To-dos */}
+                    {/* 07 To-dos */}
                     <section>
-                        <SectionHeader id="s-todos" number="06" title="Build To-dos" hint="Checklist to ship the feature. Tick items as they land." />
+                        <SectionHeader id="s-todos" number="07" title="Build To-dos" hint="Checklist to ship the feature. Tick items as they land." />
                         <div className="mt-4 flex flex-col gap-1.5">
                             {data.todos.map((t, i) => (
                                 <div key={t.id} className="flex items-center gap-3 rounded-xl bg-primary px-4 py-2.5 ring-1 ring-secondary">
@@ -718,11 +751,11 @@ export const WelcomeEmailFlowOverviewScreen = () => {
                         )}
                     </section>
 
-                    {/* 07 Questions */}
+                    {/* 08 Questions */}
                     <section>
                         <SectionHeader
                             id="s-questions"
-                            number="07"
+                            number="08"
                             title="Open Questions"
                             hint="Answer inline — decisions live here so nothing gets lost in chat. Answered questions move to Resolved / History below (nothing is deleted)."
                         />
@@ -810,9 +843,9 @@ export const WelcomeEmailFlowOverviewScreen = () => {
                         )}
                     </section>
 
-                    {/* 08 Timeline */}
+                    {/* 09 Timeline */}
                     <section>
-                        <SectionHeader id="s-log" number="08" title="Timeline" hint="Build log — updated as the feature progresses." />
+                        <SectionHeader id="s-log" number="09" title="Timeline" hint="Build log — updated as the feature progresses." />
                         <div className="mt-4 flex flex-col gap-3">
                             <AnimatePresence>
                                 {data.log.map((e) => (

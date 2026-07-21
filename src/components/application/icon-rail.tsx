@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { AlertCircle, Bell01, BookOpen01, Briefcase01, CheckCircle, ChevronLeft, ChevronRight, Code02, HelpCircle, Home02, LayoutLeft, Lock01, LockUnlocked01, Moon01, Sun, Users01 } from "@untitledui/icons";
+import { AlertCircle, Bell01, BookOpen01, CheckCircle, ChevronLeft, ChevronRight, Code02, HelpCircle, Home02, LayoutLeft, Lock01, LockUnlocked01, Moon01, Sun, Users01 } from "@untitledui/icons";
 import { Avatar } from "@/components/base/avatar/avatar";
 import { useAuthUser } from "@/hooks/use-auth-user";
 import { fetchAttentionItems, type AttentionItem } from "@/lib/notifications";
@@ -395,7 +395,6 @@ export const RAIL_ITEMS = [
     { id: "home", short: "Home", icon: Home02 },
     { id: "clients", short: "Clients", icon: Users01 },
     { id: "website", short: "Website", icon: Code02 },
-    { id: "am", short: "AM", icon: Briefcase01 },
     { id: "docs", short: "Docs", icon: BookOpen01 },
 ];
 

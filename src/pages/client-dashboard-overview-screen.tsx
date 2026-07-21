@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowRight, ArrowUpRight, BookOpen01, Briefcase01, Check, CheckDone01, ChevronDown, ChevronUp, ClipboardCheck, Database01, FileCheck02, HelpCircle, Hourglass01, LayoutAlt01, Plus, Send01, Stars01, Trash01, Users01, Zap } from "@untitledui/icons";
+import { ArrowRight, ArrowUpRight, BookOpen01, Briefcase01, Check, CheckDone01, ChevronDown, ChevronUp, ClipboardCheck, Database01, FileCheck02, Flag05, HelpCircle, Hourglass01, LayoutAlt01, Plus, Send01, Stars01, Trash01, Users01, Zap } from "@untitledui/icons";
+import { MilestonesPanel, type Milestone, type WaitingItem } from "@/components/application/milestones-panel";
 import { PageBanner } from "@/components/application/page-banner";
 import { AppShell, CollapsedTopBar, IconRail, NavCollapseButton, RailBottom, useNavCollapsed } from "@/components/application/icon-rail";
 import { PriorityFlag, type QuestionPriority } from "@/components/application/priority-flag";
@@ -29,6 +30,9 @@ type LogEntry = { id: string; date: string; title: string; description: string; 
 type DashData = {
     overview: string;
     bannerUrl?: string;
+    /** Build milestones + what the project is currently waiting on. */
+    milestones: Milestone[];
+    waiting: WaitingItem[];
     stages: Stage[];
     fields: string[];
     workflow: string[];
@@ -55,6 +59,18 @@ function seed(): DashData {
             "Anyone can update it anytime — the client from their side, an AM after a call. " +
             "That one document then powers everything downstream: the AM's Welcome Email Flow drafts, the AI chat widget on the client website, and any future AI feature. " +
             "Structured input in → smart output everywhere.",
+        milestones: [
+            { id: uid(), label: "M1 · Client dashboard V1 — per-client dashboards shipped & live", status: "done" },
+            { id: uid(), label: "M2 · Dashboard Functions section + grouped sidebar", status: "done" },
+            { id: uid(), label: "M3 · Structured Master Document — field set + Supabase persistence", status: "progress" },
+            { id: uid(), label: "M4 · Client Google sign-in (AM-managed allowlist) + AM update notifications", status: "next" },
+            { id: uid(), label: "M5 · Downstream reads — Welcome Flow & chat widget consume the Master Document", status: "next" },
+        ],
+        waiting: [
+            { id: uid(), text: "Confirm the Master Document v1 sections: Business/persona, FAQs, Brand voice/tone, Offers, Property details, Links/socials" },
+            { id: uid(), text: "Decide: one shared ClientGate sign-in component (also used by welcome-flow comments), or a dashboard-specific gate" },
+            { id: uid(), text: "Run supabase db push — the dashboard_pages migration is still pending, blocking dashboard create/save" },
+        ],
         stages: [
             { label: "Client", detail: "Fills in / updates their info anytime" },
             { label: "Account Manager", detail: "Adds notes, FAQs & corrections" },
@@ -265,6 +281,7 @@ const QuestionCard = ({
 const NAV_GROUPS = [
     [
         { id: "s-overview", label: "Overview", icon: BookOpen01 },
+        { id: "s-milestones", label: "Milestones", icon: Flag05 },
         { id: "s-flow", label: "How info flows", icon: Send01 },
         { id: "s-fields", label: "Master Document fields", icon: FileCheck02 },
         { id: "s-workflow", label: "How it's used", icon: Users01 },
@@ -318,9 +335,10 @@ export const ClientDashboardOverviewScreen = () => {
             .then(({ data: row, error }) => {
                 const d = row?.data as DashData | undefined;
                 if (!error && d && Array.isArray(d.todos)) {
-                    // Backfill fields added after this row was first saved, and migrate
+                    // Backfill fields added after this row was first saved (seed merge covers
+                    // newer sections like milestones/waiting), and migrate
                     // ownerFunctions/guestFunctions from plain strings to {id,text,done}.
-                    setData({ ...d, ownerFunctions: normalizeFunctions(d.ownerFunctions), guestFunctions: normalizeFunctions(d.guestFunctions) });
+                    setData({ ...seed(), ...d, ownerFunctions: normalizeFunctions(d.ownerFunctions), guestFunctions: normalizeFunctions(d.guestFunctions) });
                 }
                 hydratedRef.current = true;
             });
@@ -444,9 +462,9 @@ export const ClientDashboardOverviewScreen = () => {
                     variants={{ show: { transition: { staggerChildren: 0.05 } } }}
                 >
                     {NAV_GROUPS.map((group, gi) => (
-                        <div key={gi}>
+                        <div key={gi} className="space-y-1">
                             {/* Divider between groups (macOS System Settings style) */}
-                            {gi > 0 && <div className="mx-3 my-2.5 h-px bg-border-secondary" />}
+                            {gi > 0 && <div className="mx-3 my-3 h-px bg-border-secondary" />}
                             {group.map((s) => (
                                 <motion.button
                                     key={s.id}
@@ -454,7 +472,7 @@ export const ClientDashboardOverviewScreen = () => {
                                     onClick={() => goTo(s.id)}
                                     variants={{ hidden: { opacity: 0, x: -8 }, show: { opacity: 1, x: 0 } }}
                                     className={cx(
-                                        "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium transition duration-100 ease-linear",
+                                        "flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition duration-100 ease-linear",
                                         activeSection === s.id
                                             ? "bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300"
                                             : "text-secondary hover:bg-secondary_hover hover:text-primary",
@@ -537,9 +555,23 @@ export const ClientDashboardOverviewScreen = () => {
                         </div>
                     </section>
 
-                    {/* 02 How info flows */}
+                    {/* 02 Milestones */}
                     <section>
-                        <SectionHeader id="s-flow" number="02" title="How info flows" hint="Client and AM feed one Master Document — every AI feature reads from it." />
+                        <SectionHeader id="s-milestones" number="02" title="Milestones" hint="The build at a glance — what's shipped, in flight, and what it's waiting on." />
+                        <div className="mt-4">
+                            <MilestonesPanel
+                                milestones={data.milestones}
+                                waiting={data.waiting}
+                                editing={editing}
+                                onMilestones={(m) => update((d) => void (d.milestones = m))}
+                                onWaiting={(w) => update((d) => void (d.waiting = w))}
+                            />
+                        </div>
+                    </section>
+
+                    {/* 03 How info flows */}
+                    <section>
+                        <SectionHeader id="s-flow" number="03" title="How info flows" hint="Client and AM feed one Master Document — every AI feature reads from it." />
                         <div className="mt-5 flex flex-col items-stretch gap-3 md:flex-row md:items-center">
                             {data.stages.map((s, i) => {
                                 const StageIcon = STAGE_ICONS[i % STAGE_ICONS.length];
@@ -584,11 +616,11 @@ export const ClientDashboardOverviewScreen = () => {
                         </div>
                     </section>
 
-                    {/* 03 Master Document fields */}
+                    {/* 04 Master Document fields */}
                     <section>
                         <SectionHeader
                             id="s-fields"
-                            number="03"
+                            number="04"
                             title="Master Document fields"
                             hint="Proposed fields — NOT finalized. Structured fields beat one text blob: every downstream AI feature reads these."
                         />
@@ -616,9 +648,9 @@ export const ClientDashboardOverviewScreen = () => {
                         </div>
                     </section>
 
-                    {/* 04 How it's used */}
+                    {/* 05 How it's used */}
                     <section>
-                        <SectionHeader id="s-workflow" number="04" title="How it's used" hint="The intended end-to-end workflow once the Master Document ships." />
+                        <SectionHeader id="s-workflow" number="05" title="How it's used" hint="The intended end-to-end workflow once the Master Document ships." />
                         <div className="mt-4 rounded-2xl bg-primary p-5 ring-1 ring-secondary">
                             <ol className="flex flex-col gap-2.5">
                                 {data.workflow.map((step, i) => (
@@ -647,9 +679,9 @@ export const ClientDashboardOverviewScreen = () => {
                         )}
                     </section>
 
-                    {/* 05 Dashboard Functions */}
+                    {/* 06 Dashboard Functions */}
                     <section>
-                        <SectionHeader id="s-functions" number="05" title="Dashboard Functions" hint="Any feature or capability idea for the dashboard — split by who it's for." />
+                        <SectionHeader id="s-functions" number="06" title="Dashboard Functions" hint="Any feature or capability idea for the dashboard — split by who it's for." />
                         <div className="mt-4 grid grid-cols-1 gap-5 md:grid-cols-2">
                             {(
                                 [
@@ -723,9 +755,9 @@ export const ClientDashboardOverviewScreen = () => {
                         </div>
                     </section>
 
-                    {/* 06 To-dos */}
+                    {/* 07 To-dos */}
                     <section>
-                        <SectionHeader id="s-todos" number="06" title="Build To-dos" hint="Checklist to ship the feature. Tick items as they land." />
+                        <SectionHeader id="s-todos" number="07" title="Build To-dos" hint="Checklist to ship the feature. Tick items as they land." />
                         <div className="mt-4 flex flex-col gap-1.5">
                             {data.todos.map((t, i) => (
                                 <div key={t.id} className="flex items-center gap-3 rounded-xl bg-primary px-4 py-2.5 ring-1 ring-secondary">
@@ -768,11 +800,11 @@ export const ClientDashboardOverviewScreen = () => {
                         )}
                     </section>
 
-                    {/* 07 Questions */}
+                    {/* 08 Questions */}
                     <section>
                         <SectionHeader
                             id="s-questions"
-                            number="07"
+                            number="08"
                             title="Open Questions"
                             hint="Answer inline — decisions live here so nothing gets lost in chat. Answered questions move to Resolved / History below (nothing is deleted)."
                         />
@@ -860,9 +892,9 @@ export const ClientDashboardOverviewScreen = () => {
                         )}
                     </section>
 
-                    {/* 08 Timeline */}
+                    {/* 09 Timeline */}
                     <section>
-                        <SectionHeader id="s-log" number="08" title="Timeline" hint="Build log — updated as the feature progresses." />
+                        <SectionHeader id="s-log" number="09" title="Timeline" hint="Build log — updated as the feature progresses." />
                         <div className="mt-4 flex flex-col gap-3">
                             <AnimatePresence>
                                 {data.log.map((e) => (

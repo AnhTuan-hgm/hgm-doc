@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowRight, ArrowUpRight, BookOpen01, Check, CheckDone01, ChevronDown, ChevronUp, ClipboardCheck, Database01, Edit02, HelpCircle, Hourglass01, Image01, LayoutAlt01, Lock01, LockUnlocked01, MessageChatCircle, Plus, Send01, Stars01, Trash01, Zap } from "@untitledui/icons";
+import { ArrowRight, ArrowUpRight, BookOpen01, Check, CheckDone01, ChevronDown, ChevronUp, ClipboardCheck, Database01, Edit02, Flag05, HelpCircle, Hourglass01, Image01, LayoutAlt01, Lock01, LockUnlocked01, MessageChatCircle, Plus, Send01, Stars01, Trash01, Zap } from "@untitledui/icons";
+import { MilestonesPanel, type Milestone, type WaitingItem } from "@/components/application/milestones-panel";
 import { PageBanner } from "@/components/application/page-banner";
 import { AppShell, CollapsedTopBar, IconRail, NavCollapseButton, RailBottom, useNavCollapsed } from "@/components/application/icon-rail";
 import { PriorityFlag, type QuestionPriority } from "@/components/application/priority-flag";
@@ -30,6 +31,9 @@ type Note = { id: string; title: string; description: string; image?: string; vi
 type ChatData = {
     overview: string;
     bannerUrl?: string;
+    /** Build milestones + what the project is currently waiting on. */
+    milestones: Milestone[];
+    waiting: WaitingItem[];
     stages: { label: string; detail: string }[];
     workflow: string[];
     reads: string[];
@@ -48,6 +52,18 @@ function seed(): ChatData {
             "Its knowledge source is the client's Master Document, filled in on the Client Dashboard: FAQs, ideal-guest persona, tone of voice, amenities, house rules and local tips. " +
             "The client or their AM updates the dashboard; the chat always answers from the same up-to-date info. " +
             "The widget ships inside the client websites (built separately in Next.js) — this docs site is where the knowledge lives, and a server function is the bridge that keeps the Claude API key off the browser.",
+        milestones: [
+            { id: uid(), label: "M1 · Project page + internal AI assistant shipped as the precedent", status: "done" },
+            { id: uid(), label: "M2 · Server function — fetch Master Document → call Claude → stream the reply", status: "next" },
+            { id: uid(), label: "M3 · Widget UI on client websites + AM handoff fallback", status: "next" },
+            { id: uid(), label: "M4 · Guest flows — 'get a quote or book direct' routing + conversation logs", status: "next" },
+            { id: uid(), label: "M5 · Pilot with one client, then roll out", status: "next" },
+        ],
+        waiting: [
+            { id: uid(), text: "The structured Master Document must exist first — shared dependency on the Client Dashboard build" },
+            { id: uid(), text: "Where each client's direct-booking URL lives (proposal: a booking_url field on the clients table)" },
+            { id: uid(), text: "How client Claude API keys get collected — a new Owner Guide step, or a client-dashboard settings field" },
+        ],
         stages: [
             { label: "Client Dashboard", detail: "Client / AM fills in the Master Document" },
             { label: "Supabase", detail: "Master doc stored per client" },
@@ -353,6 +369,7 @@ const NoteCard = ({
 const NAV_GROUPS = [
     [
         { id: "s-overview", label: "Overview", icon: BookOpen01 },
+        { id: "s-milestones", label: "Milestones", icon: Flag05 },
         { id: "s-how", label: "How it works", icon: Zap },
         { id: "s-flow", label: "End-to-end flow", icon: Send01 },
         { id: "s-reads", label: "What the chat reads", icon: Database01 },
@@ -408,7 +425,9 @@ export const ChatWidgetOverviewScreen = () => {
                 const d = row?.data as ChatData | undefined;
                 if (!error && d && Array.isArray(d.todos)) {
                     // Backfill fields added after this row was first saved.
-                    setData({ ...d, notes: d.notes ?? [] });
+                    // Merge over the seed so rows saved before newer sections existed
+                    // (e.g. milestones/waiting) still get those sections' defaults.
+                    setData({ ...seed(), ...d, notes: d.notes ?? [] });
                 }
                 hydratedRef.current = true;
             });
@@ -540,9 +559,9 @@ export const ChatWidgetOverviewScreen = () => {
                     variants={{ show: { transition: { staggerChildren: 0.05 } } }}
                 >
                     {NAV_GROUPS.map((group, gi) => (
-                        <div key={gi}>
+                        <div key={gi} className="space-y-1">
                             {/* Divider between groups (macOS System Settings style) */}
-                            {gi > 0 && <div className="mx-3 my-2.5 h-px bg-border-secondary" />}
+                            {gi > 0 && <div className="mx-3 my-3 h-px bg-border-secondary" />}
                             {group.map((s) => (
                                 <motion.button
                                     key={s.id}
@@ -550,7 +569,7 @@ export const ChatWidgetOverviewScreen = () => {
                                     onClick={() => goTo(s.id)}
                                     variants={{ hidden: { opacity: 0, x: -8 }, show: { opacity: 1, x: 0 } }}
                                     className={cx(
-                                        "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium transition duration-100 ease-linear",
+                                        "flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition duration-100 ease-linear",
                                         activeSection === s.id
                                             ? "bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300"
                                             : "text-secondary hover:bg-secondary_hover hover:text-primary",
@@ -633,9 +652,23 @@ export const ChatWidgetOverviewScreen = () => {
                         </div>
                     </section>
 
-                    {/* 02 How it works */}
+                    {/* 02 Milestones */}
                     <section>
-                        <SectionHeader id="s-how" number="02" title="How it works" hint="The pipeline — from the client's Master Document to the guest's answer." />
+                        <SectionHeader id="s-milestones" number="02" title="Milestones" hint="The build at a glance — what's shipped, in flight, and what it's waiting on." />
+                        <div className="mt-4">
+                            <MilestonesPanel
+                                milestones={data.milestones}
+                                waiting={data.waiting}
+                                editing={editing}
+                                onMilestones={(m) => update((d) => void (d.milestones = m))}
+                                onWaiting={(w) => update((d) => void (d.waiting = w))}
+                            />
+                        </div>
+                    </section>
+
+                    {/* 03 How it works */}
+                    <section>
+                        <SectionHeader id="s-how" number="03" title="How it works" hint="The pipeline — from the client's Master Document to the guest's answer." />
                         <div className="mt-5 flex flex-col items-stretch gap-3 md:flex-row md:items-center">
                             {data.stages.map((s, i) => {
                                 const StageIcon = STAGE_ICONS[i % STAGE_ICONS.length];
@@ -680,9 +713,9 @@ export const ChatWidgetOverviewScreen = () => {
                         </div>
                     </section>
 
-                    {/* 03 End-to-end flow */}
+                    {/* 04 End-to-end flow */}
                     <section>
-                        <SectionHeader id="s-flow" number="03" title="End-to-end flow" hint="How a guest question travels through the system, step by step." />
+                        <SectionHeader id="s-flow" number="04" title="End-to-end flow" hint="How a guest question travels through the system, step by step." />
                         <div className="mt-4 rounded-2xl bg-primary p-5 ring-1 ring-secondary">
                             <ol className="flex flex-col gap-2.5">
                                 {data.workflow.map((step, i) => (
@@ -711,11 +744,11 @@ export const ChatWidgetOverviewScreen = () => {
                         )}
                     </section>
 
-                    {/* 04 What the chat reads */}
+                    {/* 05 What the chat reads */}
                     <section>
                         <SectionHeader
                             id="s-reads"
-                            number="04"
+                            number="05"
                             title="What the chat reads"
                             hint="The Master Document fields the chat uses as its only source of truth. Defined in the Client Dashboard project."
                         />
@@ -743,9 +776,9 @@ export const ChatWidgetOverviewScreen = () => {
                         </div>
                     </section>
 
-                    {/* 05 To-dos */}
+                    {/* 06 To-dos */}
                     <section>
-                        <SectionHeader id="s-todos" number="05" title="Build To-dos" hint="Checklist to ship the feature. Tick items as they land." />
+                        <SectionHeader id="s-todos" number="06" title="Build To-dos" hint="Checklist to ship the feature. Tick items as they land." />
                         <div className="mt-4 flex flex-col gap-1.5">
                             {data.todos.map((t, i) => (
                                 <div key={t.id} className="flex items-center gap-3 rounded-xl bg-primary px-4 py-2.5 ring-1 ring-secondary">
@@ -788,11 +821,11 @@ export const ChatWidgetOverviewScreen = () => {
                         )}
                     </section>
 
-                    {/* 06 Questions */}
+                    {/* 07 Questions */}
                     <section>
                         <SectionHeader
                             id="s-questions"
-                            number="06"
+                            number="07"
                             title="Open Questions"
                             hint="Answer inline — decisions live here so nothing gets lost in chat. Answered questions move to Resolved / History below (nothing is deleted)."
                         />
@@ -880,9 +913,9 @@ export const ChatWidgetOverviewScreen = () => {
                         )}
                     </section>
 
-                    {/* 07 My Note */}
+                    {/* 08 My Note */}
                     <section>
-                        <SectionHeader id="s-notes" number="07" title="My Note" hint="Personal scratch notes for this project — title, description, an optional image or video link." />
+                        <SectionHeader id="s-notes" number="08" title="My Note" hint="Personal scratch notes for this project — title, description, an optional image or video link." />
                         <div className="mt-4 flex flex-col gap-4">
                             {data.notes.length === 0 && !editing && (
                                 <p className="rounded-2xl bg-primary p-5 text-sm italic text-quaternary ring-1 ring-secondary">No notes yet.</p>
@@ -910,9 +943,9 @@ export const ChatWidgetOverviewScreen = () => {
                         )}
                     </section>
 
-                    {/* 08 Timeline */}
+                    {/* 09 Timeline */}
                     <section>
-                        <SectionHeader id="s-log" number="08" title="Timeline" hint="Build log — updated as the feature progresses." />
+                        <SectionHeader id="s-log" number="09" title="Timeline" hint="Build log — updated as the feature progresses." />
                         <div className="mt-4 flex flex-col gap-3">
                             <AnimatePresence>
                                 {data.log.map((e) => (

@@ -4,7 +4,7 @@ import { AppShell, CollapsedTopBar, HeaderAvatar, IconRail, NavCollapseButton, u
 import { HelpMenu } from "@/components/application/help-menu";
 import { Select } from "@/components/base/select/select";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowUpRight, Award01, BookOpen01, Briefcase01, Check, ChevronDown, ClipboardCheck, Code02, Edit01, FilePlus02, FolderClosed, Grid01, Home02, Image01, LayoutAlt01, List, Lock01, LockUnlocked01, Mail01, MarkerPin01, MessageChatCircle, Plus, SearchSm, Share07, Star01, Trash01, Trophy01, Users01, XClose } from "@untitledui/icons";
+import { ArrowUpRight, Award01, BookOpen01, Briefcase01, Camera01, Check, ChevronDown, ClipboardCheck, Code02, Edit01, FilePlus02, FolderClosed, Grid01, Home02, Image01, LayoutAlt01, List, Lock01, LockUnlocked01, Mail01, MarkerPin01, MessageChatCircle, Plus, SearchSm, Share07, Star01, Trash01, Trophy01, Users01, XClose } from "@untitledui/icons";
 import { supabase, type ChatWidgetPageData, type ClientPageData, type ClientRecord, type HostOnboardingPageData, type LeadCapturePageData, type OverviewCard, type OwnerGuideMeta, type OverviewTab } from "@/lib/supabase";
 import { createBlankTemplateData, isReservedSlug, slugify } from "@/pages/template-one-screen";
 import { useAuthUser } from "@/hooks/use-auth-user";
@@ -322,7 +322,7 @@ const NavRow = ({ item, active, onSelect, editing, isCustom, onDelete }: {
             type="button"
             onClick={onSelect}
             className={cx(
-                "flex flex-1 items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm font-medium transition duration-100 ease-linear",
+                "flex flex-1 items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-left text-sm font-medium transition duration-100 ease-linear",
                 active ? "text-brand-700 dark:text-brand-300" : "text-secondary group-hover:text-primary",
             )}
         >
@@ -392,7 +392,7 @@ const Sidebar = ({
                         {group.label}
                     </p>
                     <motion.div
-                        className="flex flex-col gap-0.5"
+                        className="flex flex-col gap-1"
                         initial="hidden"
                         animate="show"
                         variants={{ show: { transition: { staggerChildren: 0.05 } } }}
@@ -411,7 +411,7 @@ const Sidebar = ({
             </p>
             <motion.div
                 key={department.id}
-                className="flex flex-col gap-0.5"
+                className="flex flex-col gap-1"
                 initial="hidden"
                 animate="show"
                 variants={{ show: { transition: { staggerChildren: 0.05 } } }}
@@ -1549,6 +1549,7 @@ const FolderTile = ({
     title,
     description,
     coverUrl,
+    logoUrl,
     editing,
     wide,
     index,
@@ -1562,6 +1563,8 @@ const FolderTile = ({
     title: string;
     description?: string;
     coverUrl?: string;
+    /** Brand logo — shown as a floating chip above the title (client cards). */
+    logoUrl?: string;
     editing: boolean;
     wide?: boolean;
     /** Grid position — staggers the entrance animation. */
@@ -1599,10 +1602,11 @@ const FolderTile = ({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96 }}
             transition={{ duration: 0.35, delay: Math.min(index * 0.05, 0.4), ease: [0.22, 1, 0.36, 1] }}
-            whileHover={{ y: -4 }}
+            whileHover={{ y: -6, scale: 1.015, transition: { type: "spring", stiffness: 300, damping: 22 } }}
+            whileTap={{ scale: 0.985 }}
             onClick={onOpen}
             className={cx(
-                "group relative w-full cursor-pointer overflow-hidden rounded-2xl shadow-sm ring-1 ring-secondary transition-shadow duration-200 hover:shadow-xl",
+                "group relative w-full cursor-pointer overflow-hidden rounded-2xl shadow-sm ring-1 ring-secondary transition-shadow duration-300 hover:shadow-xl",
                 // Overview cards (solid footer): 1-col tiles are square; the wide/starred card spans two
                 // columns ONLY in the 3-col (lg) grid — where the leftover 3rd column holds a square
                 // sibling — and drops its aspect so it stretches to that sibling's height (grid rows
@@ -1618,10 +1622,10 @@ const FolderTile = ({
                 In solid-footer mode the cover is the top region; otherwise it fills the whole tile. */}
             <div className={cx("overflow-hidden", solidFooter ? "relative min-h-0 flex-1" : "absolute inset-0")}>
                 {coverUrl ? (
-                    <img src={coverUrl} alt={title} className="absolute inset-0 size-full object-cover transition duration-300 group-hover:scale-105" draggable={false} />
+                    <img src={coverUrl} alt={title} className="absolute inset-0 size-full object-cover transition duration-500 ease-out group-hover:scale-[1.06]" draggable={false} />
                 ) : (
                     <>
-                        <div className="absolute inset-0 transition duration-300 group-hover:scale-105" style={{ background: gradientFor(title) }} />
+                        <div className="absolute inset-0 transition duration-500 ease-out group-hover:scale-[1.06]" style={{ background: gradientFor(title) }} />
                         <Icon className="pointer-events-none absolute -bottom-4 -right-4 size-28 rotate-6 text-white/15" aria-hidden="true" />
                     </>
                 )}
@@ -1663,6 +1667,12 @@ const FolderTile = ({
                 </div>
             ) : (
                 <div className="absolute inset-x-0 bottom-0 p-4">
+                    {/* Brand logo chip — floats above the title, lifts slightly on hover */}
+                    {logoUrl && (
+                        <div className="mb-2.5 inline-flex size-12 items-center justify-center overflow-hidden rounded-xl bg-white/95 shadow-md ring-1 ring-black/10 backdrop-blur transition-transform duration-300 ease-out group-hover:-translate-y-0.5">
+                            <img src={logoUrl} alt={`${title} logo`} className="size-full object-contain p-1.5" draggable={false} />
+                        </div>
+                    )}
                     {renaming ? (
                         <input
                             type="text"
@@ -2174,6 +2184,8 @@ const ClientModal = ({
     const [webManager, setWebManager] = useState(initial?.web_manager ?? "");
     const [link, setLink] = useState(initial?.link ?? "");
     const [cover, setCover] = useState(initial?.cover_url ?? "");
+    const [logo, setLogo] = useState(initial?.logo_url ?? "");
+    const [handle, setHandle] = useState(initial?.handle ?? "");
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
 
@@ -2183,6 +2195,13 @@ const ClientModal = ({
         const file = e.target.files?.[0];
         if (!file) return;
         void compressImageFile(file).then(setCover);
+        e.target.value = "";
+    };
+
+    const handleLogoFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        void compressImageFile(file).then(setLogo);
         e.target.value = "";
     };
 
@@ -2204,6 +2223,8 @@ const ClientModal = ({
                 web_manager: webManager.trim(),
                 link: link.trim(),
                 cover_url: cover,
+                logo_url: logo,
+                handle: handle.trim().replace(/^@+/, ""),
                 starred: initial?.starred ?? false,
             });
         } catch (e) {
@@ -2251,8 +2272,34 @@ const ClientModal = ({
                         )}
                     </div>
                     <div>
+                        <label className="mb-1.5 block text-sm font-medium text-secondary">Client logo <span className="font-normal text-quaternary">(optional — floats on the card)</span></label>
+                        <div className="flex items-center gap-3">
+                            <div className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-secondary ring-1 ring-secondary">
+                                {logo ? (
+                                    <img src={logo} alt="Client logo" className="size-full object-contain p-1.5" draggable={false} />
+                                ) : (
+                                    <Image01 className="size-5 text-fg-quaternary" aria-hidden="true" />
+                                )}
+                            </div>
+                            <label className="cursor-pointer rounded-lg border border-secondary px-3 py-2 text-sm font-semibold text-secondary transition duration-100 ease-linear hover:bg-secondary">
+                                <input type="file" accept="image/*" className="hidden" onChange={handleLogoFile} />
+                                {logo ? "Replace logo" : "Upload logo"}
+                            </label>
+                            {logo && (
+                                <button type="button" onClick={() => setLogo("")} className="text-sm font-semibold text-fg-quaternary transition duration-100 ease-linear hover:text-fg-error-secondary">
+                                    Remove
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                    <div>
                         <label htmlFor="client-name" className="mb-1.5 block text-sm font-medium text-secondary">Client name <span className="text-error-primary">*</span></label>
                         <input id="client-name" type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Acme Corp" autoFocus
+                            className="w-full rounded-lg border border-secondary px-3 py-2 text-sm text-primary placeholder:text-placeholder outline-none transition duration-100 ease-linear focus:border-brand focus:ring-1 focus:ring-brand" />
+                    </div>
+                    <div>
+                        <label htmlFor="client-handle" className="mb-1.5 block text-sm font-medium text-secondary">Handle <span className="font-normal text-quaternary">(shown as @handle on the card)</span></label>
+                        <input id="client-handle" type="text" value={handle} onChange={(e) => setHandle(e.target.value)} placeholder="e.g. acmecorp"
                             className="w-full rounded-lg border border-secondary px-3 py-2 text-sm text-primary placeholder:text-placeholder outline-none transition duration-100 ease-linear focus:border-brand focus:ring-1 focus:ring-brand" />
                     </div>
                     <div>
@@ -2378,24 +2425,53 @@ const ClientModal = ({
     );
 };
 
+/* Small avatar chip for the client's Account Manager / Marketing Assistant.
+   Photo (or initial) + first name; the full name and role live in the tooltip. */
+const RoleChip = ({ role, name }: { role: "am" | "ma"; name: string }) => {
+    const photo = teamPhoto(name);
+    const RoleIcon = role === "am" ? Users01 : Edit01;
+    const first = name.trim().split(/\s+/)[0];
+    return (
+        <span
+            title={`${role === "am" ? "Account Manager" : "Marketing Assistant"} — ${name}`}
+            className="inline-flex items-center gap-1 rounded-full bg-secondary py-0.5 pl-0.5 pr-2 text-xs font-medium text-secondary ring-1 ring-secondary"
+        >
+            {photo ? (
+                <img src={photo} alt={name} className="size-5 shrink-0 rounded-full object-cover ring-1 ring-secondary" draggable={false} />
+            ) : (
+                <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-brand-50 text-[10px] font-semibold text-brand-700 dark:bg-brand-950/50 dark:text-brand-300">
+                    {name.trim().charAt(0).toUpperCase()}
+                </span>
+            )}
+            <RoleIcon className="size-3 shrink-0 text-fg-quaternary" aria-hidden="true" />
+            {first}
+        </span>
+    );
+};
+
 const ClientCard = ({
     client,
-    index,
     editing,
     layout = "grid",
+    filterType = "tier",
     onStar,
     onDelete,
     onEdit,
     onRename,
+    onPatch,
 }: {
     client: ClientRecord;
-    index: number;
     editing: boolean;
     layout?: "grid" | "list";
+    /** Active list filter — when filtered by one role, cards show only the
+        counterpart's chip (AM view shows the MA, and vice versa). */
+    filterType?: "tier" | "am" | "ma";
     onStar: (id: string, starred: boolean) => void;
     onDelete: (id: string) => void;
     onEdit: (client: ClientRecord) => void;
     onRename: (id: string, name: string) => void;
+    /** Persist a partial update (logo, handle, …) straight to the clients table. */
+    onPatch: (id: string, patch: Partial<ClientRecord>) => void;
 }) => {
     const navigate = useNavigate();
     const open = () => {
@@ -2411,15 +2487,17 @@ const ClientCard = ({
 
     const clickable = editing || !!client.link?.trim();
 
+    // Pairing chips: viewing by AM hides the AM chip (the viewer already knows
+    // who they are) and shows their MA — and vice versa. Tier views show both.
+    const amName = (client.am ?? "").trim();
+    const maName = (client.marketing_assistant ?? "").trim();
+    const showAm = filterType !== "am" && !!amName;
+    const showMa = filterType !== "ma" && !!maName;
+
     // Compact horizontal row for the list view.
     if (layout === "list") {
         return (
-            <motion.div
-                layout
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.98 }}
-                transition={{ duration: 0.25, delay: Math.min(index * 0.03, 0.3), ease: [0.22, 1, 0.36, 1] }}
+            <div
                 onClick={open}
                 className={cx(
                     "group flex items-center gap-4 rounded-xl bg-primary px-4 py-3 ring-1 ring-secondary transition-shadow duration-200",
@@ -2427,7 +2505,11 @@ const ClientCard = ({
                 )}
             >
                 <div className="relative size-12 shrink-0 overflow-hidden rounded-lg">
-                    {client.cover_url ? (
+                    {client.logo_url ? (
+                        <div className="flex size-full items-center justify-center bg-secondary ring-1 ring-secondary">
+                            <img src={client.logo_url} alt={`${client.name} logo`} className="size-full object-contain p-1" draggable={false} />
+                        </div>
+                    ) : client.cover_url ? (
                         <img src={client.cover_url} alt={client.name} className="size-full object-cover" draggable={false} />
                     ) : (
                         <div className="flex size-full items-center justify-center" style={{ background: gradientFor(client.name || "Client") }}>
@@ -2445,9 +2527,15 @@ const ClientCard = ({
                                 <span className="truncate">{client.location}</span>
                             </span>
                         )}
-                        {client.am && <span className="truncate text-quaternary">Assigned to {client.am}</span>}
                     </div>
                 </div>
+
+                {(showAm || showMa) && (
+                    <div className="hidden shrink-0 items-center gap-1.5 md:flex">
+                        {showAm && <RoleChip role="am" name={amName} />}
+                        {showMa && <RoleChip role="ma" name={maName} />}
+                    </div>
+                )}
 
                 <span className="hidden shrink-0 rounded-full bg-secondary px-2.5 py-0.5 text-[11px] font-semibold text-secondary sm:inline">
                     {tierLabel(client.tier)}
@@ -2488,65 +2576,144 @@ const ClientCard = ({
                         <Trash01 className="size-4" />
                     </button>
                 )}
-            </motion.div>
+            </div>
         );
     }
 
-    const description = [client.location, client.am && `Assigned to ${client.am}`].filter(Boolean).join(" · ");
+    const description = client.location || "";
+    // Instagram-style handle — falls back to a slug of the name until one is saved.
+    const igHandle = (client.handle ?? "").trim() || (client.name || "client").toLowerCase().replace(/[^a-z0-9._]/g, "");
+    const TierIcon = TIERS.find((t) => t.id === client.tier)?.icon;
 
+    const onLogoFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        void compressImageFile(file).then((url) => onPatch(client.id, { logo_url: url }));
+        e.target.value = "";
+    };
+
+    // Channel-style card — centered logo, name and @handle (no cover art).
     return (
-        <FolderTile
-            title={client.name || "Untitled client"}
-            description={description}
-            coverUrl={client.cover_url}
-            editing={editing}
-            index={index}
-            icon={TIERS.find((t) => t.id === client.tier)?.icon}
-            onOpen={open}
-            onRename={(name) => onRename(client.id, name)}
-            topLeft={
-                <span className="rounded-full bg-black/45 px-2.5 py-0.5 text-[11px] font-semibold text-white backdrop-blur">
-                    {tierLabel(client.tier)}
-                </span>
-            }
-            topRight={
+        <motion.div
+            whileHover={clickable ? { y: -4 } : undefined}
+            onClick={open}
+            className={cx(
+                "group relative flex aspect-square flex-col items-center justify-center rounded-2xl bg-primary p-5 text-center ring-1 ring-secondary transition-shadow duration-200",
+                clickable && "cursor-pointer hover:shadow-lg",
+            )}
+        >
+            {/* Star — top-left, like the reference */}
+            {(client.starred || editing) && (
+                <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onStar(client.id, !client.starred); }}
+                    title={client.starred ? "Unstar" : "Star"}
+                    className={cx(
+                        "absolute left-3 top-3 flex size-8 items-center justify-center rounded-lg transition duration-100 ease-linear",
+                        client.starred ? "text-warning-primary" : "text-fg-quaternary opacity-0 hover:text-fg-secondary group-hover:opacity-100",
+                    )}
+                >
+                    <Star01 className={cx("size-4", client.starred && "fill-current")} />
+                </button>
+            )}
+
+            {/* Edit-mode controls — top-right */}
+            {editing && (
+                <div className="absolute right-3 top-3 flex items-center gap-1">
+                    <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onEdit(client); }}
+                        title="Edit client"
+                        className="flex size-8 items-center justify-center rounded-lg text-fg-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-fg-secondary"
+                    >
+                        <Edit01 className="size-4" />
+                    </button>
+                    <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onDelete(client.id); }}
+                        title="Delete client"
+                        className="flex size-8 items-center justify-center rounded-lg text-fg-quaternary transition duration-100 ease-linear hover:bg-error-primary hover:text-fg-error-primary"
+                    >
+                        <Trash01 className="size-4" />
+                    </button>
+                </div>
+            )}
+
+            {/* Logo — centered circle; in edit mode click the badge to upload */}
+            <div className="relative">
+                <div className="flex size-24 items-center justify-center overflow-hidden rounded-full bg-secondary ring-1 ring-secondary">
+                    {client.logo_url ? (
+                        <img src={client.logo_url} alt={`${client.name} logo`} className="size-full object-contain p-2.5" draggable={false} />
+                    ) : client.cover_url ? (
+                        <img src={client.cover_url} alt={client.name} className="size-full object-cover" draggable={false} />
+                    ) : (
+                        <div className="flex size-full items-center justify-center" style={{ background: gradientFor(client.name || "Client") }}>
+                            <span className="text-4xl font-bold text-white/90">{(client.name || "C").charAt(0).toUpperCase()}</span>
+                        </div>
+                    )}
+                </div>
+                {editing && (
+                    <label
+                        onClick={(e) => e.stopPropagation()}
+                        title="Upload logo"
+                        className="absolute -bottom-1 -right-1 flex size-7 cursor-pointer items-center justify-center rounded-full bg-brand-solid text-white shadow-md transition duration-100 ease-linear hover:bg-brand-solid_hover"
+                    >
+                        <input type="file" accept="image/*" className="hidden" onChange={onLogoFile} />
+                        <Camera01 className="size-3.5" aria-hidden="true" />
+                    </label>
+                )}
+            </div>
+
+            {/* Name + @handle — inline-editable in edit mode */}
+            {editing ? (
                 <>
-                    {(client.starred || editing) && (
-                        <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); onStar(client.id, !client.starred); }}
-                            title={client.starred ? "Unstar" : "Star"}
-                            className={cx(
-                                "flex size-8 items-center justify-center rounded-full backdrop-blur transition duration-100 ease-linear",
-                                client.starred ? "bg-black/40 text-yellow-300" : "bg-black/40 text-white opacity-0 group-hover:opacity-100",
-                            )}
-                        >
-                            <Star01 className={cx("size-4", client.starred && "fill-current")} />
-                        </button>
-                    )}
-                    {editing && (
-                        <>
-                            <button
-                                type="button"
-                                onClick={(e) => { e.stopPropagation(); onEdit(client); }}
-                                title="Edit client"
-                                className="flex size-8 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur transition duration-100 ease-linear hover:bg-brand-solid"
-                            >
-                                <Edit01 className="size-4" />
-                            </button>
-                            <button
-                                type="button"
-                                onClick={(e) => { e.stopPropagation(); onDelete(client.id); }}
-                                title="Delete client"
-                                className="flex size-8 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur transition duration-100 ease-linear hover:bg-error-solid"
-                            >
-                                <Trash01 className="size-4" />
-                            </button>
-                        </>
-                    )}
+                    <input
+                        key={`name-${client.id}`}
+                        type="text"
+                        defaultValue={client.name}
+                        placeholder="Client name…"
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                        onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== client.name) onRename(client.id, v); }}
+                        className="mt-4 w-full max-w-[240px] rounded-lg border border-secondary bg-primary px-3 py-1.5 text-center text-lg font-semibold text-primary placeholder:text-placeholder outline-none transition duration-100 ease-linear focus:border-brand focus:ring-1 focus:ring-brand"
+                    />
+                    <input
+                        key={`handle-${client.id}`}
+                        type="text"
+                        defaultValue={client.handle ? `@${client.handle}` : ""}
+                        placeholder={`@${igHandle}`}
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                        onBlur={(e) => {
+                            const v = e.target.value.trim().replace(/^@+/, "");
+                            if (v !== (client.handle ?? "")) onPatch(client.id, { handle: v });
+                        }}
+                        className="mt-1.5 w-full max-w-[200px] rounded-lg border border-secondary bg-primary px-3 py-1 text-center text-sm text-tertiary placeholder:text-placeholder outline-none transition duration-100 ease-linear focus:border-brand focus:ring-1 focus:ring-brand"
+                    />
                 </>
-            }
-        />
+            ) : (
+                <>
+                    <h3 className="mt-4 w-full truncate text-lg font-semibold text-primary">{client.name || "Untitled client"}</h3>
+                    <p className="mt-0.5 w-full truncate text-sm text-tertiary">@{igHandle}</p>
+                </>
+            )}
+
+            {/* Tier — the "category" line of the reference card */}
+            <span className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-secondary px-2.5 py-1 text-xs font-semibold text-secondary">
+                {TierIcon && <TierIcon className="size-3.5 text-fg-warning-secondary" aria-hidden="true" />}
+                {tierLabel(client.tier)}
+            </span>
+
+            {/* Who runs this client — the AM/MA pairing at a glance */}
+            {(showAm || showMa) && (
+                <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5">
+                    {showAm && <RoleChip role="am" name={amName} />}
+                    {showMa && <RoleChip role="ma" name={maName} />}
+                </div>
+            )}
+
+            {description && <p className="mt-2.5 w-full truncate text-xs text-quaternary">{description}</p>}
+        </motion.div>
     );
 };
 
@@ -2554,7 +2721,7 @@ const ClientCard = ({
    would mint new component types on every render, remounting the sidebar (and
    replaying its stagger animation) each time a filter is clicked. */
 const SidebarGroup = ({ label, children }: { label: string; children: React.ReactNode }) => (
-    <div className="flex flex-col gap-0.5">
+    <div className="flex flex-col gap-1">
         <p className="mb-1 px-2 text-xs font-semibold uppercase tracking-widest text-quaternary">{label}</p>
         {children}
     </div>
@@ -2581,7 +2748,7 @@ const NavItem = ({
         variants={{ hidden: { opacity: 0, x: -10 }, show: { opacity: 1, x: 0, transition: { duration: 0.3, ease: [0.22, 1, 0.36, 1] } } }}
         onClick={onClick}
         className={cx(
-            "group flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm font-medium transition duration-100 ease-linear",
+            "group flex items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-left text-sm font-medium transition duration-100 ease-linear",
             active ? "bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300" : "text-secondary hover:bg-secondary hover:text-primary",
         )}
     >
@@ -2684,6 +2851,11 @@ const ClientListContent = ({
         await supabase.from("clients").update({ name }).eq("id", id);
     };
 
+    const handlePatch = async (id: string, patch: Partial<ClientRecord>) => {
+        setClients((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+        await supabase.from("clients").update(patch).eq("id", id);
+    };
+
     const handleCreate = async (data: Omit<ClientRecord, "id" | "created_at">) => {
         const id = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
         const row: ClientRecord = { id, ...data };
@@ -2725,22 +2897,8 @@ const ClientListContent = ({
                         animate="show"
                         variants={{ show: { transition: { staggerChildren: 0.05 } } }}
                     >
-                        <SidebarGroup label="By Tiers">
-                            {TIERS.map((t) => (
-                                <NavItem
-                                    key={t.id}
-                                    active={filter.type === "tier" && filter.value === t.id}
-                                    icon={t.icon}
-                                    label={t.label}
-                                    count={clients.filter((c) => c.tier === t.id).length}
-                                    onClick={() => setFilter({ type: "tier", value: t.id })}
-                                />
-                            ))}
-                        </SidebarGroup>
-
-                        {/* Divider between groups (macOS System Settings style) */}
-                        <div className="mx-1 my-4 h-px bg-border-secondary" />
-
+                        {/* Tiers moved to the tab row at the top of the body — the
+                            sidebar now only groups by people. */}
                         <SidebarGroup label="By Account Manager">
                             {ams.map((am) => (
                                 <NavItem
@@ -2858,55 +3016,76 @@ const ClientListContent = ({
                     </div>
                 </header>
 
+                {/* Tier tabs — relocated from the sidebar so tiers read as the
+                    primary way to slice the list. Pill style matches the
+                    reference ("Channels" pill). */}
+                <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-secondary bg-primary px-6 py-3">
+                    {TIERS.map((t) => {
+                        const active = filter.type === "tier" && filter.value === t.id;
+                        return (
+                            <button
+                                key={t.id}
+                                type="button"
+                                onClick={() => setFilter({ type: "tier", value: t.id })}
+                                className={cx(
+                                    "flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-semibold transition duration-100 ease-linear",
+                                    active ? "bg-brand-solid text-white" : "text-tertiary hover:bg-secondary hover:text-secondary",
+                                )}
+                            >
+                                <t.icon className="size-4" aria-hidden="true" />
+                                {t.label}
+                                <span className={cx("text-xs tabular-nums", active ? "text-white/70" : "text-quaternary")}>
+                                    {clients.filter((c) => c.tier === t.id).length}
+                                </span>
+                            </button>
+                        );
+                    })}
+                </div>
+
                 <div className="flex-1 overflow-y-auto">
-                    <div className="mx-auto w-full max-w-[1100px] px-6 py-6">
+                    <div className="w-full px-6 py-6">
                         {loading ? (
                             <div className="flex h-48 items-center justify-center">
                                 <div className="size-6 animate-spin rounded-full border-2 border-brand border-t-transparent opacity-60" />
                             </div>
                         ) : (
-                            <div className={cx(view === "grid" ? "grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3" : "flex flex-col gap-2.5")}>
-                                <AnimatePresence mode="popLayout">
-                                    {sorted.map((client, i) => (
+                            // Fluid grid — square cards, capped at 5 per row; beyond
+                            // that the cards themselves grow instead of adding columns.
+                            <div className={cx(view === "grid" ? "grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5" : "flex flex-col gap-2.5")}>
+                                {sorted.map((client) => (
                                         <ClientCard
                                             key={client.id}
                                             client={client}
-                                            index={i}
                                             editing={editing}
                                             layout={view}
+                                            filterType={filter.type}
                                             onStar={handleStar}
                                             onDelete={handleDelete}
                                             onEdit={(c) => setModal({ mode: "edit", client: c })}
                                             onRename={handleRename}
+                                            onPatch={handlePatch}
                                         />
-                                    ))}
-                                </AnimatePresence>
+                                ))}
 
                                 {editing && (view === "grid" ? (
                                     <motion.button
-                                        layout
                                         type="button"
                                         onClick={() => setModal({ mode: "new" })}
-                                        initial={{ opacity: 0 }}
-                                        animate={{ opacity: 1 }}
                                         whileHover={{ y: -4 }}
-                                        className="flex aspect-[16/10] min-h-[220px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-primary text-tertiary transition duration-100 ease-linear hover:border-brand hover:bg-brand-50 hover:text-brand-secondary dark:hover:bg-brand-950/30"
+                                        className="flex aspect-square flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-primary text-tertiary transition duration-100 ease-linear hover:border-brand hover:bg-brand-50 hover:text-brand-secondary dark:hover:bg-brand-950/30"
                                     >
                                         <Plus className="size-7" />
                                         <span className="text-sm font-semibold">New Client</span>
                                     </motion.button>
                                 ) : (
-                                    <motion.button
-                                        layout
+                                    <button
                                         type="button"
                                         onClick={() => setModal({ mode: "new" })}
-                                        initial={{ opacity: 0 }}
-                                        animate={{ opacity: 1 }}
                                         className="flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-primary px-4 py-3 text-sm font-semibold text-tertiary transition duration-100 ease-linear hover:border-brand hover:bg-brand-50 hover:text-brand-secondary dark:hover:bg-brand-950/30"
                                     >
                                         <Plus className="size-5" />
                                         New Client
-                                    </motion.button>
+                                    </button>
                                 ))}
                             </div>
                         )}

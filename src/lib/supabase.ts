@@ -51,6 +51,8 @@ export interface ClientRecord {
     am: string; // account manager name
     location: string;
     cover_url?: string;
+    logo_url?: string; // client brand logo shown on the card (separate from cover)
+    handle?: string; // Instagram-style handle shown under the name on the client card (stored without the @)
     link?: string; // optional link to their dashboard / any page
     starred?: boolean;
     created_at?: string;

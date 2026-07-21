@@ -137,7 +137,7 @@ export const QuestionsScreen = () => {
                     <NavCollapseButton onClick={toggleNav} />
                 </div>
                 <motion.nav
-                    className="flex-1 overflow-y-auto px-3 py-4"
+                    className="flex-1 space-y-1 overflow-y-auto px-3 py-4"
                     initial="hidden"
                     animate="show"
                     variants={{ show: { transition: { staggerChildren: 0.05 } } }}
@@ -151,7 +151,7 @@ export const QuestionsScreen = () => {
                                 onClick={() => goTo(s.slug)}
                                 variants={{ hidden: { opacity: 0, x: -8 }, show: { opacity: 1, x: 0 } }}
                                 className={cx(
-                                    "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium transition duration-100 ease-linear",
+                                    "flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition duration-100 ease-linear",
                                     activeSection === s.slug
                                         ? "bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300"
                                         : "text-secondary hover:bg-secondary_hover hover:text-primary",
@@ -326,13 +326,13 @@ const QuestionRow = ({
             <button type="button" title={resolved ? "Mark as unresolved" : "Mark as resolved"}
                 onClick={() => onToggleResolved(!resolved)}
                 className={cx(
-                    "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded border transition duration-100 ease-linear",
+                    "mt-1 flex size-4 shrink-0 items-center justify-center rounded border transition duration-100 ease-linear",
                     resolved ? "border-success bg-success-solid text-white" : "border-secondary bg-primary hover:border-brand",
                 )}>
                 {resolved && <Check className="size-3" aria-hidden="true" />}
             </button>
-            <span className="mt-0.5 shrink-0 text-sm font-semibold text-quaternary tabular-nums">{number}.</span>
-            <p className="min-w-0 flex-1 text-sm font-medium text-primary">{renderHighlights(q.question || "Untitled question")}</p>
+            <span className="mt-1 shrink-0 text-sm font-semibold text-quaternary tabular-nums">{number}.</span>
+            <p className="min-w-0 flex-1 text-lg leading-[1.4] font-medium text-primary">{renderHighlights(q.question || "Untitled question")}</p>
             <PriorityFlag value={q.priority} onChange={onPriority} />
         </div>
         <div className={cx("mt-3 border-l-2 pl-3", resolved ? "border-success" : "border-brand")}>

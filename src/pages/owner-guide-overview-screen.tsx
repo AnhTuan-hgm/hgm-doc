@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowRight, ArrowUpRight, BookOpen01, Check, CheckDone01, ChevronDown, ClipboardCheck, Database01, FileCheck02, HelpCircle, Hourglass01, LayoutAlt01, Lock01, Plus, Send01, Shield01, Trash01, Users01 } from "@untitledui/icons";
+import { ArrowRight, ArrowUpRight, BookOpen01, Check, CheckDone01, ChevronDown, ClipboardCheck, Database01, FileCheck02, Flag05, HelpCircle, Hourglass01, LayoutAlt01, Lock01, Plus, Send01, Shield01, Trash01, Users01 } from "@untitledui/icons";
+import { MilestonesPanel, type Milestone, type WaitingItem } from "@/components/application/milestones-panel";
 import { PageBanner } from "@/components/application/page-banner";
 import { AppShell, CollapsedTopBar, IconRail, NavCollapseButton, RailBottom, useNavCollapsed } from "@/components/application/icon-rail";
 import { PriorityFlag, type QuestionPriority } from "@/components/application/priority-flag";
@@ -29,6 +30,9 @@ type LogEntry = { id: string; date: string; title: string; description: string; 
 type GuideData = {
     overview: string;
     bannerUrl?: string;
+    /** Build milestones + what the project is currently waiting on. */
+    milestones: Milestone[];
+    waiting: WaitingItem[];
     stages: Stage[];
     steps: string[];
     rules: string[];
@@ -46,6 +50,18 @@ function seed(): GuideData {
             "The team keeps ONE master template (/owner-guide, team sign-in only); each client gets a private copy at /owner-guide/{slug} protected by a share password. " +
             "Clients work through the steps, enter their credentials, and Review & Submit locks the submission. " +
             "Credentials live in owner_onboarding (keyed by the guide slug); step content/instructions are shared from the template row (owner-guide-content in sop_pages).",
+        milestones: [
+            { id: uid(), label: "M1 · Owner Guide live — master template + private per-client copies", status: "done" },
+            { id: uid(), label: "M2 · Safeguards after the 07-09 incident — RULE No.1, per-guide isolation, protected snapshot", status: "done" },
+            { id: uid(), label: "M3 · Read-only hardening — viewing a guide never writes content back", status: "done" },
+            { id: uid(), label: "M4 · Freeze-at-submission — protected snapshot + server-side submitted state", status: "progress" },
+            { id: uid(), label: "M5 · Submit notification email + 30-day share-link expiry", status: "next" },
+        ],
+        waiting: [
+            { id: uid(), text: "RULE No.1 call: does the team's unlock stop working on frozen guides, or keep working with a loud warning?" },
+            { id: uid(), text: "Submit email rail — Supabase Edge Function + Resend, or GHL? (sets the pattern for ALL notification emails)" },
+            { id: uid(), text: "Real screenshots for the PMS / Domain / Cloudflare steps so they match the rest of the guide" },
+        ],
         stages: [
             { label: "Master template", detail: "One shared 9-step guide, team-only" },
             { label: "Client copy", detail: "Private /owner-guide/{slug} + share password" },
@@ -274,6 +290,7 @@ const QuestionCard = ({
 const NAV_GROUPS = [
     [
         { id: "s-overview", label: "Overview", icon: BookOpen01 },
+        { id: "s-milestones", label: "Milestones", icon: Flag05 },
         { id: "s-flow", label: "How it works", icon: Send01 },
         { id: "s-steps", label: "The 9 steps", icon: FileCheck02 },
         { id: "s-rules", label: "Rules & Safeguards", icon: Shield01 },
@@ -325,7 +342,9 @@ export const OwnerGuideOverviewScreen = () => {
             .maybeSingle()
             .then(({ data: row, error }) => {
                 const d = row?.data as GuideData | undefined;
-                if (!error && d && Array.isArray(d.todos)) setData(d);
+                // Merge over the seed so rows saved before newer sections existed
+                // (e.g. milestones/waiting) still get those sections' defaults.
+                if (!error && d && Array.isArray(d.todos)) setData({ ...seed(), ...d });
                 hydratedRef.current = true;
             });
     }, []);
@@ -430,9 +449,9 @@ export const OwnerGuideOverviewScreen = () => {
                     variants={{ show: { transition: { staggerChildren: 0.05 } } }}
                 >
                     {NAV_GROUPS.map((group, gi) => (
-                        <div key={gi}>
+                        <div key={gi} className="space-y-1">
                             {/* Divider between groups (macOS System Settings style) */}
-                            {gi > 0 && <div className="mx-3 my-2.5 h-px bg-border-secondary" />}
+                            {gi > 0 && <div className="mx-3 my-3 h-px bg-border-secondary" />}
                             {group.map((s) => (
                                 <motion.button
                                     key={s.id}
@@ -440,7 +459,7 @@ export const OwnerGuideOverviewScreen = () => {
                                     onClick={() => goTo(s.id)}
                                     variants={{ hidden: { opacity: 0, x: -8 }, show: { opacity: 1, x: 0 } }}
                                     className={cx(
-                                        "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium transition duration-100 ease-linear",
+                                        "flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition duration-100 ease-linear",
                                         activeSection === s.id
                                             ? "bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300"
                                             : "text-secondary hover:bg-secondary_hover hover:text-primary",
@@ -523,9 +542,23 @@ export const OwnerGuideOverviewScreen = () => {
                         </div>
                     </section>
 
-                    {/* 02 How it works */}
+                    {/* 02 Milestones */}
                     <section>
-                        <SectionHeader id="s-flow" number="02" title="How it works" hint="From the master template to a locked client submission." />
+                        <SectionHeader id="s-milestones" number="02" title="Milestones" hint="The build at a glance — what's shipped, in flight, and what it's waiting on." />
+                        <div className="mt-4">
+                            <MilestonesPanel
+                                milestones={data.milestones}
+                                waiting={data.waiting}
+                                editing={editing}
+                                onMilestones={(m) => update((d) => void (d.milestones = m))}
+                                onWaiting={(w) => update((d) => void (d.waiting = w))}
+                            />
+                        </div>
+                    </section>
+
+                    {/* 03 How it works */}
+                    <section>
+                        <SectionHeader id="s-flow" number="03" title="How it works" hint="From the master template to a locked client submission." />
                         <div className="mt-5 flex flex-col items-stretch gap-3 md:flex-row md:items-center">
                             {data.stages.map((s, i) => {
                                 const StageIcon = STAGE_ICONS[i % STAGE_ICONS.length];
@@ -570,11 +603,11 @@ export const OwnerGuideOverviewScreen = () => {
                         </div>
                     </section>
 
-                    {/* 03 The 9 steps */}
+                    {/* 04 The 9 steps */}
                     <section>
                         <SectionHeader
                             id="s-steps"
-                            number="03"
+                            number="04"
                             title="The 9 steps"
                             hint="The full template — clients can have steps hidden individually, but the template always keeps all 9."
                         />
@@ -602,9 +635,9 @@ export const OwnerGuideOverviewScreen = () => {
                         </div>
                     </section>
 
-                    {/* 04 Rules & Safeguards */}
+                    {/* 05 Rules & Safeguards */}
                     <section>
-                        <SectionHeader id="s-rules" number="04" title="Rules & Safeguards" hint="Hard rules the feature must never violate, and the protections built after the 2026-07-09 template incident." />
+                        <SectionHeader id="s-rules" number="05" title="Rules & Safeguards" hint="Hard rules the feature must never violate, and the protections built after the 2026-07-09 template incident." />
                         <div className="mt-4 rounded-2xl bg-primary p-5 ring-1 ring-secondary">
                             <ol className="flex flex-col gap-2.5">
                                 {data.rules.map((rule, i) => (
@@ -633,9 +666,9 @@ export const OwnerGuideOverviewScreen = () => {
                         )}
                     </section>
 
-                    {/* 05 To-dos */}
+                    {/* 06 To-dos */}
                     <section>
-                        <SectionHeader id="s-todos" number="05" title="Build To-dos" hint="Checklist to finish hardening the feature. Tick items as they land." />
+                        <SectionHeader id="s-todos" number="06" title="Build To-dos" hint="Checklist to finish hardening the feature. Tick items as they land." />
                         <div className="mt-4 flex flex-col gap-1.5">
                             {data.todos.map((t, i) => (
                                 <div key={t.id} className="flex items-center gap-3 rounded-xl bg-primary px-4 py-2.5 ring-1 ring-secondary">
@@ -678,11 +711,11 @@ export const OwnerGuideOverviewScreen = () => {
                         )}
                     </section>
 
-                    {/* 06 Questions */}
+                    {/* 07 Questions */}
                     <section>
                         <SectionHeader
                             id="s-questions"
-                            number="06"
+                            number="07"
                             title="Open Questions"
                             hint="Answer inline — decisions live here so nothing gets lost in chat. Answered questions move to Resolved / History below (nothing is deleted)."
                         />
@@ -770,9 +803,9 @@ export const OwnerGuideOverviewScreen = () => {
                         )}
                     </section>
 
-                    {/* 07 Timeline */}
+                    {/* 08 Timeline */}
                     <section>
-                        <SectionHeader id="s-log" number="07" title="Timeline" hint="Build log — updated as the feature progresses." />
+                        <SectionHeader id="s-log" number="08" title="Timeline" hint="Build log — updated as the feature progresses." />
                         <div className="mt-4 flex flex-col gap-3">
                             <AnimatePresence>
                                 {data.log.map((e) => (

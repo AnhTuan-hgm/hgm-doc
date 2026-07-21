@@ -713,13 +713,13 @@ export const RoadmapScreen = () => {
                             <NavCollapseButton onClick={toggleNav} />
                         </div>
                         <motion.nav
-                            className="flex flex-col gap-0.5 p-3"
+                            className="flex flex-col gap-1 p-3"
                             initial="hidden"
                             animate="show"
                             variants={{ show: { transition: { staggerChildren: 0.05 } } }}
                         >
                             {NAV_GROUPS.map((group, gi) => (
-                                <div key={gi} className="flex flex-col gap-0.5">
+                                <div key={gi} className="flex flex-col gap-1">
                                     {/* Divider between groups (macOS System Settings style) */}
                                     {gi > 0 && <div className="mx-3 my-2 h-px bg-border-secondary" />}
                                     {group.map((s) => (
@@ -734,7 +734,7 @@ export const RoadmapScreen = () => {
                                                 type="button"
                                                 onClick={() => (s.id === "links" ? openLinks() : scrollTo(s.id))}
                                                 className={cx(
-                                                    "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-semibold transition duration-100 ease-linear",
+                                                    "flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-semibold transition duration-100 ease-linear",
                                                     (activeView === "links" ? s.id === "links" : activeSection === s.id)
                                                         ? "bg-secondary_hover text-primary"
                                                         : "text-secondary hover:bg-primary_hover hover:text-primary",

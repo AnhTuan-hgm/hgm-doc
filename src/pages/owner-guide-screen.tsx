@@ -609,7 +609,11 @@ const OverviewRow = ({ label, value, locked }: { label: string; value: string; l
     <div className="flex items-start justify-between gap-4 border-b border-secondary py-2.5 last:border-0">
         <span className="shrink-0 text-[12px] font-semibold uppercase tracking-[0.05em] text-quaternary">{label}</span>
         <span className={cx("text-right font-mono text-[13px] break-all", value ? "text-primary" : "text-placeholder")}>
-            {!value ? "—" : locked ? maskHalf(value) : value}
+            {/* On screen, locked values are masked (anti shoulder-surfing only — the full
+                value is in this page's data regardless). The printed PDF is the team's
+                credentials record, so print swaps in the full value. */}
+            <span className={cx(locked && !!value && "print:hidden")}>{!value ? "—" : locked ? maskHalf(value) : value}</span>
+            {locked && !!value && <span className="hidden print:inline">{value}</span>}
         </span>
     </div>
 );

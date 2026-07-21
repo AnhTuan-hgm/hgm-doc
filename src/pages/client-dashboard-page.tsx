@@ -724,7 +724,7 @@ export const ClientDashboardPage = ({
                     {NAV_GROUPS.map((group) => (
                         <div key={group.label} className="mt-4 first:mt-1">
                             <p className={cx("mb-1 px-3 text-[11px] font-bold uppercase tracking-wide", FUNNEL_STAGES[group.stage].text)}>{group.label}</p>
-                            <div className="flex flex-col gap-0.5">
+                            <div className="flex flex-col gap-1">
                                 {group.items.map((s) => (
                                     <motion.button
                                         key={s.id}

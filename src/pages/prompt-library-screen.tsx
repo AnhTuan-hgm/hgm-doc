@@ -406,7 +406,7 @@ export const PromptLibraryScreen = () => {
 
                             {/* Type filter */}
                             <p className="mb-1.5 mt-5 px-2 text-xs font-semibold uppercase tracking-wide text-quaternary">Type</p>
-                            <motion.div className="flex flex-col gap-0.5" initial="hidden" animate="show" variants={{ show: { transition: { staggerChildren: 0.05 } } }}>
+                            <motion.div className="flex flex-col gap-1" initial="hidden" animate="show" variants={{ show: { transition: { staggerChildren: 0.05 } } }}>
                                 {([
                                     { id: "all" as const, label: "All entries", n: counts.all },
                                     { id: "prompt" as const, label: "Prompts", n: counts.prompt },
@@ -418,7 +418,7 @@ export const PromptLibraryScreen = () => {
                                         variants={{ hidden: { opacity: 0, x: -8 }, show: { opacity: 1, x: 0 } }}
                                         onClick={() => setTypeFilter(t.id)}
                                         className={cx(
-                                            "flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium transition duration-100 ease-linear",
+                                            "flex items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition duration-100 ease-linear",
                                             typeFilter === t.id ? "bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300" : "text-secondary hover:bg-secondary_hover hover:text-primary",
                                         )}
                                     >
@@ -432,12 +432,12 @@ export const PromptLibraryScreen = () => {
                             {categories.length > 0 && (
                                 <>
                                     <p className="mb-1.5 mt-5 px-2 text-xs font-semibold uppercase tracking-wide text-quaternary">Categories</p>
-                                    <div className="flex flex-col gap-0.5">
+                                    <div className="flex flex-col gap-1">
                                         <button
                                             type="button"
                                             onClick={() => setCategory("__all")}
                                             className={cx(
-                                                "rounded-lg px-3 py-2 text-left text-sm font-medium transition duration-100 ease-linear",
+                                                "rounded-lg px-3 py-2.5 text-left text-sm font-medium transition duration-100 ease-linear",
                                                 category === "__all" ? "bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300" : "text-secondary hover:bg-secondary_hover hover:text-primary",
                                             )}
                                         >
@@ -449,7 +449,7 @@ export const PromptLibraryScreen = () => {
                                                 type="button"
                                                 onClick={() => setCategory(c)}
                                                 className={cx(
-                                                    "flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium transition duration-100 ease-linear",
+                                                    "flex items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition duration-100 ease-linear",
                                                     category === c ? "bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300" : "text-secondary hover:bg-secondary_hover hover:text-primary",
                                                 )}
                                             >
