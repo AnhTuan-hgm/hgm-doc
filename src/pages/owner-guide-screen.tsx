@@ -68,7 +68,7 @@ const SIDEBAR_MAX_WIDTH = 440;
 /** Some clients run more than one Stripe account (separate properties/brands).
  * Account 1 keeps the original unsuffixed keys for backward compatibility;
  * accounts 2+ append `_N`. */
-const MAX_STRIPE_ACCOUNTS = 5;
+const MAX_STRIPE_ACCOUNTS = 20;
 const stripeKeys = (n: number) => ({
     pk: n === 1 ? "stripe_publishable_key" : `stripe_publishable_key_${n}`,
     sk: n === 1 ? "stripe_secret_key" : `stripe_secret_key_${n}`,
