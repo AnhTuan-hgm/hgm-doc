@@ -1,4 +1,4 @@
-import { useEffect, useState, type FC } from "react";
+import { useEffect, useMemo, useState, type FC } from "react";
 import { useNavigate } from "react-router";
 import { animate, motion } from "motion/react";
 import { ArrowUpRight, Award01, Globe01, HelpCircle, Home02, Plus, Rocket02, Star01, Trophy01, UserCheck01, UserMinus01, Users01 } from "@untitledui/icons";
@@ -164,7 +164,10 @@ const HomeContent = () => {
     const navigate = useNavigate();
     const { user } = useAuthUser();
     const { collapsed: navCollapsed, toggle: toggleNav } = useNavCollapsed();
-    const [clients, setClients] = useState<ClientRecord[] | null>(null);
+    const [allClients, setClients] = useState<ClientRecord[] | null>(null);
+    // Mission Control is business reporting — private/template clients (private_to
+    // set, e.g. HGM TEST) never appear here or count here, not even for their owner.
+    const clients = useMemo(() => (allClients === null ? null : allClients.filter((c) => !c.private_to)), [allClients]);
     const [openQuestions, setOpenQuestions] = useState<number | null>(null);
     const [rosterCount, setRosterCount] = useState<number | null>(null);
 

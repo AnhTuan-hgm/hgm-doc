@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Check, Copy01, Monitor01, Phone01, Settings01, XClose } from "@untitledui/icons";
+import { Check, Copy01, Image01, Monitor01, Phone01, SearchSm, Settings01, XClose } from "@untitledui/icons";
 import { supabase } from "@/lib/supabase";
 import { cx } from "@/utils/cx";
 
@@ -469,6 +469,16 @@ export const WelcomeFlowSection = ({
     const [copied, setCopied] = useState(false);
     const [penPop, setPenPop] = useState<PenState | null>(null);
     const [brandOpen, setBrandOpen] = useState(false);
+    // GHL Media Library picker — images arrive via the ghl-media Edge Function
+    // (team-gated) so the Private Integration tokens never reach the browser.
+    const [ghlPicker, setGhlPicker] = useState<{
+        images: { name: string; url: string }[];
+        loading: boolean;
+        error: string;
+        query: string;
+        offset: number;
+        hasMore: boolean;
+    } | null>(null);
     // rev bumps re-render the iframe (structure changed); plain text edits happen
     // in place inside the iframe and only sync state — no reload, no flicker.
     const [rev, setRev] = useState(0);
@@ -609,6 +619,43 @@ export const WelcomeFlowSection = ({
         window.addEventListener("message", onMsg);
         return () => window.removeEventListener("message", onMsg);
     }, []);
+
+    /* ── GHL image picker ── */
+    const fetchGhlImages = async (query: string, offset: number, append: boolean) => {
+        setGhlPicker((p) => (p ? { ...p, loading: true, error: "", query, offset } : p));
+        const { data, error } = await supabase.functions.invoke("ghl-media", { body: { client: clientName, query, offset } });
+        let message = "";
+        if (error) {
+            message = "Couldn't load images — are you signed in with your @hiddengem.media account?";
+            const ctx = (error as { context?: Response }).context;
+            if (ctx && typeof ctx.json === "function") {
+                try {
+                    message = ((await ctx.json()) as { error?: string }).error ?? message;
+                } catch {
+                    /* keep the generic message */
+                }
+            }
+        }
+        setGhlPicker((p) => {
+            if (!p) return p;
+            if (message) return { ...p, loading: false, error: message };
+            const files = ((data as { files?: { name: string; url: string }[] })?.files ?? []).filter((f) => f.url);
+            return {
+                ...p,
+                loading: false,
+                images: append ? [...p.images, ...files] : files,
+                hasMore: !!(data as { hasMore?: boolean })?.hasMore,
+            };
+        });
+    };
+    const openGhlPicker = () => {
+        setGhlPicker({ images: [], loading: true, error: "", query: "", offset: 0, hasMore: false });
+        void fetchGhlImages("", 0, false);
+    };
+    const pickGhlImage = (url: string) => {
+        setPenPop((p) => (p ? { ...p, a: url } : p));
+        setGhlPicker(null);
+    };
 
     const savePen = () => {
         if (!penPop) return;
@@ -813,6 +860,16 @@ export const WelcomeFlowSection = ({
                                 {penPop.hasLink && (
                                     <Field label="Link" value={penPop.b} onChange={(v) => setPenPop((p) => (p ? { ...p, b: v } : p))} placeholder="https://…" />
                                 )}
+                                {penPop.kind !== "btn" && !isTemplate && clientName.trim() && (
+                                    <button
+                                        type="button"
+                                        onClick={openGhlPicker}
+                                        className="flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-secondary ring-1 ring-secondary transition duration-100 ease-linear hover:bg-secondary_hover"
+                                    >
+                                        <Image01 className="size-4" aria-hidden="true" />
+                                        Browse GoHighLevel images
+                                    </button>
+                                )}
                                 <button
                                     type="button"
                                     onClick={savePen}
@@ -825,6 +882,101 @@ export const WelcomeFlowSection = ({
                     </AnimatePresence>
                 </div>
             </div>
+
+            {/* GHL Media Library picker — click a thumbnail to fill the pen popover's URL */}
+            <AnimatePresence>
+                {ghlPicker && (
+                    <motion.div
+                        className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-4 py-8"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.15 }}
+                        onMouseDown={(e) => e.target === e.currentTarget && setGhlPicker(null)}
+                    >
+                        <motion.div
+                            className="flex max-h-[80vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-primary shadow-2xl ring-1 ring-secondary"
+                            initial={{ opacity: 0, scale: 0.95, y: 12 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.97, y: 8 }}
+                            transition={{ type: "spring", stiffness: 300, damping: 26 }}
+                        >
+                            <div className="flex items-center gap-3 border-b border-secondary px-5 py-3.5">
+                                <div className="min-w-0 flex-1">
+                                    <h3 className="truncate text-md font-semibold text-primary">GoHighLevel images — {clientName}</h3>
+                                    <p className="text-xs text-tertiary">Newest first, straight from the client's Media Library. Click one to use it.</p>
+                                </div>
+                                <div className="relative w-56 shrink-0">
+                                    <SearchSm className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-quaternary" aria-hidden="true" />
+                                    <input
+                                        type="text"
+                                        value={ghlPicker.query}
+                                        placeholder="Search, then press Enter"
+                                        onChange={(e) => setGhlPicker((p) => (p ? { ...p, query: e.target.value } : p))}
+                                        onKeyDown={(e) => e.key === "Enter" && void fetchGhlImages(ghlPicker.query, 0, false)}
+                                        className="w-full rounded-lg border border-secondary bg-primary py-2 pl-9 pr-3 text-sm text-primary placeholder:text-placeholder outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                                    />
+                                </div>
+                                <button
+                                    type="button"
+                                    title="Close"
+                                    onClick={() => setGhlPicker(null)}
+                                    className="flex size-8 shrink-0 items-center justify-center rounded-lg text-fg-quaternary hover:bg-secondary hover:text-fg-secondary"
+                                >
+                                    <XClose className="size-5" aria-hidden="true" />
+                                </button>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto p-5">
+                                {ghlPicker.error ? (
+                                    <p className="rounded-xl bg-error-primary px-4 py-3 text-sm text-error-primary">{ghlPicker.error}</p>
+                                ) : ghlPicker.images.length === 0 && !ghlPicker.loading ? (
+                                    <p className="py-10 text-center text-sm text-tertiary">
+                                        {ghlPicker.query.trim() ? `No images match “${ghlPicker.query.trim()}”.` : "No images in this client's Media Library yet."}
+                                    </p>
+                                ) : (
+                                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+                                        {ghlPicker.images.map((img) => (
+                                            <button
+                                                key={img.url}
+                                                type="button"
+                                                onClick={() => pickGhlImage(img.url)}
+                                                title={img.name}
+                                                className="group flex flex-col overflow-hidden rounded-xl ring-1 ring-secondary transition duration-100 ease-linear hover:ring-2 hover:ring-brand"
+                                            >
+                                                <span className="aspect-square w-full overflow-hidden bg-secondary">
+                                                    <img
+                                                        src={img.url}
+                                                        alt={img.name}
+                                                        loading="lazy"
+                                                        className="size-full object-cover transition duration-200 group-hover:scale-105"
+                                                        draggable={false}
+                                                    />
+                                                </span>
+                                                <span className="truncate px-2 py-1.5 text-left text-xs text-tertiary">{img.name}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                                {ghlPicker.loading && (
+                                    <div className="flex items-center justify-center py-8">
+                                        <span className="size-5 animate-spin rounded-full border-2 border-brand border-t-transparent opacity-70" />
+                                    </div>
+                                )}
+                                {!ghlPicker.loading && !ghlPicker.error && ghlPicker.hasMore && (
+                                    <button
+                                        type="button"
+                                        onClick={() => void fetchGhlImages(ghlPicker.query, ghlPicker.offset + 24, true)}
+                                        className="mt-4 w-full rounded-lg border border-secondary bg-primary px-3 py-2 text-sm font-semibold text-secondary transition duration-100 ease-linear hover:bg-secondary_hover"
+                                    >
+                                        Load more
+                                    </button>
+                                )}
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* Read-only note */}
             {isLocked && (

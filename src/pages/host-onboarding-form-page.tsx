@@ -1,28 +1,41 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router";
-import { AnimatePresence, motion } from "motion/react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import {
+    AlertCircle,
+    ArrowLeft,
+    ArrowRight,
     Check,
+    CheckCircle,
+    ChevronLeft,
+    ChevronRight,
     Compass01,
+    Edit03,
     Heart,
     Mail01,
     MessageSmileCircle,
+    PlayCircle,
     Plus,
     Stars01,
     Target04,
+    VideoRecorder,
     XClose,
 } from "@untitledui/icons";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { Checkbox as AriaCheckbox, CheckboxGroup as AriaCheckboxGroup } from "react-aria-components";
+import { useNavigate, useSearchParams } from "react-router";
 import { AppShell } from "@/components/application/icon-rail";
 import { VideoAttach } from "@/components/application/video-block";
-import { supabase, type CheckboxAnswer, type HostOnboardingData } from "@/lib/supabase";
+import { FeaturedIcon } from "@/components/foundations/featured-icon/featured-icon";
+import { type CheckboxAnswer, type HostOnboardingData, supabase } from "@/lib/supabase";
 import { cx } from "@/utils/cx";
 
 /**
  * Host Onboarding Form — the in-app version of the team's "Brand Vision Form"
- * Google Form. The master template lives at /host-onboarding-form; the team
- * creates a private copy per new host (?create=1 or the "+ New" button on the
- * Docs → Host Onboarding Form list), and the host fills it in themselves —
- * no login required, same as a shared Google Form link. Answers autosave.
+ * Google Form, presented Typeform-style: one question per screen, big type,
+ * letter-key shortcuts, Enter to continue. The master template lives at
+ * /host-onboarding-form; the team creates a private copy per new host
+ * (?create=1 or the "+ New" button on the Docs → Host Onboarding Form list),
+ * and the host fills it in themselves — no login required, same as a shared
+ * Google Form link. Answers autosave.
  */
 
 function slugify(name: string): string {
@@ -75,7 +88,16 @@ function mergeData(partial?: Partial<HostOnboardingData> | null): HostOnboarding
     };
 }
 
-type CheckboxField = "purpose" | "guestFeelings" | "differentiators" | "idealGuest" | "experienceType" | "personaVoice" | "tone" | "aesthetic" | "brandKnownFor";
+type CheckboxField =
+    | "purpose"
+    | "guestFeelings"
+    | "differentiators"
+    | "idealGuest"
+    | "experienceType"
+    | "personaVoice"
+    | "tone"
+    | "aesthetic"
+    | "brandKnownFor";
 type TextField = "email" | "businessName" | "threeWords" | "reviewMention" | "completeSentence";
 
 type Question =
@@ -85,7 +107,7 @@ type Question =
 interface SectionDef {
     id: string;
     title: string;
-    /** Short line under the title in the stepper (not the in-page hero text). */
+    /** Short line under the title (kept for the dashboard/legacy consumers of this array). */
     subtitle: string;
     description?: string;
     icon: typeof Mail01;
@@ -94,7 +116,7 @@ interface SectionDef {
 
 /** The form content — verbatim from the team's "Brand Vision Form" Google Form,
  * 6 sections / 14 questions. Driving the render off this array (rather than
- * hand-writing 14 near-identical question blocks) keeps it maintainable. */
+ * hand-writing 14 near-identical question screens) keeps it maintainable. */
 const SECTIONS: SectionDef[] = [
     {
         id: "basics",
@@ -150,7 +172,14 @@ const SECTIONS: SectionDef[] = [
         subtitle: "What sets you apart",
         icon: Compass01,
         questions: [
-            { type: "text", field: "threeWords", label: "Describe your property in exactly 3 words", required: true, long: true, placeholder: "Long answer text" },
+            {
+                type: "text",
+                field: "threeWords",
+                label: "Describe your property in exactly 3 words",
+                required: true,
+                long: true,
+                placeholder: "Long answer text",
+            },
             {
                 type: "checkbox",
                 field: "differentiators",
@@ -167,7 +196,13 @@ const SECTIONS: SectionDef[] = [
                     "Adventure activities nearby",
                 ],
             },
-            { type: "text", field: "reviewMention", label: "What's the ONE thing guests always mention in reviews?", required: true, placeholder: "Short answer text" },
+            {
+                type: "text",
+                field: "reviewMention",
+                label: "What's the ONE thing guests always mention in reviews?",
+                required: true,
+                placeholder: "Short answer text",
+            },
         ],
     },
     {
@@ -181,7 +216,15 @@ const SECTIONS: SectionDef[] = [
                 field: "idealGuest",
                 label: "Who is your ideal guest?",
                 required: true,
-                options: ["Couples seeking romance", "Families with kids", "Friend groups", "Solo travellers", "Remote workers", "Adventure seekers", "Luxury travellers"],
+                options: [
+                    "Couples seeking romance",
+                    "Families with kids",
+                    "Friend groups",
+                    "Solo travellers",
+                    "Remote workers",
+                    "Adventure seekers",
+                    "Luxury travellers",
+                ],
             },
             {
                 type: "checkbox",
@@ -258,12 +301,18 @@ const SECTIONS: SectionDef[] = [
                     "Best for adventure lovers",
                 ],
             },
-            { type: "text", field: "completeSentence", label: 'In one sentence, complete this: "We want to help guests ___"', placeholder: "Short answer text" },
+            {
+                type: "text",
+                field: "completeSentence",
+                label: 'In one sentence, complete this: "We want to help guests ___"',
+                placeholder: "Short answer text",
+            },
         ],
     },
 ];
 
-const inputCls = "w-full rounded-lg border border-secondary bg-primary px-3.5 py-2.5 text-sm text-primary placeholder:text-placeholder outline-none transition duration-100 ease-linear focus:border-brand focus:ring-1 focus:ring-brand";
+const inputCls =
+    "w-full rounded-lg border border-secondary bg-primary px-3.5 py-2.5 text-sm text-primary placeholder:text-placeholder outline-none transition duration-100 ease-linear focus:border-brand focus:ring-1 focus:ring-brand";
 
 /** A little personality per option — purely cosmetic, keyed by the exact option
  * text so it needs zero changes to the data model. Falls back to a sparkle. */
@@ -332,81 +381,547 @@ const OPTION_EMOJI: Record<string, string> = {
     "Best for adventure lovers": "🏕️",
 };
 
-/** One question — text field or checkbox group with an "Other, please specify" text field. */
-const QuestionField = ({
-    q,
-    data,
-    onText,
-    onToggle,
-    onOther,
-}: {
-    q: Question;
-    data: HostOnboardingData;
-    onText: (field: TextField, value: string) => void;
-    onToggle: (field: CheckboxField, option: string) => void;
-    onOther: (field: CheckboxField, other: string) => void;
-}) => {
+/* ── Step model — SECTIONS flattened into one-screen-per-question steps ── */
+
+type Step =
+    | { kind: "welcome" }
+    | { kind: "question"; q: Question; sectionTitle: string; icon: typeof Mail01; num: number }
+    | { kind: "video" }
+    | { kind: "thankyou" };
+
+const QUESTION_STEPS = SECTIONS.flatMap((s) => s.questions.map((q) => ({ q, sectionTitle: s.title, icon: s.icon })));
+const TOTAL_QUESTIONS = QUESTION_STEPS.length;
+const STEPS: Step[] = [
+    { kind: "welcome" },
+    ...QUESTION_STEPS.map((x, i) => ({ kind: "question" as const, ...x, num: i + 1 })),
+    { kind: "video" },
+    { kind: "thankyou" },
+];
+const VIDEO_INDEX = STEPS.length - 2;
+const THANKYOU_INDEX = STEPS.length - 1;
+
+/** Letter shortcuts for choice cards — the longest option list (aesthetic) has exactly 10. */
+const LETTERS = "ABCDEFGHIJ";
+
+/** Direction-aware slide: forward enters from below and exits upward, back reversed. */
+const stepVariants = {
+    enter: (dir: 1 | -1) => ({ opacity: 0, y: dir === 1 ? 40 : -40 }),
+    center: { opacity: 1, y: 0 },
+    exit: (dir: 1 | -1) => ({ opacity: 0, y: dir === 1 ? -24 : 24 }),
+};
+
+function validateStep(step: Step, data: HostOnboardingData): string | null {
+    if (step.kind !== "question") return null;
+    const q = step.q;
     if (q.type === "text") {
+        const v = data[q.field].trim();
+        if (q.required && !v) return "Please fill this in";
+        if (q.field === "email" && v && !/^\S+@\S+\.\S+$/.test(v)) return "Hmm… that email doesn't look right";
+        return null;
+    }
+    const a = data[q.field];
+    if (q.required && a.picked.length === 0 && !a.other.trim()) return "Please make a selection";
+    return null;
+}
+
+/* ── Small presentational pieces ── */
+
+const Kbd = ({ children }: { children: ReactNode }) => (
+    <kbd className="rounded-md border border-secondary bg-secondary px-1.5 py-0.5 font-sans text-[11px] font-semibold text-secondary">{children}</kbd>
+);
+
+const okBtnCls =
+    "flex items-center gap-2 rounded-lg bg-brand-solid px-5 py-2.5 text-md font-semibold text-white shadow-sm outline-brand transition duration-100 ease-linear hover:bg-brand-solid_hover focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
+
+const underlineCls =
+    "w-full border-b-2 border-secondary bg-transparent pb-2 text-primary outline-none transition duration-100 ease-linear placeholder:text-placeholder focus:border-brand";
+
+const LetterBadge = ({ letter, checked }: { letter: string; checked: boolean }) => (
+    <span
+        className={cx(
+            "flex size-6 shrink-0 items-center justify-center rounded-md border text-xs font-semibold transition duration-100 ease-linear",
+            checked ? "border-brand bg-brand-solid text-white" : "border-secondary bg-primary text-secondary",
+        )}
+        aria-hidden="true"
+    >
+        {letter}
+    </span>
+);
+
+/** Failed validation — small red row that shakes on every failed attempt (remounts per nonce). */
+const ErrorShake = ({ msg }: { msg: string }) => (
+    <motion.div
+        role="alert"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1, x: [0, -8, 8, -5, 5, 0] }}
+        transition={{ duration: 0.4 }}
+        className="mt-5 flex w-max max-w-full items-center gap-2 rounded-lg bg-error-primary px-3 py-2 text-sm font-medium text-error-primary"
+    >
+        <AlertCircle className="size-4 shrink-0" aria-hidden="true" />
+        {msg}
+    </motion.div>
+);
+
+/** Typeform-style big underline text field. */
+const TextQuestion = ({
+    q,
+    value,
+    onChange,
+}: {
+    q: Extract<Question, { type: "text" }>;
+    value: string;
+    onChange: (field: TextField, value: string) => void;
+}) => {
+    // The Google-Form placeholders ("Short answer text") read oddly on a big Typeform field.
+    const placeholder = /answer/i.test(q.placeholder) ? "Type your answer here…" : q.placeholder;
+    const cls = cx(underlineCls, "mt-8 text-xl font-medium md:text-display-xs");
+    if (q.long) {
         return (
             <div>
-                <label className="block text-sm font-semibold text-primary">
-                    {q.label}
-                    {q.required && <span className="text-error-primary"> *</span>}
-                </label>
-                {q.long ? (
-                    <textarea rows={3} placeholder={q.placeholder} value={data[q.field]} onChange={(e) => onText(q.field, e.target.value)} className={cx(inputCls, "mt-2 resize-y")} />
-                ) : (
-                    <input type="text" placeholder={q.placeholder} value={data[q.field]} onChange={(e) => onText(q.field, e.target.value)} className={cx(inputCls, "mt-2")} />
-                )}
+                <textarea
+                    data-step-autofocus
+                    rows={3}
+                    placeholder={placeholder}
+                    value={value}
+                    onChange={(e) => onChange(q.field, e.target.value)}
+                    className={cx(cls, "field-sizing-content resize-none")}
+                />
+                <p className="mt-2 text-xs text-tertiary">
+                    <Kbd>Cmd/Ctrl + Enter ↵</Kbd> to continue
+                </p>
             </div>
         );
     }
+    return (
+        <input
+            data-step-autofocus
+            type={q.field === "email" ? "email" : "text"}
+            inputMode={q.field === "email" ? "email" : undefined}
+            autoComplete={q.field === "email" ? "email" : undefined}
+            placeholder={placeholder}
+            value={value}
+            onChange={(e) => onChange(q.field, e.target.value)}
+            className={cls}
+        />
+    );
+};
 
-    const answer = data[q.field];
+/** Multi-select choice cards with letter badges — real checkboxes via React Aria. */
+const ChoiceGroup = ({
+    q,
+    answer,
+    onPicked,
+    onOther,
+}: {
+    q: Extract<Question, { type: "checkbox" }>;
+    answer: CheckboxAnswer;
+    onPicked: (field: CheckboxField, picked: string[]) => void;
+    onOther: (field: CheckboxField, other: string) => void;
+}) => {
     const atMax = !!q.maxPick && answer.picked.length >= q.maxPick;
     return (
-        <div>
-            <label className="block text-sm font-semibold text-primary">
-                {q.label}
-                {q.required && <span className="text-error-primary"> *</span>}
-            </label>
-            {q.hint && <p className="mt-0.5 text-xs text-tertiary">{q.hint}</p>}
-            <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                {q.options.map((opt) => {
-                    const checked = answer.picked.includes(opt);
-                    return (
-                        <motion.button
+        <div className="mt-8">
+            <AriaCheckboxGroup value={answer.picked} onChange={(picked) => onPicked(q.field, picked)} aria-labelledby="question-heading">
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                    {q.options.map((opt, i) => (
+                        <AriaCheckbox
                             key={opt}
-                            type="button"
-                            whileTap={!(!checked && atMax) ? { scale: 0.97 } : undefined}
-                            disabled={!checked && atMax}
-                            onClick={() => onToggle(q.field, opt)}
-                            className={cx(
-                                "relative flex items-start gap-3 rounded-xl border p-3.5 text-left text-sm transition duration-150 ease-linear",
-                                checked
-                                    ? "border-brand bg-brand-50 shadow-sm dark:bg-brand-950/30"
-                                    : "border-secondary bg-primary hover:border-brand/40 hover:bg-secondary",
-                                !checked && atMax && "cursor-not-allowed opacity-40",
-                            )}
+                            value={opt}
+                            isDisabled={!answer.picked.includes(opt) && atMax}
+                            className={({ isSelected, isDisabled, isFocusVisible }) =>
+                                cx(
+                                    "relative flex cursor-pointer items-center gap-3 rounded-xl border p-3.5 transition duration-100 ease-linear active:scale-[0.98]",
+                                    isSelected
+                                        ? "border-brand bg-brand-primary_alt shadow-sm"
+                                        : "border-secondary bg-primary hover:border-brand hover:bg-secondary",
+                                    isDisabled && "cursor-not-allowed opacity-50 active:scale-100",
+                                    isFocusVisible && "outline-2 outline-offset-2 outline-focus-ring",
+                                )
+                            }
                         >
-                            <span className="text-xl leading-none" aria-hidden="true">{OPTION_EMOJI[opt] ?? "✨"}</span>
-                            <span className={cx("flex-1 pt-0.5 font-medium leading-snug", checked ? "text-brand-secondary" : "text-secondary")}>{opt}</span>
-                            {checked && (
-                                <span className="absolute -right-2 -top-2 flex size-5 items-center justify-center rounded-full bg-brand-solid text-white shadow-sm">
-                                    <Check className="size-3" strokeWidth={3} aria-hidden="true" />
-                                </span>
+                            {({ isSelected }) => (
+                                <>
+                                    <LetterBadge letter={LETTERS[i]} checked={isSelected} />
+                                    <span className="text-lg leading-none" aria-hidden="true">
+                                        {OPTION_EMOJI[opt] ?? "✨"}
+                                    </span>
+                                    <span className={cx("flex-1 text-sm leading-snug font-medium", isSelected ? "text-brand-secondary" : "text-secondary")}>
+                                        {opt}
+                                    </span>
+                                    <Check
+                                        className={cx(
+                                            "size-4 shrink-0 text-fg-brand-primary transition duration-100 ease-linear",
+                                            isSelected ? "opacity-100" : "opacity-0",
+                                        )}
+                                        strokeWidth={3}
+                                        aria-hidden="true"
+                                    />
+                                </>
                             )}
-                        </motion.button>
-                    );
-                })}
-            </div>
+                        </AriaCheckbox>
+                    ))}
+                </div>
+            </AriaCheckboxGroup>
             <input
                 type="text"
                 placeholder="Other…"
+                aria-label="Other, please specify"
                 value={answer.other}
                 onChange={(e) => onOther(q.field, e.target.value)}
-                className={cx(inputCls, "mt-2.5")}
+                className={cx(underlineCls, "mt-4 pb-1.5 text-md")}
             />
+        </div>
+    );
+};
+
+const NavChevrons = ({ canBack, canNext, onBack, onNext }: { canBack: boolean; canNext: boolean; onBack: () => void; onNext: () => void }) => {
+    const btnCls =
+        "flex size-11 items-center justify-center bg-brand-solid text-white outline-brand transition duration-100 ease-linear hover:bg-brand-solid_hover focus-visible:outline-2 focus-visible:-outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
+    return (
+        <div className="absolute right-4 bottom-4 z-20 flex overflow-hidden rounded-lg shadow-lg md:right-6 md:bottom-6">
+            <button type="button" aria-label="Previous question" disabled={!canBack} onClick={onBack} className={btnCls}>
+                <ChevronLeft className="size-5" aria-hidden="true" />
+            </button>
+            <div className="w-px self-stretch bg-white/20" aria-hidden="true" />
+            <button type="button" aria-label="Next question" disabled={!canNext} onClick={onNext} className={btnCls}>
+                <ChevronRight className="size-5" aria-hidden="true" />
+            </button>
+        </div>
+    );
+};
+
+/* ── Review / summary screen — every answer on one page, with a table of contents ── */
+
+const isAnswered = (q: Question, data: HostOnboardingData): boolean => {
+    if (q.type === "text") return data[q.field].trim().length > 0;
+    const a = data[q.field];
+    return a.picked.length > 0 || a.other.trim().length > 0;
+};
+
+const chipCls = "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-sm font-medium ring-1";
+
+/* ── Public helpers — used by the client dashboard's "Client Input" section so it
+      reads this form's own question set instead of duplicating the field list. ── */
+
+/** Answered-question count + submission state for a raw jsonb blob from the DB. */
+export const hostOnboardingProgress = (partial?: Partial<HostOnboardingData> | null) => {
+    const data = mergeData(partial);
+    return {
+        answered: QUESTION_STEPS.filter(({ q }) => isAnswered(q, data)).length,
+        total: TOTAL_QUESTIONS,
+        submittedAt: data.submittedAt,
+    };
+};
+
+/**
+ * Every client automatically has their own onboarding form: read the row for
+ * `slug`, creating an empty one if it doesn't exist yet. Idempotent — a
+ * concurrent create (23505) just falls through to a re-read. Returns the row's
+ * answers, or null if the row could not be read or created (callers surface that
+ * as an error state rather than showing an empty form as "not started").
+ *
+ * Never rejects: an offline/DNS failure makes supabase-js throw rather than
+ * return `{ error }`, so the whole body is wrapped.
+ */
+export const ensureHostOnboardingForm = async (args: {
+    slug: string;
+    clientName?: string;
+    clientWebsite?: string;
+}): Promise<Partial<HostOnboardingData> | null> => {
+    /** `{ ok: false }` = the read itself failed — never confuse that with "no row yet". */
+    const read = async (): Promise<{ ok: true; data: Partial<HostOnboardingData> | null } | { ok: false }> => {
+        const { data: row, error } = await supabase.from("host_onboarding_pages").select("data").eq("slug", args.slug).maybeSingle();
+        if (error) {
+            console.error("[host onboarding read]", error);
+            return { ok: false };
+        }
+        return { ok: true, data: (row as { data: Partial<HostOnboardingData> | null } | null)?.data ?? null };
+    };
+
+    try {
+        const existing = await read();
+        if (!existing.ok) return null; // don't insert over a row we simply failed to read
+        if (existing.data) return existing.data;
+
+        const { error } = await supabase.from("host_onboarding_pages").insert({
+            slug: args.slug,
+            client_name: args.clientName?.trim() ?? "",
+            client_website: args.clientWebsite?.trim() ?? "",
+            data: DEFAULT_DATA,
+        });
+        if (error) {
+            if (error.code !== "23505") {
+                console.error("[host onboarding provision]", error);
+                return null;
+            }
+            const raced = await read(); // someone else created it first
+            return raced.ok ? (raced.data ?? {}) : null;
+        }
+        return DEFAULT_DATA;
+    } catch (e) {
+        console.error("[host onboarding provision]", e);
+        return null;
+    }
+};
+
+/** One answer, read-only. */
+const AnswerValue = ({ q, data }: { q: Question; data: HostOnboardingData }) => {
+    if (q.type === "text") {
+        const v = data[q.field].trim();
+        return v ? <p className="text-md whitespace-pre-line text-primary">{v}</p> : <p className="text-md text-quaternary italic">Not answered</p>;
+    }
+    const a = data[q.field];
+    const other = a.other.trim();
+    if (!a.picked.length && !other) return <p className="text-md text-quaternary italic">Not answered</p>;
+    return (
+        <div className="flex flex-wrap gap-2">
+            {a.picked.map((opt) => (
+                <span key={opt} className={cx(chipCls, "bg-brand-primary_alt text-brand-secondary ring-brand")}>
+                    <span aria-hidden="true">{OPTION_EMOJI[opt] ?? "✨"}</span>
+                    {opt}
+                </span>
+            ))}
+            {other && (
+                <span className={cx(chipCls, "bg-secondary text-secondary ring-secondary")}>
+                    <span className="text-tertiary">Other:</span> {other}
+                </span>
+            )}
+        </div>
+    );
+};
+
+const ReviewScreen = ({
+    data,
+    clientName,
+    onEdit,
+    onClose,
+    onEditVideo,
+}: {
+    data: HostOnboardingData;
+    clientName: string;
+    onEdit: (questionNum: number) => void;
+    onClose: () => void;
+    onEditVideo: () => void;
+}) => {
+    const scrollRef = useRef<HTMLDivElement>(null);
+    const [activeId, setActiveId] = useState(SECTIONS[0].id);
+
+    const answeredCount = QUESTION_STEPS.filter(({ q }) => isAnswered(q, data)).length;
+
+    // Highlight the section currently in view — the trigger band sits just under the sticky header.
+    useEffect(() => {
+        const root = scrollRef.current;
+        if (!root) return;
+        const observer = new IntersectionObserver(
+            (entries) => {
+                const visible = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+                if (visible[0]?.target.id) setActiveId(visible[0].target.id.replace("review-", ""));
+            },
+            { root, rootMargin: "-72px 0px -60% 0px", threshold: 0 },
+        );
+        SECTIONS.forEach((s) => {
+            const el = root.querySelector(`#review-${s.id}`);
+            if (el) observer.observe(el);
+        });
+        return () => observer.disconnect();
+    }, []);
+
+    const scrollToSection = (id: string) => {
+        const root = scrollRef.current;
+        const el = root?.querySelector<HTMLElement>(`#review-${id}`);
+        if (!root || !el) return;
+        root.scrollTo({ top: el.offsetTop - 60, behavior: "smooth" }); // clear the sticky top bar
+        setActiveId(id);
+    };
+
+    // Running question number so Edit jumps to the right step.
+    let questionNum = 0;
+
+    return (
+        <div ref={scrollRef} className="absolute inset-0 overflow-y-auto">
+            <div className="mx-auto flex w-full max-w-5xl gap-10 px-5 pt-16 pb-20 md:px-8">
+                {/* ── Table of contents — sticky rail on desktop ── */}
+                <nav aria-label="Sections" className="sticky top-14 hidden h-max w-56 shrink-0 lg:block">
+                    <p className="px-3 text-xs font-semibold tracking-wide text-quaternary uppercase">On this page</p>
+                    <ul className="mt-2 flex flex-col gap-0.5">
+                        {SECTIONS.map((s) => {
+                            const total = s.questions.length;
+                            const done = s.questions.filter((q) => isAnswered(q, data)).length;
+                            const active = activeId === s.id;
+                            return (
+                                <li key={s.id}>
+                                    <button
+                                        type="button"
+                                        onClick={() => scrollToSection(s.id)}
+                                        aria-current={active ? "true" : undefined}
+                                        className={cx(
+                                            "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium transition duration-100 ease-linear",
+                                            active ? "bg-brand-primary_alt text-brand-secondary" : "text-secondary hover:bg-secondary",
+                                        )}
+                                    >
+                                        <s.icon className={cx("size-4 shrink-0", active ? "text-fg-brand-primary" : "text-fg-quaternary")} aria-hidden="true" />
+                                        <span className="flex-1 leading-snug">{s.title}</span>
+                                        <span className={cx("shrink-0 text-xs tabular-nums", done === total ? "text-success-primary" : "text-quaternary")}>
+                                            {done}/{total}
+                                        </span>
+                                    </button>
+                                </li>
+                            );
+                        })}
+                    </ul>
+                </nav>
+
+                <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-brand-secondary">{clientName || "Your submission"}</p>
+                    <h1 data-step-heading tabIndex={-1} className="mt-3 text-display-xs font-semibold text-primary outline-none md:text-display-sm">
+                        Your answers
+                    </h1>
+                    <p className="mt-2 text-sm text-tertiary">
+                        <span className="font-semibold text-primary tabular-nums">
+                            {answeredCount} of {TOTAL_QUESTIONS}
+                        </span>{" "}
+                        answered
+                        {data.submittedAt && (
+                            <> · submitted {new Date(data.submittedAt).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })}</>
+                        )}
+                    </p>
+
+                    {/* ── Table of contents — horizontal chips on mobile/tablet ── */}
+                    <nav aria-label="Sections" className="-mx-5 mt-5 flex gap-2 overflow-x-auto px-5 pb-1 lg:hidden">
+                        {SECTIONS.map((s) => (
+                            <button
+                                key={s.id}
+                                type="button"
+                                onClick={() => scrollToSection(s.id)}
+                                aria-current={activeId === s.id ? "true" : undefined}
+                                className={cx(
+                                    "flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 transition duration-100 ease-linear",
+                                    activeId === s.id ? "bg-brand-primary_alt text-brand-secondary ring-brand" : "bg-primary text-secondary ring-secondary",
+                                )}
+                            >
+                                <s.icon className="size-3.5" aria-hidden="true" />
+                                {s.title}
+                            </button>
+                        ))}
+                    </nav>
+
+                    {SECTIONS.map((s) => (
+                        <section key={s.id} id={`review-${s.id}`} className="mt-10 scroll-mt-4">
+                            <h2 className="flex items-center gap-2 text-md font-semibold text-primary">
+                                <s.icon className="size-4 text-fg-brand-primary" aria-hidden="true" />
+                                {s.title}
+                            </h2>
+                            <div className="mt-3 flex flex-col gap-3">
+                                {s.questions.map((q) => {
+                                    questionNum += 1;
+                                    const num = questionNum;
+                                    return (
+                                        <div key={q.field} className="rounded-2xl bg-primary p-4 ring-1 ring-secondary md:p-5">
+                                            <div className="flex items-start justify-between gap-4">
+                                                <p className="flex-1 text-sm font-semibold text-secondary">
+                                                    <span className="text-quaternary tabular-nums">{num}. </span>
+                                                    {q.label}
+                                                    {q.required && !isAnswered(q, data) && (
+                                                        <span className="ml-1.5 text-xs font-medium text-error-primary">required</span>
+                                                    )}
+                                                </p>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onEdit(num)}
+                                                    className="flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-brand-secondary outline-brand transition duration-100 ease-linear hover:bg-brand-primary_alt focus-visible:outline-2 focus-visible:outline-offset-2"
+                                                >
+                                                    <Edit03 className="size-3.5" aria-hidden="true" />
+                                                    Edit
+                                                    <span className="sr-only"> question {num}</span>
+                                                </button>
+                                            </div>
+                                            <div className="mt-3">
+                                                <AnswerValue q={q} data={data} />
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </section>
+                    ))}
+
+                    {/* Video attachment — outside SECTIONS, so it gets its own card. */}
+                    <section className="mt-10">
+                        <h2 className="flex items-center gap-2 text-md font-semibold text-primary">
+                            <VideoRecorder className="size-4 text-fg-brand-primary" aria-hidden="true" />
+                            Personal video
+                        </h2>
+                        <div className="mt-3 rounded-2xl bg-primary p-4 ring-1 ring-secondary md:p-5">
+                            <div className="flex items-start justify-between gap-4">
+                                <p className="flex-1 text-sm font-semibold text-secondary">
+                                    Video intro <span className="font-normal text-tertiary">(optional)</span>
+                                </p>
+                                <button
+                                    type="button"
+                                    onClick={onEditVideo}
+                                    className="flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-brand-secondary outline-brand transition duration-100 ease-linear hover:bg-brand-primary_alt focus-visible:outline-2 focus-visible:outline-offset-2"
+                                >
+                                    <Edit03 className="size-3.5" aria-hidden="true" />
+                                    Edit
+                                </button>
+                            </div>
+                            <div className="mt-3">
+                                {data.video ? (
+                                    <span className={cx(chipCls, "bg-brand-primary_alt text-brand-secondary ring-brand")}>
+                                        <PlayCircle className="size-4" aria-hidden="true" />
+                                        Video attached
+                                    </span>
+                                ) : (
+                                    <p className="text-md text-quaternary italic">No video added</p>
+                                )}
+                            </div>
+                        </div>
+                    </section>
+
+                    <div className="mt-10 flex flex-wrap items-center gap-3 border-t border-secondary pt-8">
+                        <button type="button" onClick={onClose} className={okBtnCls}>
+                            <ArrowLeft className="size-5" aria-hidden="true" />
+                            Done
+                        </button>
+                        <span className="hidden text-xs text-tertiary md:inline">
+                            or press <Kbd>Esc</Kbd>
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+/** Tasteful one-shot confetti on submit — pure motion spans, no dependency. */
+const CONFETTI_COLORS = ["bg-brand-solid", "bg-success-solid", "bg-warning-solid", "bg-brand-secondary"];
+const ConfettiBurst = () => {
+    const reduceMotion = useReducedMotion();
+    const [particles] = useState(() =>
+        Array.from({ length: 28 }, (_, i) => ({
+            x: (Math.random() - 0.5) * 520,
+            y: 220 + Math.random() * 340,
+            delay: Math.random() * 0.25,
+            duration: 1.2 + Math.random() * 0.7,
+            rotate: (Math.random() - 0.5) * 540,
+            size: 6 + Math.round(Math.random() * 4),
+            color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+            shape: i % 3 === 0 ? "rounded-full" : "rounded-[2px]",
+        })),
+    );
+    if (reduceMotion) return null;
+    return (
+        <div className="pointer-events-none absolute inset-0 z-10 overflow-hidden" aria-hidden="true">
+            {particles.map((p, i) => (
+                <motion.span
+                    key={i}
+                    className={cx("absolute top-14 left-1/2", p.color, p.shape)}
+                    style={{ width: p.size, height: p.size }}
+                    initial={{ x: 0, y: 0, opacity: 1, rotate: 0 }}
+                    animate={{ x: p.x, y: p.y, opacity: 0, rotate: p.rotate }}
+                    transition={{ duration: p.duration, delay: p.delay, ease: "easeOut" }}
+                />
+            ))}
         </div>
     );
 };
@@ -424,82 +939,25 @@ export const HostOnboardingFormPage = ({ slug, initialClientName = "", initialCl
     const isTemplate = !slug;
 
     const [data, setData] = useState<HostOnboardingData>(() => mergeData(initialData));
-    const mainRef = useRef<HTMLElement>(null);
     const hydratedRef = useRef(false);
+    // Captured once on mount: a returning host lands straight on the review of
+    // their answers (no confetti, no re-filling).
+    const alreadySubmittedOnLoad = useRef(Boolean(slug && data.submittedAt));
 
-    // Scroll-driven vertical stepper: which section is "active" (scrollspy), plus
-    // how far scrolled through it (0-1) so the connector fill animates continuously
-    // rather than snapping between steps.
-    const sectionRefs = useRef<(HTMLDivElement | null)[]>([]);
-    const railRef = useRef<HTMLDivElement>(null);
-    const circleRefs = useRef<(HTMLSpanElement | null)[]>([]);
-    const [activeIndex, setActiveIndex] = useState(0);
-    const [fillFraction, setFillFraction] = useState(0);
-    const [railGeom, setRailGeom] = useState({ top: 16, bottom: 16 });
-
-    const recomputeScrollSpy = useCallback(() => {
-        const mainEl = mainRef.current;
-        if (!mainEl) return;
-        // Reached the bottom of the scroll container — trailing content (video
-        // block, submit button) can keep the last section's top below the trigger
-        // line forever, so force-complete instead of stalling on the 2nd-to-last step.
-        if (mainEl.scrollTop + mainEl.clientHeight >= mainEl.scrollHeight - 4) {
-            setActiveIndex(SECTIONS.length - 1);
-            setFillFraction(1);
-            return;
-        }
-        const triggerY = mainEl.getBoundingClientRect().top + 140;
-        let idx = 0;
-        let local = 0;
-        sectionRefs.current.forEach((el, i) => {
-            if (!el) return;
-            const rect = el.getBoundingClientRect();
-            if (rect.top <= triggerY) {
-                idx = i;
-                local = Math.min(1, Math.max(0, (triggerY - rect.top) / rect.height));
-            }
-        });
-        setActiveIndex(idx);
-        setFillFraction((idx + local) / Math.max(1, SECTIONS.length - 1));
-    }, []);
-
-    useEffect(() => {
-        const measureRail = () => {
-            const railEl = railRef.current;
-            const first = circleRefs.current[0];
-            const last = circleRefs.current[SECTIONS.length - 1];
-            if (!railEl || !first || !last) return;
-            const railRect = railEl.getBoundingClientRect();
-            const firstRect = first.getBoundingClientRect();
-            const lastRect = last.getBoundingClientRect();
-            setRailGeom({ top: firstRect.top - railRect.top + firstRect.height / 2, bottom: lastRect.top - railRect.top + lastRect.height / 2 });
-        };
-        measureRail();
-        const t = setTimeout(measureRail, 300); // re-measure after font swap/layout settle
-        window.addEventListener("resize", measureRail);
-        return () => {
-            clearTimeout(t);
-            window.removeEventListener("resize", measureRail);
-        };
-    }, []);
-
-    useEffect(() => {
-        recomputeScrollSpy();
-        const mainEl = mainRef.current;
-        if (!mainEl) return;
-        let raf = 0;
-        const onScroll = () => {
-            cancelAnimationFrame(raf);
-            raf = requestAnimationFrame(recomputeScrollSpy);
-        };
-        mainEl.addEventListener("scroll", onScroll, { passive: true });
-        window.addEventListener("resize", onScroll);
-        return () => {
-            cancelAnimationFrame(raf);
-            mainEl.removeEventListener("scroll", onScroll);
-            window.removeEventListener("resize", onScroll);
-        };
-    }, [recomputeScrollSpy]);
+    // Step index + travel direction together, so AnimatePresence reads both atomically.
+    // Client copies open straight on question 1 (the welcome screen stays reachable
+    // via Back, and the master template still opens on it so the team can preview it).
+    const [[stepIndex, direction], setStep] = useState<[number, 1 | -1]>(() => (alreadySubmittedOnLoad.current ? [THANKYOU_INDEX, 1] : [slug ? 1 : 0, 1]));
+    const [error, setError] = useState<{ msg: string; nonce: number } | null>(null);
+    const [submitState, setSubmitState] = useState<"idle" | "saving" | "error">("idle");
+    // Review mode = the read-only summary of every answer. `editingFromReview`
+    // means the host jumped into one question from there, so saving it returns
+    // to the summary instead of continuing forward through the flow.
+    // Already-submitted forms open directly in review.
+    const [showReview, setShowReview] = useState(alreadySubmittedOnLoad.current);
+    const [editingFromReview, setEditingFromReview] = useState(false);
+    const step = STEPS[stepIndex];
+    const stepViewportRef = useRef<HTMLDivElement>(null);
 
     // Create-copy modal (team only — reachable from the Docs → Host Onboarding
     // Form list, or the master template's own banner).
@@ -518,10 +976,11 @@ export const HostOnboardingFormPage = ({ slug, initialClientName = "", initialCl
     // to save to). Guarded so the initial hydration from `initialData` never
     // re-writes the row it just came from.
     useEffect(() => {
-        hydratedRef.current = true;
-    }, []);
-    useEffect(() => {
-        if (!slug || !hydratedRef.current) return;
+        if (!slug) return;
+        if (!hydratedRef.current) {
+            hydratedRef.current = true; // first run is the initialData hydration — nothing to save
+            return;
+        }
         const t = setTimeout(() => {
             supabase
                 .from("host_onboarding_pages")
@@ -535,31 +994,214 @@ export const HostOnboardingFormPage = ({ slug, initialClientName = "", initialCl
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [data, slug]);
 
-    const onText = (field: TextField, value: string) => setData((d) => ({ ...d, [field]: value }));
-    const onToggle = (field: CheckboxField, option: string) =>
+    const onText = (field: TextField, value: string) => {
+        setError(null);
+        setData((d) => ({ ...d, [field]: value }));
+    };
+    const onToggle = (field: CheckboxField, option: string) => {
+        setError(null);
         setData((d) => {
             const cur = d[field];
             const picked = cur.picked.includes(option) ? cur.picked.filter((o) => o !== option) : [...cur.picked, option];
             return { ...d, [field]: { ...cur, picked } };
         });
-    const onOther = (field: CheckboxField, other: string) => setData((d) => ({ ...d, [field]: { ...d[field], other } }));
+    };
+    const onPicked = (field: CheckboxField, picked: string[]) => {
+        setError(null);
+        setData((d) => ({ ...d, [field]: { ...d[field], picked } }));
+    };
+    const onOther = (field: CheckboxField, other: string) => {
+        setError(null);
+        setData((d) => ({ ...d, [field]: { ...d[field], other } }));
+    };
     const onVideo = (video: string | undefined) => setData((d) => ({ ...d, video }));
 
-    const scrollToSection = (i: number) => {
-        const el = sectionRefs.current[i];
-        const mainEl = mainRef.current;
-        if (!el || !mainEl) return;
-        const top = el.getBoundingClientRect().top - mainEl.getBoundingClientRect().top + mainEl.scrollTop - 24;
-        mainEl.scrollTo({ top, behavior: "smooth" });
+    /* ── Navigation ── */
+
+    const goBack = () => {
+        if (stepIndex === 0) return;
+        setError(null);
+        setStep([stepIndex - 1, -1]);
+    };
+
+    const goNext = () => {
+        // The video → thank-you transition happens only through handleSubmit.
+        if (step.kind === "video" || step.kind === "thankyou") return;
+        const msg = validateStep(step, data);
+        if (msg) {
+            setError((er) => ({ msg, nonce: (er?.nonce ?? 0) + 1 }));
+            return;
+        }
+        setError(null);
+        if (editingFromReview) {
+            backToReview();
+            return;
+        }
+        setStep([stepIndex + 1, 1]);
+    };
+
+    /* ── Review / summary ── */
+
+    const openReview = () => {
+        setError(null);
+        setEditingFromReview(false);
+        setShowReview(true);
+    };
+    const backToReview = () => {
+        setError(null);
+        setEditingFromReview(false);
+        setShowReview(true);
+    };
+    const closeReview = () => {
+        setError(null);
+        setShowReview(false);
+        setStep([THANKYOU_INDEX, 1]);
+    };
+    /** Jump from the summary straight into one question (or the video step). */
+    const editFromReview = (stepIdx: number) => {
+        setError(null);
+        setShowReview(false);
+        setEditingFromReview(true);
+        setStep([stepIdx, -1]);
     };
 
     const handleSubmit = async () => {
+        if (submitState === "saving") return;
+        // Safety net: forward nav only validates the current step, so an answer
+        // cleared after its step was passed is caught here — jump back to it.
+        for (let i = 0; i < STEPS.length; i++) {
+            const msg = validateStep(STEPS[i], data);
+            if (msg) {
+                setStep([i, -1]);
+                setError((er) => ({ msg, nonce: (er?.nonce ?? 0) + 1 }));
+                return;
+            }
+        }
         const submittedAt = new Date().toISOString();
-        setData((d) => ({ ...d, submittedAt }));
         if (slug) {
-            await supabase.from("host_onboarding_pages").update({ data: { ...data, submittedAt } }).eq("slug", slug);
+            setSubmitState("saving");
+            const { error: dbError } = await supabase
+                .from("host_onboarding_pages")
+                .update({ data: { ...data, submittedAt } })
+                .eq("slug", slug);
+            if (dbError) {
+                console.error("[host onboarding submit]", dbError);
+                setSubmitState("error");
+                return;
+            }
+        }
+        setSubmitState("idle");
+        setError(null);
+        setData((d) => ({ ...d, submittedAt }));
+        setStep([THANKYOU_INDEX, 1]);
+        // Land on the answers review right after submitting; the thank-you screen
+        // stays one "Close" away from it.
+        setEditingFromReview(false);
+        setShowReview(true);
+    };
+
+    const advance = () => {
+        if (step.kind === "welcome" || step.kind === "question") goNext();
+        else if (step.kind === "video") {
+            // Editing the video from the summary: the attachment already autosaved,
+            // so just go back rather than re-submitting the whole form.
+            if (editingFromReview) backToReview();
+            else void handleSubmit();
         }
     };
+
+    /* ── Keyboard: Enter advances, ↑/↓ navigate, A–J toggle options ── */
+
+    useEffect(() => {
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (showCreate) {
+                if (e.key === "Escape" && !isCreating) setShowCreate(false);
+                return;
+            }
+            if (showReview) {
+                if (e.key === "Escape") closeReview();
+                return; // the summary is a plain scrollable page — no step shortcuts
+            }
+            if (submitState === "saving") return;
+            const target = e.target as HTMLElement | null;
+            // React Aria's choice cards focus a hidden native checkbox — that's not
+            // a typing field, so letter shortcuts must keep working there.
+            const isCheckboxInput = target instanceof HTMLInputElement && target.type === "checkbox";
+            const inField = !!target && !isCheckboxInput && (target.matches("input, textarea, select") || target.isContentEditable);
+
+            if (inField) {
+                // Never hijack typing — inside a field only Enter (and, for the
+                // auto-focused single-line inputs where vertical caret movement is
+                // meaningless, ↑/↓) navigate, and only on question steps
+                // (VideoAttach's own inputs stay theirs).
+                if (step.kind !== "question" || e.repeat) return;
+                const singleLine = target.tagName === "INPUT";
+                if (singleLine && e.key === "ArrowUp") {
+                    e.preventDefault();
+                    goBack();
+                    return;
+                }
+                if (singleLine && e.key === "ArrowDown") {
+                    e.preventDefault();
+                    goNext();
+                    return;
+                }
+                if (e.key !== "Enter") return;
+                if (target.tagName === "TEXTAREA" && !(e.metaKey || e.ctrlKey)) return; // plain Enter = newline
+                e.preventDefault();
+                advance();
+                return;
+            }
+            if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+            if (e.key === "Enter") {
+                if (!e.repeat) {
+                    e.preventDefault();
+                    advance();
+                }
+                return;
+            }
+            // ←/→ match the back/forward buttons; ↑/↓ keep working for Typeform muscle memory.
+            if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
+                e.preventDefault();
+                goBack();
+                return;
+            }
+            if (e.key === "ArrowDown" || e.key === "ArrowRight") {
+                e.preventDefault();
+                goNext();
+                return;
+            }
+
+            if (step.kind === "question" && step.q.type === "checkbox" && !e.repeat) {
+                const q = step.q;
+                const idx = LETTERS.toLowerCase().indexOf(e.key.toLowerCase());
+                if (idx >= 0 && idx < q.options.length) {
+                    e.preventDefault();
+                    const opt = q.options[idx];
+                    const answer = data[q.field];
+                    const atMax = !!q.maxPick && answer.picked.length >= q.maxPick;
+                    if (!answer.picked.includes(opt) && atMax) {
+                        setError((er) => ({ msg: `Pick up to ${q.maxPick}`, nonce: (er?.nonce ?? 0) + 1 }));
+                    } else {
+                        onToggle(q.field, opt);
+                    }
+                }
+            }
+        };
+        window.addEventListener("keydown", onKeyDown);
+        return () => window.removeEventListener("keydown", onKeyDown);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [stepIndex, data, showCreate, submitState, isCreating, showReview, editingFromReview]);
+
+    /* ── Focus management — after the step transition settles ── */
+
+    const focusCurrentStep = useCallback(() => {
+        const root = stepViewportRef.current;
+        if (!root) return;
+        const el = root.querySelector<HTMLElement>("[data-step-autofocus]") ?? root.querySelector<HTMLElement>("[data-step-heading]");
+        el?.focus({ preventScroll: true });
+    }, []);
 
     const handleCreate = async () => {
         const base = slugify(newClientName);
@@ -575,150 +1217,309 @@ export const HostOnboardingFormPage = ({ slug, initialClientName = "", initialCl
         });
         setIsCreating(false);
         if (error) {
-            setCreateError(error.code === "23505" ? "A form with that name already exists — pick another." : "Could not save — check your connection and try again.");
+            setCreateError(
+                error.code === "23505" ? "A form with that name already exists — pick another." : "Could not save — check your connection and try again.",
+            );
             return;
         }
         setShowCreate(false);
         navigate(`/${newSlug}`);
     };
 
+    const progressPct = showReview ? 100 : step.kind === "welcome" ? 0 : step.kind === "question" ? (step.num / TOTAL_QUESTIONS) * 100 : 100;
+
     return (
-        <AppShell className="flex md:flex-row">
-            {/* ── Sidebar — identity + vertical connected stepper (scrollspy) ── */}
-            <aside className="hidden h-full w-72 shrink-0 flex-col border-r border-secondary bg-primary p-6 md:flex">
-                <p className="text-md font-semibold text-primary">Host Onboarding Form</p>
-                <p className="mt-0.5 text-sm text-tertiary">{initialClientName || "Brand Vision Form"}</p>
-                {initialClientWebsite && <p className="mt-0.5 truncate text-xs text-quaternary">{initialClientWebsite}</p>}
-
-                <div ref={railRef} className="relative mt-8 flex-1">
-                    {/* base track */}
-                    <div
-                        className="absolute left-4 w-0.5 -translate-x-1/2 bg-secondary"
-                        style={{ top: railGeom.top, height: Math.max(0, railGeom.bottom - railGeom.top) }}
-                        aria-hidden="true"
-                    />
-                    {/* animated fill — grows continuously as the user scrolls down */}
-                    <motion.div
-                        className="absolute left-4 w-0.5 -translate-x-1/2 rounded-full bg-brand-solid"
-                        style={{ top: railGeom.top, height: Math.max(0, railGeom.bottom - railGeom.top) * fillFraction }}
-                        transition={{ type: "tween", duration: 0.1 }}
-                        aria-hidden="true"
-                    />
-                    <div className="flex flex-col gap-7">
-                        {SECTIONS.map((s, i) => {
-                            const done = i < activeIndex;
-                            const current = i === activeIndex;
-                            return (
-                                <button key={s.id} type="button" onClick={() => scrollToSection(i)} className="relative z-10 flex items-start gap-3 text-left">
-                                    <span
-                                        ref={(el) => {
-                                            circleRefs.current[i] = el;
-                                        }}
-                                        className={cx(
-                                            "flex size-8 shrink-0 items-center justify-center rounded-full border-2 bg-primary transition-colors duration-200",
-                                            done ? "border-brand-solid bg-brand-solid text-white" : current ? "border-brand-solid" : "border-secondary",
-                                        )}
-                                    >
-                                        {done ? (
-                                            <Check className="size-4" strokeWidth={3} aria-hidden="true" />
-                                        ) : (
-                                            <span className={cx("size-2 rounded-full", current ? "bg-brand-solid" : "bg-quaternary")} aria-hidden="true" />
-                                        )}
-                                    </span>
-                                    <span>
-                                        <p className={cx("text-sm font-semibold transition-colors duration-200", current ? "text-brand-secondary" : done ? "text-primary" : "text-quaternary")}>{s.title}</p>
-                                        <p className="mt-0.5 text-xs text-tertiary">{s.subtitle}</p>
-                                    </span>
-                                </button>
-                            );
-                        })}
+        <AppShell className="flex">
+            <main className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+                {/* ── Top bar — title, counter, slim progress (visible on mobile too) ── */}
+                {/* bg-tertiary matches the AppShell card surface, so long review content
+                    scrolls under an opaque bar instead of bleeding through it. */}
+                <header className="absolute inset-x-0 top-0 z-20 bg-tertiary">
+                    {/* pr-16 clears the global floating theme toggle (fixed right-4 top-4) */}
+                    <div className="flex items-center justify-between gap-3 py-3 pr-16 pl-5 md:pl-8">
+                        <p className="truncate text-xs font-medium text-tertiary">
+                            Brand Vision Form
+                            {initialClientName && <span className="text-quaternary"> · {initialClientName}</span>}
+                        </p>
+                        {showReview ? (
+                            <p className="shrink-0 text-xs font-medium text-tertiary">Your answers</p>
+                        ) : (
+                            <>
+                                {step.kind === "question" && (
+                                    <p className="shrink-0 text-xs font-medium text-tertiary tabular-nums">
+                                        {step.num} of {TOTAL_QUESTIONS}
+                                    </p>
+                                )}
+                                {step.kind === "video" && <p className="shrink-0 text-xs font-medium text-tertiary">Last step · optional</p>}
+                            </>
+                        )}
                     </div>
-                </div>
-            </aside>
-
-            {/* ── Main — one continuously-scrolling page, sections reveal as you reach them ── */}
-            <main ref={mainRef} className="min-h-0 min-w-0 flex-1 overflow-y-auto">
-                <div className="mx-auto max-w-2xl px-5 py-10 md:px-8">
-                    {isTemplate && (
-                        <div className="mb-8 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-brand/40 bg-brand-50 px-4 py-3 dark:bg-brand-950/30">
-                            <div className="flex items-center gap-2.5">
-                                <span className="inline-flex items-center rounded-full bg-brand-600 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white">Template</span>
-                                <p className="text-[13px] font-medium text-brand-800 dark:text-brand-200">This is the master template. Create a private copy to send to a new host.</p>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => setShowCreate(true)}
-                                className="flex shrink-0 items-center gap-1.5 rounded-lg bg-brand-solid px-3.5 py-2 text-[13px] font-semibold text-white transition hover:opacity-90"
-                            >
-                                <Plus className="size-4" aria-hidden="true" />
-                                Create for a new host
-                            </button>
-                        </div>
-                    )}
-
-                    {!isTemplate && data.submittedAt && (
-                        <div className="mb-8 rounded-xl border border-success-primary/30 bg-success-primary/5 px-4 py-3">
-                            <p className="text-[13px] font-medium text-success-primary">
-                                ✅ Submitted — thanks! You can still come back and update your answers any time.
-                            </p>
-                        </div>
-                    )}
-
-                    {SECTIONS.map((s, i) => (
+                    <div
+                        className="h-1 w-full bg-quaternary"
+                        role="progressbar"
+                        aria-label="Form progress"
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={Math.round(progressPct)}
+                    >
                         <motion.div
-                            key={s.id}
-                            ref={(el) => {
-                                sectionRefs.current[i] = el;
-                            }}
-                            className={i > 0 ? "mt-16" : undefined}
-                            initial={{ opacity: 0, y: 28 }}
-                            whileInView={{ opacity: 1, y: 0 }}
-                            viewport={{ root: mainRef, once: true, amount: 0.2 }}
-                            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-                        >
-                            <p className="text-xs font-semibold uppercase tracking-wide text-quaternary">Section {i + 1} of {SECTIONS.length}</p>
-                            <h2 className="mt-1.5 text-display-xs font-semibold text-primary md:text-display-sm">{s.title}</h2>
-                            {i === 0 && (
-                                <p className="mt-3 text-sm text-tertiary">
-                                    Your brand is more than just a logo — it's the look, feel, and personality that makes your property stand out and
-                                    connect with the right guests.
-                                    <br />
-                                    🕐 This only takes 5–10 minutes, and helps us avoid back-and-forth later.
-                                    <br />
-                                    ✨ The more insight you give, the better the result.
-                                </p>
-                            )}
+                            className="h-full bg-brand-solid"
+                            initial={false}
+                            animate={{ width: `${progressPct}%` }}
+                            transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                        />
+                    </div>
+                </header>
 
-                            <div className="mt-8 flex flex-col gap-8">
-                                {s.questions.map((q) => (
-                                    <QuestionField key={q.field} q={q} data={data} onText={onText} onToggle={onToggle} onOther={onOther} />
-                                ))}
+                {/* ── Review summary — every answer on one page ── */}
+                {showReview && (
+                    <div className="relative min-h-0 flex-1">
+                        <motion.div
+                            className="absolute inset-0"
+                            initial={{ opacity: 0, y: 16 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                        >
+                            <ReviewScreen
+                                data={data}
+                                clientName={initialClientName}
+                                onEdit={(num) => editFromReview(num)}
+                                onEditVideo={() => editFromReview(VIDEO_INDEX)}
+                                onClose={closeReview}
+                            />
+                        </motion.div>
+                    </div>
+                )}
+
+                {/* ── Step viewport — one screen at a time ── */}
+                <div className={cx("relative min-h-0 flex-1", showReview && "hidden")}>
+                    <AnimatePresence mode="wait" custom={direction} initial={false}>
+                        <motion.div
+                            key={stepIndex}
+                            ref={stepViewportRef}
+                            custom={direction}
+                            variants={stepVariants}
+                            initial="enter"
+                            animate="center"
+                            exit="exit"
+                            transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                            onAnimationComplete={(definition) => definition === "center" && focusCurrentStep()}
+                            className="absolute inset-0 flex flex-col overflow-y-auto"
+                        >
+                            <div className="mx-auto my-auto w-full max-w-2xl px-5 py-20 md:px-8">
+                                {step.kind === "welcome" && (
+                                    <div>
+                                        {isTemplate && (
+                                            <div className="mb-8 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-brand_alt bg-brand-primary_alt px-4 py-3">
+                                                <div className="flex items-center gap-2.5">
+                                                    <span className="inline-flex items-center rounded-full bg-brand-solid px-2.5 py-0.5 text-[11px] font-bold tracking-wide text-white uppercase">
+                                                        Template
+                                                    </span>
+                                                    <p className="text-[13px] font-medium text-brand-secondary">
+                                                        Master template — answers here won't be saved. Create a private copy for a new host.
+                                                    </p>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowCreate(true)}
+                                                    className="flex shrink-0 items-center gap-1.5 rounded-lg bg-brand-solid px-3.5 py-2 text-[13px] font-semibold text-white transition duration-100 ease-linear hover:bg-brand-solid_hover"
+                                                >
+                                                    <Plus className="size-4" aria-hidden="true" />
+                                                    Create for a new host
+                                                </button>
+                                            </div>
+                                        )}
+                                        <p className="text-sm font-medium text-brand-secondary">{initialClientName || "Host Onboarding"}</p>
+                                        <h1
+                                            data-step-heading
+                                            tabIndex={-1}
+                                            className="mt-3 text-display-sm font-semibold text-primary outline-none md:text-display-lg"
+                                        >
+                                            Brand Vision Form
+                                        </h1>
+                                        <p className="mt-4 max-w-xl text-md text-tertiary">
+                                            Your brand is more than just a logo — it's the look, feel, and personality that makes your property stand out and
+                                            connect with the right guests.
+                                        </p>
+                                        <div className="mt-4 flex flex-col gap-1.5 text-md text-tertiary">
+                                            <p>🕐 Takes 5–10 minutes, and helps us avoid back-and-forth later.</p>
+                                            <p>✨ The more insight you give, the better the result.</p>
+                                        </div>
+                                        <div className="mt-8 flex items-center gap-3">
+                                            <button type="button" onClick={goNext} className={cx(okBtnCls, "rounded-xl px-7 py-3")}>
+                                                Start
+                                                <ArrowRight className="size-5" aria-hidden="true" />
+                                            </button>
+                                            <span className="hidden text-xs text-tertiary md:inline">
+                                                press <Kbd>Enter ↵</Kbd>
+                                            </span>
+                                        </div>
+                                        <p className="mt-6 text-sm text-quaternary">
+                                            {TOTAL_QUESTIONS} questions
+                                            {initialClientWebsite && <span> · {initialClientWebsite}</span>}
+                                        </p>
+                                    </div>
+                                )}
+
+                                {step.kind === "question" && (
+                                    <div>
+                                        {editingFromReview && (
+                                            <button
+                                                type="button"
+                                                onClick={backToReview}
+                                                className="mb-5 flex items-center gap-1.5 text-sm font-semibold text-tertiary transition duration-100 ease-linear hover:text-secondary"
+                                            >
+                                                <ArrowLeft className="size-4" aria-hidden="true" />
+                                                Back to summary
+                                            </button>
+                                        )}
+                                        <p className="flex items-center gap-2 text-sm font-medium text-brand-secondary">
+                                            <step.icon className="size-4" aria-hidden="true" />
+                                            {step.sectionTitle}
+                                            <span className="flex items-center gap-1 text-tertiary tabular-nums">
+                                                · {step.num} <ArrowRight className="size-4" aria-hidden="true" />
+                                            </span>
+                                        </p>
+                                        <h1
+                                            id="question-heading"
+                                            data-step-heading
+                                            tabIndex={-1}
+                                            className="mt-3 text-display-xs font-semibold text-primary outline-none md:text-display-sm"
+                                        >
+                                            {step.q.label}
+                                            {step.q.required && (
+                                                <span className="text-error-primary" aria-hidden="true">
+                                                    {" "}
+                                                    *
+                                                </span>
+                                            )}
+                                        </h1>
+                                        {step.q.type === "checkbox" && (
+                                            <p className="mt-2 text-sm text-tertiary">{step.q.hint ?? "Choose as many as you like"}</p>
+                                        )}
+
+                                        {step.q.type === "text" ? (
+                                            <TextQuestion q={step.q} value={data[step.q.field]} onChange={onText} />
+                                        ) : (
+                                            <ChoiceGroup q={step.q} answer={data[step.q.field]} onPicked={onPicked} onOther={onOther} />
+                                        )}
+
+                                        {error && <ErrorShake key={error.nonce} msg={error.msg} />}
+
+                                        <div className="mt-8 flex items-center gap-3">
+                                            <button type="button" onClick={goNext} className={okBtnCls}>
+                                                {editingFromReview ? "Save" : "OK"}
+                                                <Check className="size-5" strokeWidth={3} aria-hidden="true" />
+                                            </button>
+                                            <span className="hidden text-xs text-tertiary md:inline">
+                                                press <Kbd>Enter ↵</Kbd>
+                                            </span>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {step.kind === "video" && (
+                                    <div>
+                                        {editingFromReview && (
+                                            <button
+                                                type="button"
+                                                onClick={backToReview}
+                                                className="mb-5 flex items-center gap-1.5 text-sm font-semibold text-tertiary transition duration-100 ease-linear hover:text-secondary"
+                                            >
+                                                <ArrowLeft className="size-4" aria-hidden="true" />
+                                                Back to summary
+                                            </button>
+                                        )}
+                                        <p className="text-sm font-medium text-brand-secondary">Last step · optional</p>
+                                        <h1
+                                            data-step-heading
+                                            tabIndex={-1}
+                                            className="mt-3 text-display-xs font-semibold text-primary outline-none md:text-display-sm"
+                                        >
+                                            Want to add a personal touch? <span className="font-normal text-tertiary">(optional)</span>
+                                        </h1>
+                                        <p className="mt-2 text-sm text-tertiary">
+                                            Record a quick video intro of yourself and your property — a Loom/YouTube link works too.
+                                        </p>
+                                        <VideoAttach value={data.video} onChange={onVideo} className="mt-6" />
+
+                                        {submitState === "error" && (
+                                            <div role="alert" className="mt-6 flex items-center gap-2 text-sm font-medium text-error-primary">
+                                                <AlertCircle className="size-4 shrink-0" aria-hidden="true" />
+                                                Couldn't submit — check your connection and try again.
+                                            </div>
+                                        )}
+
+                                        <div className="mt-8 flex items-center gap-3">
+                                            {editingFromReview ? (
+                                                <button type="button" onClick={backToReview} className={okBtnCls}>
+                                                    Save
+                                                    <Check className="size-5" strokeWidth={3} aria-hidden="true" />
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    type="button"
+                                                    onClick={handleSubmit}
+                                                    disabled={submitState === "saving"}
+                                                    className="flex items-center gap-2 rounded-lg bg-success-solid px-6 py-3 text-md font-semibold text-white shadow-sm transition duration-100 ease-linear hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                                                >
+                                                    {submitState === "saving" && (
+                                                        <span
+                                                            className="size-4 animate-spin rounded-full border-2 border-white/40 border-t-white"
+                                                            aria-hidden="true"
+                                                        />
+                                                    )}
+                                                    {submitState === "saving" ? "Submitting…" : data.submittedAt ? "Update answers ✓" : "Submit 🎉"}
+                                                </button>
+                                            )}
+                                            <span className="hidden text-xs text-tertiary md:inline">
+                                                press <Kbd>Enter ↵</Kbd>
+                                            </span>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {step.kind === "thankyou" && (
+                                    <div className="flex flex-col items-center text-center">
+                                        <FeaturedIcon icon={CheckCircle} color="success" theme="light" size="xl" />
+                                        <h1
+                                            data-step-heading
+                                            tabIndex={-1}
+                                            className="mt-6 text-display-sm font-semibold text-primary outline-none md:text-display-md"
+                                        >
+                                            Thank you{(data.businessName.trim() || initialClientName) && `, ${data.businessName.trim() || initialClientName}`}!
+                                            🎉
+                                        </h1>
+                                        <p className="mt-3 max-w-md text-md text-tertiary">
+                                            {alreadySubmittedOnLoad.current
+                                                ? "You've already submitted this form — you can still review and update your answers any time."
+                                                : "Your answers are in — the HiddenGem team takes it from here."}
+                                        </p>
+                                        {data.submittedAt && (
+                                            <p className="mt-2 text-sm text-quaternary">
+                                                Submitted{" "}
+                                                {new Date(data.submittedAt).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })}
+                                            </p>
+                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={openReview}
+                                            className="mt-8 text-sm font-semibold text-brand-secondary transition duration-100 ease-linear hover:text-brand-secondary_hover"
+                                        >
+                                            Review or edit your answers →
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         </motion.div>
-                    ))}
+                    </AnimatePresence>
 
-                    <motion.div
-                        className="mt-16 rounded-xl border border-secondary bg-secondary/40 p-4"
-                        initial={{ opacity: 0, y: 28 }}
-                        whileInView={{ opacity: 1, y: 0 }}
-                        viewport={{ root: mainRef, once: true, amount: 0.2 }}
-                        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-                    >
-                        <p className="text-sm font-semibold text-primary">Want to add a personal touch? <span className="font-normal text-tertiary">(optional)</span></p>
-                        <p className="mt-0.5 text-xs text-tertiary">Record a quick video intro of yourself and your property — a Loom/YouTube link works too.</p>
-                        <VideoAttach value={data.video} onChange={onVideo} className="mt-3" />
-                    </motion.div>
-
-                    <div className="mt-10 flex justify-center border-t border-secondary pt-8">
-                        <button
-                            type="button"
-                            onClick={handleSubmit}
-                            className="flex items-center gap-2 rounded-xl bg-success-solid px-6 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
-                        >
-                            Submit 🎉
-                        </button>
-                    </div>
+                    {step.kind === "thankyou" && !alreadySubmittedOnLoad.current && <ConfettiBurst />}
                 </div>
+
+                {!showReview && !editingFromReview && (step.kind === "question" || step.kind === "video") && (
+                    <NavChevrons canBack={stepIndex > 0} canNext={step.kind === "question"} onBack={goBack} onNext={goNext} />
+                )}
             </main>
 
             {/* ── Create-copy modal ── */}
@@ -740,17 +1541,24 @@ export const HostOnboardingFormPage = ({ slug, initialClientName = "", initialCl
                         >
                             <div className="flex items-start justify-between">
                                 <div>
-                                    <h3 className="text-md font-semibold text-primary">Create Host Onboarding Form</h3>
+                                    <h3 className="text-md font-semibold text-primary">Create Brand Vision Form</h3>
                                     <p className="mt-1 text-sm text-tertiary">Enter the new host's details — they'll fill in the rest themselves.</p>
                                 </div>
-                                <button type="button" aria-label="Close" onClick={() => setShowCreate(false)} className="flex size-8 items-center justify-center rounded-lg text-tertiary hover:bg-secondary">
+                                <button
+                                    type="button"
+                                    aria-label="Close"
+                                    onClick={() => setShowCreate(false)}
+                                    className="flex size-8 items-center justify-center rounded-lg text-tertiary hover:bg-secondary"
+                                >
                                     <XClose className="size-4" aria-hidden="true" />
                                 </button>
                             </div>
 
                             <div className="mt-4 flex flex-col gap-3">
                                 <div>
-                                    <label htmlFor="new-host-name" className="mb-1.5 block text-sm font-medium text-secondary">Business / property name</label>
+                                    <label htmlFor="new-host-name" className="mb-1.5 block text-sm font-medium text-secondary">
+                                        Business / property name
+                                    </label>
                                     <input
                                         id="new-host-name"
                                         type="text"
@@ -762,7 +1570,9 @@ export const HostOnboardingFormPage = ({ slug, initialClientName = "", initialCl
                                     />
                                 </div>
                                 <div>
-                                    <label htmlFor="new-host-website" className="mb-1.5 block text-sm font-medium text-secondary">Website (optional)</label>
+                                    <label htmlFor="new-host-website" className="mb-1.5 block text-sm font-medium text-secondary">
+                                        Website (optional)
+                                    </label>
                                     <input
                                         id="new-host-website"
                                         type="text"
@@ -774,17 +1584,32 @@ export const HostOnboardingFormPage = ({ slug, initialClientName = "", initialCl
                                 </div>
                                 {newClientName.trim() && (
                                     <p className="text-xs text-tertiary">
-                                        Page URL: <span className="font-medium text-brand-secondary">docs-hgm.netlify.app/{slugify(newClientName)}-hostonboarding</span>
+                                        Page URL:{" "}
+                                        <span className="font-medium text-brand-secondary">docs-hgm.netlify.app/{slugify(newClientName)}-hostonboarding</span>
                                     </p>
                                 )}
-                                {createError && <p className="text-xs text-error-primary">{createError}</p>}
+                                {createError && (
+                                    <p role="alert" className="text-xs text-error-primary">
+                                        {createError}
+                                    </p>
+                                )}
                             </div>
 
                             <div className="mt-4 flex gap-3">
-                                <button type="button" onClick={() => setShowCreate(false)} disabled={isCreating} className="flex-1 rounded-lg border border-secondary px-4 py-2 text-sm font-semibold text-secondary transition hover:bg-secondary disabled:opacity-50">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowCreate(false)}
+                                    disabled={isCreating}
+                                    className="flex-1 rounded-lg border border-secondary px-4 py-2 text-sm font-semibold text-secondary transition hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
+                                >
                                     Cancel
                                 </button>
-                                <button type="button" onClick={handleCreate} disabled={!newClientName.trim() || isCreating} className="flex-1 rounded-lg bg-brand-solid px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-40">
+                                <button
+                                    type="button"
+                                    onClick={handleCreate}
+                                    disabled={!newClientName.trim() || isCreating}
+                                    className="flex-1 rounded-lg bg-brand-solid px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
                                     {isCreating ? "Creating…" : "Create"}
                                 </button>
                             </div>

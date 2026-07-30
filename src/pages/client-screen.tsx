@@ -5,9 +5,18 @@ import { PopupPage } from "./popup-page";
 import { ChatWidgetScreen } from "./chat-widget-screen";
 import { ClientDashboardPage } from "./client-dashboard-page";
 import { HostOnboardingFormPage } from "./host-onboarding-form-page";
+import { ClientOnboardingFormPage, type ClientOnboardingData } from "./client-onboarding-form-page";
 import { TemplateOneScreen } from "./template-one-screen";
 import { NotFound } from "./not-found";
 import { supabase, type ChatWidgetPageData, type ClientPageData, type DashboardPageData, type HostOnboardingPageData, type LeadCapturePageData } from "@/lib/supabase";
+
+type ClientOnboardingPageRow = {
+    slug: string;
+    client_name: string;
+    client_website: string;
+    data: Partial<ClientOnboardingData> | null;
+    created_at?: string;
+};
 
 const Spinner = () => (
     <main className="flex min-h-dvh items-center justify-center bg-secondary">
@@ -177,6 +186,35 @@ const ClientDashboardScreen = ({ slug }: { slug: string }) => {
     );
 };
 
+/* Host Onboarding Forms (the client's FIRST form, before Brand Vision) live at
+   /{name}-onboarding and load from client_onboarding_pages. */
+const ClientOnboardingScreen = ({ slug }: { slug: string }) => {
+    const [data, setData] = useState<ClientOnboardingPageRow | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [notFound, setNotFound] = useState(false);
+
+    useEffect(() => {
+        setLoading(true);
+        setData(null);
+        setNotFound(false);
+        supabase
+            .from("client_onboarding_pages")
+            .select("*")
+            .eq("slug", slug)
+            .single()
+            .then(({ data: row, error }) => {
+                if (!error && row) setData(row as ClientOnboardingPageRow);
+                else setNotFound(true);
+                setLoading(false);
+            });
+    }, [slug]);
+
+    if (loading) return <Spinner />;
+    if (notFound) return <NotFound />;
+
+    return <ClientOnboardingFormPage key={slug} slug={slug} initialClientName={data?.client_name ?? ""} initialData={data?.data} />;
+};
+
 export const ClientScreen = () => {
     const { clientSlug } = useParams<{ clientSlug: string }>();
 
@@ -194,6 +232,11 @@ export const ClientScreen = () => {
 
     if (clientSlug?.endsWith("-hostonboarding")) {
         return <HostOnboardingClientScreen slug={clientSlug} />;
+    }
+
+    // NOTE: must stay AFTER the "-hostonboarding" check — that suffix also ends with "-onboarding".
+    if (clientSlug?.endsWith("-onboarding")) {
+        return <ClientOnboardingScreen slug={clientSlug} />;
     }
 
     return <PixelScreen clientSlug={clientSlug} />;
