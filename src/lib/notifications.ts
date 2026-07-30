@@ -39,7 +39,8 @@ export async function fetchAttentionItems(): Promise<AttentionItem[]> {
     const [pagesRes, requestsRes, clientsRes] = await Promise.all([
         supabase.from("sop_pages").select("slug, data").in("slug", QUESTION_SLUGS),
         supabase.from("docs_requests").select("id, title, priority, requester").eq("status", "open").order("created_at", { ascending: false }),
-        supabase.from("clients").select("id", { count: "exact", head: true }),
+        // Private/test clients don't count toward the team-wide roster size.
+        supabase.from("clients").select("id", { count: "exact", head: true }).is("private_to", null),
     ]);
 
     const items: AttentionItem[] = [];

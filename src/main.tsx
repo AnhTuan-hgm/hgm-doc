@@ -13,6 +13,7 @@ import { PromptLibraryScreen } from "@/pages/prompt-library-screen";
 import { OwnerGuideScreen } from "@/pages/owner-guide-screen";
 import { PopupPage } from "@/pages/popup-page";
 import { HostOnboardingFormPage } from "@/pages/host-onboarding-form-page";
+import { ClientOnboardingFormPage } from "@/pages/client-onboarding-form-page";
 import { RequestsScreen } from "@/pages/requests-screen";
 import { DesignSystemScreen } from "@/pages/design-system-screen";
 import { HomeTwoScreen } from "@/pages/home-two-screen";
@@ -140,6 +141,7 @@ createRoot(document.getElementById("root")!).render(
                         <Route path="/owner-guide/:slug" element={<OwnerGuideScreen />} />
                         <Route path="/popup" element={<PopupPage />} />
                         <Route path="/host-onboarding-form" element={<HostOnboardingFormPage />} />
+                        <Route path="/client-onboarding-form" element={<ClientOnboardingFormPage />} />
                         <Route path="/requests" element={<RequestsScreen />} />
                         <Route path="/designsystem" element={<DesignSystemScreen />} />
                         <Route path="/home2" element={<HomeTwoScreen />} />

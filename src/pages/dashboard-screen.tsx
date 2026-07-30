@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { AppShell, CollapsedTopBar, HeaderAvatar, IconRail, NavCollapseButton, useNavCollapsed } from "@/components/application/icon-rail";
 import { HelpMenu } from "@/components/application/help-menu";
 import { Select } from "@/components/base/select/select";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowUpRight, Award01, BookOpen01, Briefcase01, Camera01, Check, ChevronDown, ClipboardCheck, Code02, Edit01, FilePlus02, FolderClosed, Grid01, Home02, Image01, LayoutAlt01, List, Lock01, LockUnlocked01, Mail01, MarkerPin01, MessageChatCircle, Plus, SearchSm, Share07, Star01, Trash01, Trophy01, Users01, XClose } from "@untitledui/icons";
-import { supabase, type ChatWidgetPageData, type ClientPageData, type ClientRecord, type HostOnboardingPageData, type LeadCapturePageData, type OverviewCard, type OwnerGuideMeta, type OverviewTab } from "@/lib/supabase";
+import { filterPrivateClients, supabase, type ChatWidgetPageData, type ClientPageData, type ClientRecord, type HostOnboardingPageData, type LeadCapturePageData, type OverviewCard, type OwnerGuideMeta, type OverviewTab } from "@/lib/supabase";
 import { createBlankTemplateData, isReservedSlug, slugify } from "@/pages/template-one-screen";
 import { useAuthUser } from "@/hooks/use-auth-user";
 import { useEditShortcuts } from "@/hooks/use-edit-shortcuts";
@@ -250,7 +250,7 @@ const DEPARTMENTS: Department[] = [
         tabs: [
             { id: "project-logs", label: "Project Logs", icon: ClipboardCheck },
             { id: "owner-guides", label: "Owner Guides", icon: BookOpen01 },
-            { id: "host-onboarding", label: "Host Onboarding Form", icon: Home02 },
+            { id: "host-onboarding", label: "Brand Vision Form", icon: Home02 },
             { id: "popups", label: "Popups", icon: Mail01 },
             { id: "meta-pixel", label: "Meta Pixel", icon: Share07 },
             { id: "chat-widget", label: "Chat Widget", icon: MessageChatCircle },
@@ -1057,7 +1057,7 @@ const HostOnboardingContent = () => {
         <div className="flex h-full flex-1 flex-col overflow-hidden rounded-lg bg-secondary shadow-sm">
             <header className="flex h-[73px] shrink-0 items-center justify-between border-b border-secondary bg-primary px-6">
                 <div>
-                    <h1 className="text-md font-semibold text-primary">Host Onboarding Form</h1>
+                    <h1 className="text-md font-semibold text-primary">Brand Vision Form</h1>
                     <p className="text-sm text-tertiary">
                         {loading ? "Loading…" : `${pages.length} form${pages.length !== 1 ? "s" : ""} sent`}
                     </p>
@@ -2598,7 +2598,10 @@ const ClientCard = ({
             whileHover={clickable ? { y: -4 } : undefined}
             onClick={open}
             className={cx(
-                "group relative flex aspect-square flex-col items-center justify-center rounded-2xl bg-primary p-5 text-center ring-1 ring-secondary transition-shadow duration-200",
+                "group relative flex aspect-square flex-col items-center justify-center rounded-2xl bg-primary p-5 text-center transition-shadow duration-200",
+                // Private/template clients (only their owner sees them) get a blue ring so
+                // they never read as a real client card.
+                client.private_to ? "ring-2 ring-brand" : "ring-1 ring-secondary",
                 clickable && "cursor-pointer hover:shadow-lg",
             )}
         >
@@ -2771,7 +2774,10 @@ const ClientListContent = ({
     navCollapsed?: boolean;
     onCollapse?: () => void;
 }) => {
-    const [clients, setClients] = useState<ClientRecord[]>([]);
+    const [allClients, setClients] = useState<ClientRecord[]>([]);
+    const { user: viewer } = useAuthUser();
+    // Private/test clients (private_to set) are only visible to their owner.
+    const clients = useMemo(() => filterPrivateClients(allClients, viewer?.email), [allClients, viewer?.email]);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState<ClientFilter>({ type: "tier", value: "tier-0" });
     const [modal, setModal] = useState<{ mode: "new" } | { mode: "edit"; client: ClientRecord } | null>(null);
@@ -2907,7 +2913,7 @@ const ClientListContent = ({
                                     icon={Users01}
                                     photo={teamPhoto(am)}
                                     label={am}
-                                    count={clients.filter((c) => c.am.trim() === am).length}
+                                    count={clients.filter((c) => c.am.trim() === am && !c.private_to).length}
                                     onClick={() => setFilter({ type: "am", value: am })}
                                 />
                             ))}
@@ -2924,7 +2930,7 @@ const ClientListContent = ({
                                     icon={Edit01}
                                     photo={teamPhoto(ma)}
                                     label={ma}
-                                    count={clients.filter((c) => (c.marketing_assistant ?? "").trim() === ma).length}
+                                    count={clients.filter((c) => (c.marketing_assistant ?? "").trim() === ma && !c.private_to).length}
                                     onClick={() => setFilter({ type: "ma", value: ma })}
                                 />
                             ))}
@@ -2940,7 +2946,10 @@ const ClientListContent = ({
                     <div>
                         <h1 className="text-md font-semibold text-primary">{headerLabel}</h1>
                         <p className="text-sm text-tertiary">
-                            {loading ? "Loading…" : `Total ${filtered.length} ${filtered.length === 1 ? "client" : "clients"}`}
+                            {/* Private/template clients show as cards but never count as clients. */}
+                            {loading
+                                ? "Loading…"
+                                : `Total ${filtered.filter((c) => !c.private_to).length} ${filtered.filter((c) => !c.private_to).length === 1 ? "client" : "clients"}`}
                             {editing && " · editing"}
                         </p>
                     </div>
@@ -3035,7 +3044,7 @@ const ClientListContent = ({
                                 <t.icon className="size-4" aria-hidden="true" />
                                 {t.label}
                                 <span className={cx("text-xs tabular-nums", active ? "text-white/70" : "text-quaternary")}>
-                                    {clients.filter((c) => c.tier === t.id).length}
+                                    {clients.filter((c) => c.tier === t.id && !c.private_to).length}
                                 </span>
                             </button>
                         );

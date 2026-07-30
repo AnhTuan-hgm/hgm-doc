@@ -62,6 +62,16 @@ export interface ClientRecord {
     web_project?: string; // website project name (set = Web Team has it in flight)
     web_manager?: string; // Web Team member managing that project
     marketing_assistant?: string; // MA paired with the AM on this client
+    /** When set, only this team email sees the client anywhere in the UI
+        (private/test clients — e.g. HGM TEST). See filterPrivateClients(). */
+    private_to?: string | null;
+}
+
+/** Hide private clients (private_to set) from everyone except that email.
+ *  Apply wherever the clients roster is listed (Client List, /home, …). */
+export function filterPrivateClients<T extends { private_to?: string | null }>(rows: T[], viewerEmail?: string | null): T[] {
+    const email = (viewerEmail ?? "").trim().toLowerCase();
+    return rows.filter((r) => !r.private_to || r.private_to.trim().toLowerCase() === email);
 }
 
 /** An entry in the private Prompt & Pattern Library (/prompt-library). */
