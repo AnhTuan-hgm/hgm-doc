@@ -1,6 +1,7 @@
 import { type ChangeEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { AlertCircle, ArrowLeft, ArrowRight, Check, Home02, InfoCircle, Mail01, Settings01, Star01, Users01 } from "@untitledui/icons";
+import { AlertCircle, ArrowLeft, ArrowRight, Check, Home02, InfoCircle, Mail01, Microphone01, Plus, Settings01, Star01, Users01, VideoRecorder, XClose } from "@untitledui/icons";
+import { MediaAnswer, type MediaKind, RecordingPlayer } from "@/components/application/media-answer";
 import { supabase } from "@/lib/supabase";
 import { cx } from "@/utils/cx";
 
@@ -30,7 +31,50 @@ type Question = {
     upload?: boolean;
     /** Renders two inputs (username + password, stored as {field}__user / {field}__pass) plus a trust note. */
     credentials?: boolean;
+    /** Puts a platform picker above the login fields — chips for the common choices plus
+        an "Other" free-text escape hatch — so "which system" and "the login for it" are
+        one screen instead of two. The pick keeps its own field key (e.g. domainPlatform),
+        so answers written before the two questions were merged still read back. */
+    platform?: { field: string; label: string; options: string[]; otherPlaceholder?: string };
+    /** Turns the answer into a repeatable set of rows instead of one free-text blob.
+        For "list your top 4–6…" questions, a single textarea makes the host invent a
+        format and leaves us parsing prose. Rows are stored as plain lines of text, so
+        old free-text answers still read back and downstream consumers are unaffected. */
+    list?: { itemPlaceholder: string; linkPlaceholder?: string; addLabel?: string; rows?: number };
 };
+
+/** One row of a list answer: a name plus an optional link. */
+type ListRow = { text: string; link: string };
+
+const URL_RE = /(https?:\/\/\S+|www\.\S+)/i;
+
+/** Lines → rows. Handles both the "Name — link" we write and whatever a host typed
+    before this question became a list (bullets, numbering and blank lines included). */
+const parseRows = (value: string, min: number): ListRow[] => {
+    const rows = value
+        .split("\n")
+        .map((l) => l.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, "").trim())
+        .filter(Boolean)
+        .map((line) => {
+            const [, sep] = line.split(/\s+—\s+/);
+            if (sep !== undefined) {
+                const i = line.indexOf(" — ");
+                return { text: line.slice(0, i).trim(), link: line.slice(i + 3).trim() };
+            }
+            const m = line.match(URL_RE);
+            if (m && m.index !== undefined) return { text: line.slice(0, m.index).trim(), link: m[0].trim() };
+            return { text: line, link: "" };
+        });
+    while (rows.length < min) rows.push({ text: "", link: "" });
+    return rows;
+};
+
+/** Rows → lines. Empty rows are dropped so trailing blanks never reach the answer. */
+const serializeRows = (rows: ListRow[]) =>
+    rows
+        .filter((r) => r.text.trim() || r.link.trim())
+        .map((r) => (r.link.trim() ? `${r.text.trim()} — ${r.link.trim()}` : r.text.trim()))
+        .join("\n");
 type SectionDef = { id: string; title: string; subtitle: string; icon: typeof Mail01; intro?: string; questions: Question[] };
 
 const SECTIONS: SectionDef[] = [
@@ -113,10 +157,33 @@ const SECTIONS: SectionDef[] = [
             { field: "tiktokLogin", label: "TikTok Login", hint: "(If applicable)", credentials: true },
             { field: "pricelabsLogin", label: "PriceLabs Login", hint: "(If applicable)", credentials: true },
             { field: "stayfiLogin", label: "StayFi Login", hint: "(If applicable)", credentials: true },
-            { field: "pms", label: "Your Property Management System (PMS)", hint: "E.g. Guesty, Hostaway, Hospitable.", required: true },
+            {
+                field: "pmsLogin",
+                label: "Your Property Management System (PMS)",
+                hint: "Your booking system, and the login we use to connect calendar, rates and availability to the new website.",
+                required: true,
+                credentials: true,
+                platform: {
+                    field: "pms",
+                    label: "Which PMS do you use?",
+                    options: ["Guesty", "Hostaway", "Hospitable", "OwnerRez", "Lodgify", "Streamline", "No PMS"],
+                    otherPlaceholder: "Name your PMS",
+                },
+            },
             { field: "airbnbUrl", label: "Link to Your Airbnb Profile", required: true, placeholder: "https://airbnb.com/…" },
-            { field: "domainPlatform", label: "Domain Host Platform", hint: "E.g. GoDaddy, Namecheap, Squarespace, etc.", required: true },
-            { field: "domainLogin", label: "Domain Host Login", hint: "Used for DNS configuration and technical setup.", required: true, credentials: true },
+            {
+                field: "domainLogin",
+                label: "Domain Host",
+                hint: "Where your domain is registered, and the login we use for DNS configuration and technical setup.",
+                required: true,
+                credentials: true,
+                platform: {
+                    field: "domainPlatform",
+                    label: "Where is your domain registered?",
+                    options: ["GoDaddy", "Namecheap", "Squarespace", "Wix", "Cloudflare", "Google Domains", "Hostinger"],
+                    otherPlaceholder: "Name your domain host",
+                },
+            },
             {
                 field: "businessAddress",
                 label: "Business Address",
@@ -144,14 +211,14 @@ const SECTIONS: SectionDef[] = [
                 label: "Local Favorites — Restaurants & Cafés",
                 hint: "List your top 4–6 go-to recommendations. If possible, include a link to each to ensure accuracy.",
                 required: true,
-                long: true,
+                list: { itemPlaceholder: "Restaurant or café name", linkPlaceholder: "Link (optional)", addLabel: "Add another", rows: 4 },
             },
             {
                 field: "favoritesActivities",
                 label: "Local Favorites — Activities & Attractions",
                 hint: "List your top 4–6 go-to recommendations. If possible, include a link to each to ensure accuracy.",
                 required: true,
-                long: true,
+                list: { itemPlaceholder: "Activity or attraction", linkPlaceholder: "Link (optional)", addLabel: "Add another", rows: 4 },
             },
             { field: "guestContactEmail", label: "Guest Contact Email", email: true, placeholder: "guests@yourbusiness.com" },
         ],
@@ -168,7 +235,7 @@ const SECTIONS: SectionDef[] = [
                 label: "Email addresses to add to our Google Chat group",
                 hint: "Please list the email addresses of any team members who should be involved in ongoing communication, updates, or approvals.",
                 required: true,
-                long: true,
+                list: { itemPlaceholder: "name@company.com", addLabel: "Add another person", rows: 3 },
             },
             {
                 field: "decisionMakers",
@@ -209,25 +276,95 @@ const stepIndexOfQuestion = (num: number) => num;
 export interface ClientOnboardingData {
     answers: Record<string, string>;
     submittedAt?: string;
+    /** Field key of the question the host was last on, so "Continue the form" resumes
+        there instead of restarting at question 1. Stored as the field name rather than
+        a step index so adding or reordering questions can't resume on the wrong screen. */
+    lastField?: string;
 }
 
 const mergeData = (partial?: Partial<ClientOnboardingData> | null): ClientOnboardingData => ({
     answers: { ...(partial?.answers ?? {}) },
     submittedAt: partial?.submittedAt,
+    lastField: partial?.lastField,
 });
+
+/** Which questions offer a recorded answer: the long narrative ones, where the
+    host is being asked for paragraphs rather than a fact. Short factual fields
+    (email, URLs, logins) stay typed. */
+const canRecordAnswer = (q: Question) => !!q.long && !q.credentials && !q.list;
+
+/** A recorded answer satisfies a question just as a typed one does. */
+const hasMedia = (q: Question, data: ClientOnboardingData) => !!(data.answers[`${q.field}__media`] ?? "").trim();
 
 const isAnswered = (q: Question, data: ClientOnboardingData) =>
     q.credentials
-        ? !!((data.answers[`${q.field}__user`] ?? "").trim() || (data.answers[`${q.field}__pass`] ?? "").trim())
-        : !!(data.answers[q.field] ?? "").trim();
+        ? !!(
+              (data.answers[`${q.field}__user`] ?? "").trim() ||
+              (data.answers[`${q.field}__pass`] ?? "").trim() ||
+              (q.platform && (data.answers[q.platform.field] ?? "").trim())
+          )
+        : !!(data.answers[q.field] ?? "").trim() || hasMedia(q, data);
 
 const DEFAULT_DATA: ClientOnboardingData = { answers: {} };
+
+/**
+ * Where a returning host picks back up. Prefers the question they were last on
+ * (matched by field name, so a reordered questionnaire can't land them on the
+ * wrong screen), then the first unanswered question, then question 1.
+ */
+const resumeStepIndex = (data: ClientOnboardingData) => {
+    if (data.lastField) {
+        const i = STEPS.findIndex((s) => s.kind === "question" && s.q.field === data.lastField);
+        if (i > 0) return i;
+    }
+    const firstGap = STEPS.findIndex((s) => s.kind === "question" && !isAnswered(s.q, data));
+    return firstGap > 0 ? firstGap : 1;
+};
 
 /** Progress summary for the dashboard's Onboarding Form card. */
 export const clientOnboardingProgress = (partial?: Partial<ClientOnboardingData> | null) => {
     const data = mergeData(partial);
     const answered = QUESTION_STEPS.filter(({ q }) => isAnswered(q, data)).length;
     return { answered, total: TOTAL_QUESTIONS, submittedAt: data.submittedAt };
+};
+
+export type OnboardingAnswerLine = { text: string; secret?: boolean };
+export type OnboardingAnswerRow = { field: string; label: string; lines: OnboardingAnswerLine[]; mediaPath: string; mediaKind: MediaKind | "" };
+export type OnboardingAnswerSection = { id: string; title: string; rows: OnboardingAnswerRow[] };
+
+/**
+ * Every answer, grouped by section — so the dashboard can show the filled-in form
+ * inline instead of making the reader open the review screen. Built from the same
+ * SECTIONS definition the form renders from, so a question added here can never go
+ * missing there. Password lines are flagged `secret` so the caller can mask them.
+ */
+export const clientOnboardingAnswers = (partial?: Partial<ClientOnboardingData> | null): OnboardingAnswerSection[] => {
+    const data = mergeData(partial);
+    return SECTIONS.map((s) => ({
+        id: s.id,
+        title: s.title,
+        rows: s.questions.map((q) => {
+            const lines: OnboardingAnswerLine[] = [];
+            if (q.credentials) {
+                const platform = q.platform ? (data.answers[q.platform.field] ?? "").trim() : "";
+                const user = (data.answers[`${q.field}__user`] ?? "").trim();
+                const pass = (data.answers[`${q.field}__pass`] ?? "").trim();
+                if (platform) lines.push({ text: platform });
+                if (user) lines.push({ text: `Username: ${user}` });
+                if (pass) lines.push({ text: pass, secret: true });
+            } else {
+                const v = (data.answers[q.field] ?? "").trim();
+                if (v) v.split("\n").forEach((t) => lines.push({ text: t }));
+            }
+            return {
+                field: q.field,
+                label: q.label,
+                lines,
+                mediaPath: (data.answers[`${q.field}__media`] ?? "").trim(),
+                mediaKind: ((data.answers[`${q.field}__mediaKind`] ?? "") as MediaKind | ""),
+            };
+        }),
+    }));
 };
 
 /** Read the client's row, provisioning it on first visit (mirrors ensureHostOnboardingForm). */
@@ -275,13 +412,18 @@ function validateStep(step: Step, data: ClientOnboardingData): string | null {
     if (step.kind !== "question") return null;
     if (step.q.credentials) {
         if (!step.q.required) return null;
+        // Merged platform+login screens: the platform pick was its own required
+        // question before the merge, so it stays required here.
+        if (step.q.platform && !(data.answers[step.q.platform.field] ?? "").trim()) return "Please pick one";
         const user = (data.answers[`${step.q.field}__user`] ?? "").trim();
         const pass = (data.answers[`${step.q.field}__pass`] ?? "").trim();
         if (!user || !pass) return "Please fill in both the username and password";
         return null;
     }
     const v = (data.answers[step.q.field] ?? "").trim();
-    if (step.q.required && !v) return "Please fill this in";
+    // A recording counts: required questions can be answered by voice or video.
+    if (step.q.list && step.q.required && !v) return "Please add at least one";
+    if (step.q.required && !v && !hasMedia(step.q, data)) return "Please fill this in, or record your answer";
     if (step.q.email && v && !/^\S+@\S+\.\S+$/.test(v)) return "Hmm… that email doesn't look right";
     return null;
 }
@@ -317,7 +459,21 @@ const ErrorShake = ({ msg }: { msg: string }) => (
     </motion.div>
 );
 
-const TextQuestion = ({ q, value, onChange }: { q: Question; value: string; onChange: (field: string, value: string) => void }) => {
+const TextQuestion = ({
+    q,
+    value,
+    onChange,
+    slug,
+    mediaPath,
+    mediaKind,
+}: {
+    q: Question;
+    value: string;
+    onChange: (field: string, value: string) => void;
+    slug?: string;
+    mediaPath?: string;
+    mediaKind?: MediaKind | "";
+}) => {
     const placeholder = q.placeholder ?? "Type your answer here…";
     const cls = cx(underlineCls, "mt-8 text-xl font-medium md:text-display-xs");
     if (q.long) {
@@ -334,6 +490,21 @@ const TextQuestion = ({ q, value, onChange }: { q: Question; value: string; onCh
                 <p className="mt-2 text-xs text-tertiary">
                     <Kbd>Cmd/Ctrl + Enter ↵</Kbd> to continue
                 </p>
+                {/* Long narrative questions accept a spoken answer too — talking is far
+                    easier than typing several paragraphs, and it's these answers that
+                    feed the Master Brand Document. Typing still works exactly as before. */}
+                {canRecordAnswer(q) && (
+                    <MediaAnswer
+                        slug={slug}
+                        field={q.field}
+                        path={mediaPath ?? ""}
+                        kind={mediaKind ?? ""}
+                        onChange={(p, k) => {
+                            onChange(`${q.field}__media`, p);
+                            onChange(`${q.field}__mediaKind`, k);
+                        }}
+                    />
+                )}
             </div>
         );
     }
@@ -362,21 +533,171 @@ const SafeNote = () => (
     </div>
 );
 
-/** Two-field login question — username + password stored as separate answers. */
+/**
+ * Platform picker — one tap for the common choices, free text for anything else.
+ * The value is stored as a plain string in the platform's own field, so a name
+ * typed before the chips existed simply reads back as the "Other" selection.
+ */
+const PlatformChips = ({ platform, value, onChange }: { platform: NonNullable<Question["platform"]>; value: string; onChange: (v: string) => void }) => {
+    const isPreset = platform.options.includes(value);
+    // Anything non-empty that isn't a preset is a custom answer — keep Other open on it.
+    const [otherOpen, setOtherOpen] = useState(!!value && !isPreset);
+
+    return (
+        <div className="block">
+            <span className="text-xs font-semibold tracking-wide text-quaternary uppercase">{platform.label}</span>
+            <div className="mt-3 flex flex-wrap gap-2">
+                {platform.options.map((opt) => {
+                    const active = value === opt;
+                    return (
+                        <button
+                            key={opt}
+                            type="button"
+                            onClick={() => {
+                                setOtherOpen(false);
+                                onChange(active ? "" : opt);
+                            }}
+                            className={cx(
+                                "rounded-full px-4 py-2 text-sm font-medium transition duration-100 ease-linear",
+                                active
+                                    ? "bg-brand-solid text-white"
+                                    : "bg-primary text-secondary ring-1 ring-secondary hover:bg-secondary hover:text-primary",
+                            )}
+                        >
+                            {opt}
+                        </button>
+                    );
+                })}
+                <button
+                    type="button"
+                    onClick={() => {
+                        setOtherOpen(true);
+                        if (isPreset) onChange("");
+                    }}
+                    className={cx(
+                        "rounded-full px-4 py-2 text-sm font-medium transition duration-100 ease-linear",
+                        otherOpen && !isPreset
+                            ? "bg-brand-solid text-white"
+                            : "bg-primary text-secondary ring-1 ring-secondary hover:bg-secondary hover:text-primary",
+                    )}
+                >
+                    Other
+                </button>
+            </div>
+            {otherOpen && !isPreset && (
+                <input
+                    autoFocus
+                    type="text"
+                    placeholder={platform.otherPlaceholder ?? "Type it here"}
+                    value={value}
+                    onChange={(e) => onChange(e.target.value)}
+                    className={cx(underlineCls, "mt-4 text-lg font-medium")}
+                />
+            )}
+        </div>
+    );
+};
+
+/**
+ * Repeatable-row answer. One row per recommendation, with an optional link
+ * beside it, so the host fills in blanks rather than inventing a format — and
+ * the team gets one item per line instead of a paragraph to unpick.
+ */
+const ListQuestion = ({ q, value, onChange }: { q: Question; value: string; onChange: (field: string, value: string) => void }) => {
+    const cfg = q.list!;
+    const minRows = cfg.rows ?? 3;
+    // Rows live in local state so a half-typed row stays on screen; serialization
+    // drops empty rows, which would otherwise make them vanish mid-typing.
+    const [rows, setRows] = useState<ListRow[]>(() => parseRows(value, minRows));
+
+    const push = (next: ListRow[]) => {
+        setRows(next);
+        onChange(q.field, serializeRows(next));
+    };
+    const setAt = (i: number, patch: Partial<ListRow>) => push(rows.map((r, n) => (n === i ? { ...r, ...patch } : r)));
+    const removeAt = (i: number) => push(rows.filter((_, n) => n !== i));
+    const filled = rows.filter((r) => r.text.trim() || r.link.trim()).length;
+
+    return (
+        <div className="mt-8 flex max-w-xl flex-col gap-2.5">
+            {rows.map((row, i) => (
+                <div key={i} className="flex items-center gap-2">
+                    <span className="w-5 shrink-0 text-sm text-quaternary tabular-nums">{i + 1}.</span>
+                    <input
+                        {...(i === 0 ? { "data-step-autofocus": true } : {})}
+                        type="text"
+                        placeholder={cfg.itemPlaceholder}
+                        value={row.text}
+                        onChange={(e) => setAt(i, { text: e.target.value })}
+                        onKeyDown={(e) => {
+                            // Enter walks down the list instead of skipping the question.
+                            if (e.key === "Enter" && !e.metaKey && !e.ctrlKey) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                if (i === rows.length - 1) setRows([...rows, { text: "", link: "" }]);
+                            }
+                        }}
+                        className={cx(underlineCls, "flex-1 text-lg font-medium")}
+                    />
+                    {cfg.linkPlaceholder && (
+                        <input
+                            type="url"
+                            inputMode="url"
+                            placeholder={cfg.linkPlaceholder}
+                            value={row.link}
+                            onChange={(e) => setAt(i, { link: e.target.value })}
+                            className={cx(underlineCls, "w-[38%] shrink-0 text-sm")}
+                        />
+                    )}
+                    <button
+                        type="button"
+                        onClick={() => removeAt(i)}
+                        title="Remove"
+                        aria-label={`Remove row ${i + 1}`}
+                        className={cx(
+                            "flex size-8 shrink-0 items-center justify-center rounded-lg text-fg-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-error-primary",
+                            rows.length <= 1 && "invisible",
+                        )}
+                    >
+                        <XClose className="size-4" aria-hidden="true" />
+                    </button>
+                </div>
+            ))}
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-2">
+                <button
+                    type="button"
+                    onClick={() => setRows([...rows, { text: "", link: "" }])}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3.5 py-2 text-sm font-medium text-secondary ring-1 ring-secondary transition duration-100 ease-linear hover:bg-secondary hover:text-primary"
+                >
+                    <Plus className="size-4 text-fg-quaternary" aria-hidden="true" />
+                    {cfg.addLabel ?? "Add another"}
+                </button>
+                <span className="text-xs text-quaternary">
+                    {filled} added · <Kbd>Enter ↵</Kbd> next row · <Kbd>Cmd/Ctrl + Enter ↵</Kbd> to continue
+                </span>
+            </div>
+        </div>
+    );
+};
+
+/** Login question — optional platform picker, then username + password stored as separate answers. */
 const CredentialsQuestion = ({
     q,
     user,
     pass,
+    platformValue,
     onChange,
 }: {
     q: Question;
     user: string;
     pass: string;
+    platformValue: string;
     onChange: (field: string, value: string) => void;
 }) => {
     const cls = cx(underlineCls, "mt-2 text-xl font-medium md:text-display-xs");
     return (
         <div className="mt-8 flex max-w-xl flex-col gap-7">
+            {q.platform && <PlatformChips platform={q.platform} value={platformValue} onChange={(v) => onChange(q.platform!.field, v)} />}
             <label className="block">
                 <span className="text-xs font-semibold tracking-wide text-quaternary uppercase">Username or email</span>
                 <input data-step-autofocus type="text" placeholder="Username" value={user} onChange={(e) => onChange(`${q.field}__user`, e.target.value)} className={cls} />
@@ -386,6 +707,38 @@ const CredentialsQuestion = ({
                 <input type="text" placeholder="Password" value={pass} onChange={(e) => onChange(`${q.field}__pass`, e.target.value)} className={cls} />
             </label>
             <SafeNote />
+        </div>
+    );
+};
+
+/** Playback of a recorded answer on the review page. The bucket is private, so
+    the signed URL is resolved per render rather than stored with the answer. */
+const RecordedAnswer = ({ path, kind }: { path: string; kind: MediaKind | "" }) => {
+    const [url, setUrl] = useState("");
+    useEffect(() => {
+        let live = true;
+        supabase.storage
+            .from("recordings")
+            .createSignedUrl(path, 60 * 60)
+            .then(({ data }) => {
+                if (live && data?.signedUrl) setUrl(data.signedUrl);
+            });
+        return () => {
+            live = false;
+        };
+    }, [path]);
+
+    return (
+        <div className="mt-2 flex flex-col gap-2">
+            <p className="flex items-center gap-1.5 text-xs font-medium text-tertiary">
+                {kind === "video" ? <VideoRecorder className="size-3.5" aria-hidden="true" /> : <Microphone01 className="size-3.5" aria-hidden="true" />}
+                {kind === "video" ? "Video answer" : "Voice answer"}
+            </p>
+            {!url ? (
+                <p className="text-xs text-quaternary">Loading…</p>
+            ) : (
+                <RecordingPlayer src={url} kind={kind} className={kind === "video" ? "aspect-video w-full max-w-md rounded-lg bg-secondary" : "w-full max-w-md"} />
+            )}
         </div>
     );
 };
@@ -436,6 +789,7 @@ const ReviewScreen = ({
                                 const num = questionNum;
                                 const v = q.credentials
                                     ? [
+                                          q.platform && (data.answers[q.platform.field] ?? "").trim() && (data.answers[q.platform.field] ?? "").trim(),
                                           (data.answers[`${q.field}__user`] ?? "").trim() && `Username: ${(data.answers[`${q.field}__user`] ?? "").trim()}`,
                                           (data.answers[`${q.field}__pass`] ?? "").trim() && `Password: ${(data.answers[`${q.field}__pass`] ?? "").trim()}`,
                                       ]
@@ -454,11 +808,14 @@ const ReviewScreen = ({
                                                 Edit
                                             </button>
                                         </div>
-                                        {v ? (
-                                            <p className="mt-1.5 text-sm whitespace-pre-wrap text-tertiary">{v}</p>
-                                        ) : (
-                                            <p className="mt-1.5 text-sm italic text-quaternary">Not answered yet.</p>
+                                        {v && <p className="mt-1.5 text-sm whitespace-pre-wrap text-tertiary">{v}</p>}
+                                        {hasMedia(q, data) && (
+                                            <RecordedAnswer
+                                                path={data.answers[`${q.field}__media`] ?? ""}
+                                                kind={(data.answers[`${q.field}__mediaKind`] as MediaKind | "") ?? ""}
+                                            />
                                         )}
+                                        {!v && !hasMedia(q, data) && <p className="mt-1.5 text-sm italic text-quaternary">Not answered yet.</p>}
                                     </div>
                                 );
                             })}
@@ -483,9 +840,27 @@ export interface ClientOnboardingFormPageProps {
     slug?: string;
     initialClientName?: string;
     initialData?: Partial<ClientOnboardingData> | null;
+    /** Rendered inside the dashboard's form modal rather than as a standalone page:
+        fills its container instead of the viewport. The client's own shared link
+        (/{client}-onboarding) always renders full-page. */
+    embedded?: boolean;
+    /** Shown as a close control when embedded. */
+    onClose?: () => void;
+    /** Open directly on this question's field instead of resuming where they left off.
+        Used by the dashboard's per-answer Edit control. Takes precedence over the
+        submitted-goes-to-review rule: someone who clicked Edit on a specific answer
+        wants that question, not the summary. */
+    startAtField?: string;
 }
 
-export const ClientOnboardingFormPage = ({ slug, initialClientName = "", initialData }: ClientOnboardingFormPageProps) => {
+export const ClientOnboardingFormPage = ({
+    slug,
+    initialClientName = "",
+    initialData,
+    embedded = false,
+    onClose,
+    startAtField,
+}: ClientOnboardingFormPageProps) => {
     const isTemplate = !slug;
     const [data, setData] = useState<ClientOnboardingData>(() => mergeData(initialData));
     const hydratedRef = useRef(false);
@@ -494,14 +869,26 @@ export const ClientOnboardingFormPage = ({ slug, initialClientName = "", initial
 
     // Client copies open straight on question 1 (welcome stays reachable via Back;
     // the template still opens on it so the team can preview the intro).
-    const [[stepIndex, direction], setStep] = useState<[number, 1 | -1]>(() =>
-        alreadySubmittedOnLoad.current ? [THANKYOU_INDEX, 1] : [slug ? 1 : 0, 1],
-    );
+    const [[stepIndex, direction], setStep] = useState<[number, 1 | -1]>(() => {
+        const target = startAtField ? STEPS.findIndex((s) => s.kind === "question" && s.q.field === startAtField) : -1;
+        if (target > 0) return [target, 1];
+        return alreadySubmittedOnLoad.current ? [THANKYOU_INDEX, 1] : [slug ? resumeStepIndex(data) : 0, 1];
+    });
     const [error, setError] = useState<{ msg: string; nonce: number } | null>(null);
     const [submitState, setSubmitState] = useState<"idle" | "saving" | "error">("idle");
-    const [showReview, setShowReview] = useState(alreadySubmittedOnLoad.current);
+    const [showReview, setShowReview] = useState(alreadySubmittedOnLoad.current && !startAtField);
     const [editingFromReview, setEditingFromReview] = useState(false);
     const step = STEPS[stepIndex];
+
+    /* Remember the question they're on so "Continue the form" resumes here. Folded
+       into `data` so it rides along on the existing debounced autosave rather than
+       issuing a second write per step. */
+    useEffect(() => {
+        if (!slug) return;
+        const current = STEPS[stepIndex];
+        if (current?.kind !== "question") return;
+        setData((d) => (d.lastField === current.q.field ? d : { ...d, lastField: current.q.field }));
+    }, [stepIndex, slug]);
 
     /* Autosave — debounced, client copies only. */
     useEffect(() => {
@@ -570,6 +957,36 @@ export const ClientOnboardingFormPage = ({ slug, initialClientName = "", initial
         setError(null);
         setStep([stepIndex - 1, -1]);
     };
+    const [savingClose, setSavingClose] = useState(false);
+
+    /**
+     * Write immediately rather than waiting on the 900ms autosave debounce.
+     * Closing the modal straight after typing would otherwise drop the last
+     * keystrokes — the row would still hold the previous answer.
+     */
+    const saveNow = async () => {
+        if (!slug) return;
+        const { error: dbError } = await supabase.from("client_onboarding_pages").update({ data }).eq("slug", slug);
+        if (dbError) throw dbError;
+    };
+
+    /** Save & close: validate this question like OK does, flush, then hand back. */
+    const saveAndClose = async () => {
+        const msg = validateStep(step, data);
+        if (msg) {
+            setError((er) => ({ msg, nonce: (er?.nonce ?? 0) + 1 }));
+            return;
+        }
+        setSavingClose(true);
+        try {
+            await saveNow();
+            onClose?.();
+        } catch {
+            setSavingClose(false);
+            setError((er) => ({ msg: "Couldn't save — check your connection and try again.", nonce: (er?.nonce ?? 0) + 1 }));
+        }
+    };
+
     const goNext = () => {
         if (step.kind === "thankyou") return;
         const msg = validateStep(step, data);
@@ -656,7 +1073,17 @@ export const ClientOnboardingFormPage = ({ slug, initialClientName = "", initial
     const progressPct = showReview ? 100 : step.kind === "welcome" ? 0 : step.kind === "question" ? (step.num / TOTAL_QUESTIONS) * 100 : 100;
 
     return (
-        <main className="relative flex h-dvh min-h-0 min-w-0 flex-col overflow-hidden bg-primary">
+        <main className={cx("relative flex min-h-0 min-w-0 flex-col overflow-hidden bg-primary", embedded ? "h-full rounded-2xl" : "h-dvh")}>
+            {embedded && onClose && (
+                <button
+                    type="button"
+                    onClick={() => void saveNow().catch(() => {}).then(() => onClose())}
+                    title="Close"
+                    className="absolute top-2.5 right-3 z-30 flex size-9 items-center justify-center rounded-lg text-fg-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-fg-secondary"
+                >
+                    <XClose className="size-5" aria-hidden="true" />
+                </button>
+            )}
             {/* ── Top bar — title, counter, slim progress ── */}
             <header className="absolute inset-x-0 top-0 z-20 bg-primary">
                 <div className="flex items-center justify-between gap-3 py-3 pr-16 pl-5 md:pl-8">
@@ -780,10 +1207,20 @@ export const ClientOnboardingFormPage = ({ slug, initialClientName = "", initial
                                             q={step.q}
                                             user={data.answers[`${step.q.field}__user`] ?? ""}
                                             pass={data.answers[`${step.q.field}__pass`] ?? ""}
+                                            platformValue={step.q.platform ? (data.answers[step.q.platform.field] ?? "") : ""}
                                             onChange={onText}
                                         />
+                                    ) : step.q.list ? (
+                                        <ListQuestion q={step.q} value={data.answers[step.q.field] ?? ""} onChange={onText} />
                                     ) : (
-                                        <TextQuestion q={step.q} value={data.answers[step.q.field] ?? ""} onChange={onText} />
+                                        <TextQuestion
+                                            q={step.q}
+                                            value={data.answers[step.q.field] ?? ""}
+                                            onChange={onText}
+                                            slug={slug}
+                                            mediaPath={data.answers[`${step.q.field}__media`] ?? ""}
+                                            mediaKind={(data.answers[`${step.q.field}__mediaKind`] as MediaKind | "") ?? ""}
+                                        />
                                     )}
 
                                     {step.q.upload && (
@@ -810,8 +1247,20 @@ export const ClientOnboardingFormPage = ({ slug, initialClientName = "", initial
                                             {editingFromReview ? "Save" : step.num === TOTAL_QUESTIONS ? (submitState === "saving" ? "Submitting…" : "Submit") : "OK"}
                                             <Check className="size-5" strokeWidth={3} aria-hidden="true" />
                                         </button>
+                                        {embedded && onClose && step.kind === "question" && (
+                                            <button
+                                                type="button"
+                                                onClick={() => void saveAndClose()}
+                                                disabled={savingClose}
+                                                className="flex items-center gap-2 rounded-xl bg-primary px-5 py-3 text-md font-semibold text-secondary ring-1 ring-secondary transition duration-100 ease-linear hover:bg-secondary hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                                            >
+                                                {savingClose ? "Saving…" : "Save & close"}
+                                            </button>
+                                        )}
+                                        {/* On list and long questions plain Enter belongs to the field
+                                            (next row / newline), so advertise the modifier instead. */}
                                         <span className="hidden text-xs text-tertiary md:inline">
-                                            press <Kbd>Enter ↵</Kbd>
+                                            press <Kbd>{step.q.list || step.q.long ? "Cmd/Ctrl + Enter ↵" : "Enter ↵"}</Kbd>
                                         </span>
                                     </div>
                                     {submitState === "error" && <ErrorShake msg="Couldn't save — check your connection and try again." />}

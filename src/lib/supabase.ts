@@ -201,6 +201,14 @@ export interface HostOnboardingData {
     /** Optional personal-touch video intro (Loom/YouTube link or uploaded file) — never required. */
     video?: string;
     submittedAt?: string;
+    /** Field key of the question the host was last on, so "Continue the form" resumes
+        there instead of restarting at question 1. Stored as the field name rather than
+        a step index so adding or reordering questions can't resume on the wrong screen. */
+    lastField?: string;
+    /** Voice / video answers, keyed by question field. Only the storage path is kept —
+        the media itself lives in the private `recordings` bucket. A map rather than a
+        field per question so enabling recording on another question needs no migration. */
+    mediaAnswers?: Record<string, { path: string; kind: "audio" | "video" }>;
 }
 
 export interface HostOnboardingPageData {

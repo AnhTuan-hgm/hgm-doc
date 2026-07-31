@@ -11,6 +11,7 @@ import {
     ClipboardCheck,
     Copy01,
     Download01,
+    Edit01,
     FileCheck02,
     Globe01,
     HelpCircle,
@@ -34,6 +35,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useNavigate, useSearchParams } from "react-router";
 import { Bar, BarChart, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, XAxis, YAxis } from "recharts";
 import { ChartTooltipContent } from "@/components/application/charts/charts-base";
+import { RecordingPlayer } from "@/components/application/media-answer";
 import { VideoAttach, VideoEmbed } from "@/components/application/video-block";
 import { WelcomeFlowSection } from "@/components/application/welcome-flow";
 import { BadgeWithDot, BadgeWithIcon } from "@/components/base/badges/badges";
@@ -44,12 +46,18 @@ import { Instagram } from "@/components/foundations/social-icons";
 import { Reveal } from "@/components/shared-assets/reveal";
 import { useAuthUser } from "@/hooks/use-auth-user";
 import { useEditShortcuts } from "@/hooks/use-edit-shortcuts";
-import { type DashboardContent, supabase } from "@/lib/supabase";
+import { type DashboardContent, type HostOnboardingData, supabase } from "@/lib/supabase";
 import { useSuppressFloatingThemeToggle, useTheme } from "@/providers/theme-provider";
 import { compressImageFile } from "@/utils/compress-image";
 import { cx } from "@/utils/cx";
-import { ensureHostOnboardingForm, hostOnboardingProgress } from "./host-onboarding-form-page";
-import { clientOnboardingProgress, ensureClientOnboardingForm } from "./client-onboarding-form-page";
+import {
+    type ClientOnboardingData,
+    ClientOnboardingFormPage,
+    clientOnboardingAnswers,
+    clientOnboardingProgress,
+    ensureClientOnboardingForm,
+} from "./client-onboarding-form-page";
+import { HostOnboardingFormPage, ensureHostOnboardingForm, hostOnboardingProgress } from "./host-onboarding-form-page";
 
 const PASSWORD = "ANHTUAN";
 const SUPPORT_EMAIL = "anhtuan@hiddengem.media";
@@ -254,7 +262,20 @@ const StatTile = ({ label, value, change }: { label: string; value: string; chan
  * onboarding call: Foundation (the Master Document everything else reads from) feeds
  * Top of funnel (get seen) → Middle of funnel (nurture + capture) → Bottom of funnel
  * (convert to a direct booking). Module scope so the array isn't rebuilt every render. */
-type SectionId = "overview" | "intake" | "onboarding" | "foundation" | "brand" | "videos" | "comms" | "website" | "instagram" | "flow" | "chatwidget" | "ghl" | "revenue";
+type SectionId =
+    | "overview"
+    | "intake"
+    | "onboarding"
+    | "foundation"
+    | "brand"
+    | "videos"
+    | "comms"
+    | "website"
+    | "instagram"
+    | "flow"
+    | "chatwidget"
+    | "ghl"
+    | "revenue";
 
 /** Sits above the funnel groups — not a funnel stage itself, just "home" (hero + the funnel explainer). */
 const OVERVIEW_ITEM = { id: "overview" as const, label: "Overview", icon: LayoutAlt01 };
@@ -419,6 +440,104 @@ export interface ClientDashboardPageProps {
     isTemplate?: boolean;
 }
 
+/** Signed-URL playback for a recorded answer shown on the dashboard. */
+const InlineRecording = ({ path, kind }: { path: string; kind: "audio" | "video" | "" }) => {
+    const [url, setUrl] = useState("");
+    useEffect(() => {
+        let live = true;
+        supabase.storage
+            .from("recordings")
+            .createSignedUrl(path, 60 * 60)
+            .then(({ data }) => {
+                if (live && data?.signedUrl) setUrl(data.signedUrl);
+            });
+        return () => {
+            live = false;
+        };
+    }, [path]);
+    if (!url) return <p className="mt-1 text-xs text-quaternary">Loading recording…</p>;
+    return (
+        <div className="mt-2">
+            <p className="mb-1 text-xs font-medium text-tertiary">{kind === "video" ? "Video answer" : "Voice answer"}</p>
+            <RecordingPlayer src={url} kind={kind} className={kind === "video" ? "aspect-video w-full max-w-sm rounded-lg bg-primary" : "w-full max-w-sm"} />
+        </div>
+    );
+};
+
+/**
+ * The submitted Onboarding Form rendered inline, grouped by section. Reads from
+ * clientOnboardingAnswers() so it always reflects the form's own question list.
+ * Passwords stay masked behind a per-row reveal: this panel sits open on the
+ * dashboard, a weaker place to park a credential than a review screen someone
+ * had to deliberately open.
+ */
+const OnboardingAnswers = ({ data, onEdit }: { data: Partial<ClientOnboardingData>; onEdit: (field: string) => void }) => {
+    const sections = clientOnboardingAnswers(data);
+    const [shown, setShown] = useState<Record<string, boolean>>({});
+    const answered = sections.flatMap((s) => s.rows).filter((r) => r.lines.length || r.mediaPath).length;
+
+    return (
+        <div className="mt-5 border-t border-secondary pt-5">
+            <p className="text-sm font-semibold text-primary">
+                Their answers <span className="font-normal text-tertiary tabular-nums">· {answered} answered</span>
+            </p>
+            <div className="mt-4 flex flex-col gap-6">
+                {sections.map((s) => (
+                    <section key={s.id}>
+                        <p className="text-xs font-semibold tracking-wide text-brand-secondary uppercase">{s.title}</p>
+                        <dl className="mt-2.5 flex flex-col gap-2.5">
+                            {s.rows.map((row) => {
+                                const empty = !row.lines.length && !row.mediaPath;
+                                return (
+                                    <div
+                                        key={row.field}
+                                        className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-1 rounded-xl bg-secondary p-3.5"
+                                    >
+                                        <dt className="col-start-1 row-start-1 text-sm font-medium text-secondary">{row.label}</dt>
+                                        <dd className="col-span-2 col-start-1 row-start-2 min-w-0">
+                                            {empty && <span className="text-sm text-quaternary italic">Not answered</span>}
+                                            {row.lines.map((line, i) =>
+                                                line.secret && !shown[row.field] ? (
+                                                    <p key={i} className="flex items-center gap-2 text-sm text-tertiary">
+                                                        <span className="tracking-[0.2em]">••••••••</span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setShown((v) => ({ ...v, [row.field]: true }))}
+                                                            className="text-xs font-semibold text-brand-secondary transition duration-100 ease-linear hover:underline"
+                                                        >
+                                                            Show
+                                                        </button>
+                                                    </p>
+                                                ) : (
+                                                    <p key={i} className="text-sm break-words whitespace-pre-wrap text-tertiary">
+                                                        {line.text}
+                                                    </p>
+                                                ),
+                                            )}
+                                            {row.mediaPath && <InlineRecording path={row.mediaPath} kind={row.mediaKind} />}
+                                        </dd>
+                                        <button
+                                            type="button"
+                                            onClick={() => onEdit(row.field)}
+                                            title={`Edit — ${row.label}`}
+                                            aria-label={`Edit ${row.label}`}
+                                            // Always visible, not hover-revealed: this panel is read on phones and tablets
+                                            // too, where there is no hover and an opacity-0 control is simply invisible.
+                                            className="col-start-2 row-start-1 -mt-0.5 flex size-7 shrink-0 items-center justify-center justify-self-end rounded-lg text-fg-quaternary transition duration-100 ease-linear hover:bg-primary hover:text-brand-secondary"
+                                        >
+                                            <Edit01 className="size-3.5" aria-hidden="true" />
+                                        </button>
+                                    </div>
+                                );
+                            })}
+                        </dl>
+                    </section>
+                ))}
+            </div>
+        </div>
+    );
+};
+
 export const ClientDashboardPage = ({ slug, initialClientName = "", initialClientWebsite = "", initialData, isTemplate = false }: ClientDashboardPageProps) => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
@@ -524,6 +643,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                 }
                 const p = hostOnboardingProgress(answers);
                 setOnboardingInfo({ answered: p.answered, total: p.total, submittedAt: p.submittedAt });
+                setBrandData(answers as Partial<HostOnboardingData>);
                 setOnboardingStatus("ready");
             })
             .catch(failed);
@@ -562,11 +682,38 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                 }
                 const p = clientOnboardingProgress(answers);
                 setIntakeInfo({ answered: p.answered, total: p.total, submittedAt: p.submittedAt });
+                setIntakeData(answers as Partial<ClientOnboardingData>);
                 setIntakeStatus("ready");
             })
             .catch(failed);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeSection, isTemplate, intakeSlug, intakeStatus]);
+
+    /* ── Client-input forms open in a modal over the dashboard ──
+       Keeps the AM/host in context instead of navigating away to the form page and
+       back. The client's own shared link (/{client}-onboarding, -hostonboarding)
+       still renders full-page — that's what "Copy link for the client" sends.
+       The raw row data is kept so the embedded form hydrates from what we already
+       fetched for the progress card, rather than re-querying on open. */
+    const [formModal, setFormModal] = useState<null | "intake" | "brand">(null);
+    /** When the modal was opened from a specific answer's Edit control, the question to land on. */
+    const [formModalField, setFormModalField] = useState("");
+    const [intakeData, setIntakeData] = useState<Partial<ClientOnboardingData> | null>(null);
+    const [brandData, setBrandData] = useState<Partial<HostOnboardingData> | null>(null);
+
+    // Closing re-runs the progress fetch so the card reflects whatever they just answered.
+    const closeFormModal = () => {
+        const which = formModal;
+        setFormModal(null);
+        setFormModalField("");
+        if (which === "intake") {
+            intakeFetchRef.current = false;
+            setIntakeStatus("idle");
+        } else if (which === "brand") {
+            onboardingFetchRef.current = false;
+            setOnboardingStatus("idle");
+        }
+    };
 
     // Plus wizard
     const [showPlusModal, setShowPlusModal] = useState(false);
@@ -593,11 +740,11 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
 
     // Lock background scroll while a modal is open.
     useEffect(() => {
-        document.body.style.overflow = showPlusModal ? "hidden" : "";
+        document.body.style.overflow = showPlusModal || formModal ? "hidden" : "";
         return () => {
             document.body.style.overflow = "";
         };
-    }, [showPlusModal]);
+    }, [showPlusModal, formModal]);
 
     /* ── Content updaters ── */
     const patchBrand = (patch: Partial<DashboardContent["brand"]>) => setContent((c) => ({ ...c, brand: { ...c.brand, ...patch } }));
@@ -772,1561 +919,1631 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
 
     return (
         <>
-            {/* One flat container (approved template-lab layout): the grey canvas IS the
-                page — side menu + body side by side, no AppShell wrapper, no top bar.
-                bg-quaternary (not the barely-off-white bg-secondary) so the white cards
-                clearly pop — this is the client's own dashboard. */}
-            <div className="flex h-dvh min-h-0 flex-col gap-2 overflow-hidden bg-quaternary p-2 md:flex-row">
-                {/* ── Client side menu (no icon rail — client-facing) ── */}
-                <aside className="flex w-full shrink-0 flex-col overflow-hidden rounded-lg bg-primary shadow-sm md:h-full md:w-64">
-                    {/* Client identity */}
-                    <div className="flex items-center gap-3 border-b border-secondary px-4 py-4 md:px-5">
-                        <button
-                            type="button"
-                            onClick={() => logoFileRef.current?.click()}
-                            disabled={isLocked}
-                            title={isLocked ? undefined : content.logo_url ? "Replace logo" : "Upload logo"}
-                            className={cx(
-                                "group relative flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-secondary ring-1 ring-secondary",
-                                !isLocked && "cursor-pointer",
-                            )}
-                        >
-                            {content.logo_url ? (
-                                <img src={content.logo_url} alt={`${clientName || "Client"} logo`} className="size-full object-contain p-1" draggable={false} />
-                            ) : (
-                                <Image01 className="size-5 text-fg-quaternary" aria-hidden="true" />
-                            )}
-                            {!isLocked && (
-                                <span className="absolute inset-0 flex items-center justify-center bg-black/0 text-white opacity-0 transition duration-100 ease-linear group-hover:bg-black/50 group-hover:opacity-100">
-                                    <Camera01 className="size-4" aria-hidden="true" />
-                                </span>
-                            )}
-                        </button>
-                        {!isLocked && <input ref={logoFileRef} type="file" accept="image/*" className="hidden" onChange={onPickLogo} />}
-                        <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold text-primary">{clientName || "Client Name"}</p>
-                            <BadgeWithDot color={statusColor(content.status)} size="sm" type="pill-color">
-                                {content.status}
-                            </BadgeWithDot>
-                        </div>
-                    </div>
-
-                    {/* Dashboard search — client-scoped, directly under the identity block */}
-                    <div className="px-3 pt-3">
-                        <ClientSearchBar hits={searchHits} onSelect={setActiveSection} />
-                    </div>
-
-                    {/* Overview — sits above the funnel groups, not a funnel stage itself */}
-                    <div className="p-3 pb-0 md:pb-0">
-                        <button
-                            type="button"
-                            onClick={() => setActiveSection("overview")}
-                            aria-current={activeSection === "overview" ? "page" : undefined}
-                            className={cx(
-                                "flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition duration-100 ease-linear",
-                                activeSection === "overview"
-                                    ? "bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300"
-                                    : "text-secondary hover:bg-secondary hover:text-primary",
-                            )}
-                        >
-                            <OVERVIEW_ITEM.icon className="size-4 shrink-0" aria-hidden="true" />
-                            <span className="flex-1">{OVERVIEW_ITEM.label}</span>
-                        </button>
-                    </div>
-
-                    {/* Funnel groups — Foundation → Top → Middle → Bottom, the same mental model
-                    Dustin walks every client through on the onboarding call. */}
-                    <motion.nav
-                        className="flex-1 overflow-y-auto p-3 md:overflow-y-auto"
-                        initial="hidden"
-                        animate="show"
-                        variants={{ show: { transition: { staggerChildren: 0.04 } } }}
-                    >
-                        {NAV_GROUPS.map((group, gi) => (
-                            <div key={group.label} role="group" aria-labelledby={`nav-group-${group.stage}`} className="mt-3 first:mt-1">
-                                {/* Divider between funnel groups (approved template-lab layout) */}
-                                {gi > 0 && <div className="mx-1 mb-3 h-px bg-border-secondary" />}
-                                <p
-                                    id={`nav-group-${group.stage}`}
-                                    className={cx("mb-1 px-3 text-[11px] font-bold tracking-wide uppercase", FUNNEL_STAGES[group.stage].text)}
-                                >
-                                    {group.label}
-                                </p>
-                                <div className="flex flex-col gap-1">
-                                    {group.items.map((s) => (
-                                        <motion.button
-                                            key={s.id}
-                                            type="button"
-                                            onClick={() => !s.soon && setActiveSection(s.id)}
-                                            aria-current={activeSection === s.id ? "page" : undefined}
-                                            variants={{ hidden: { opacity: 0, x: -8 }, show: { opacity: 1, x: 0 } }}
-                                            className={cx(
-                                                // pl-5 indents items a step past the group label (px-3)
-                                                "flex w-full items-center gap-2.5 rounded-lg py-2.5 pr-3 pl-5 text-left text-sm font-medium transition duration-100 ease-linear",
-                                                activeSection === s.id
-                                                    ? "bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300"
-                                                    : s.soon
-                                                      ? "cursor-not-allowed text-quaternary opacity-60"
-                                                      : "text-secondary hover:bg-secondary hover:text-primary",
-                                            )}
-                                        >
-                                            <s.icon className="size-4 shrink-0" aria-hidden="true" />
-                                            <span className="flex-1">{s.label}</span>
-                                            {s.soon && <span className="text-[10px] font-semibold text-quaternary uppercase">Soon</span>}
-                                        </motion.button>
-                                    ))}
-                                </div>
-                            </div>
-                        ))}
-                    </motion.nav>
-
-                    {/* Footer — website link + appearance + background upload. Wrapped so the
-                    custom side-menu background (below) starts exactly at its top edge,
-                    whatever this block's height ends up being, instead of a fixed guess. */}
-                    <div className="relative isolate flex flex-col">
-                        {/* Custom side-menu background — optional, uploaded in edit mode below.
-                        The current solid color stays the default everywhere above the footer;
-                        the image only shows behind the footer itself. */}
-                        {content.sidebar_bg_url && (
-                            <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden="true">
-                                <img src={content.sidebar_bg_url} alt="" className="size-full object-cover object-bottom" draggable={false} />
-                                <div className="absolute inset-0 bg-gradient-to-t from-primary/30 to-primary" />
-                            </div>
-                        )}
-
-                        {/* Website link */}
-                        {websiteHref && (
-                            <div className="hidden border-t border-secondary p-4 pb-0 md:block">
-                                <Button
-                                    href={websiteHref}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    color="secondary"
-                                    size="sm"
-                                    iconTrailing={LinkExternal01}
-                                    className="w-full"
-                                >
-                                    Visit website
-                                </Button>
-                            </div>
-                        )}
-
-                        {/* Theme toggle — local to this side menu (the global floating toggle is
-                        suppressed on client-dashboard pages since it overlapped the client badge). */}
-                        <div className="flex items-center gap-3 border-t border-secondary px-5 py-3">
-                            {/* HGM logo — for signed-in team members it's a shortcut back to the
-                                internal /dashboard; for clients it's a plain, non-clickable logo. */}
-                            {isTeam ? (
+            {/* Nested containers, matching the Client List's AppShell chrome: a page
+                canvas, then one rounded "window" holding the whole dashboard, then the
+                side menu and body as separate cards inside it. The inner canvas stays
+                bg-quaternary (not the barely-off-white bg-secondary) so those white
+                cards clearly pop — this is the client's own dashboard. */}
+            <div className="flex h-dvh flex-col overflow-hidden bg-tertiary p-2.5 sm:p-3">
+                <div className="flex min-h-0 flex-1 overflow-hidden rounded-2xl shadow-xl ring-1 ring-secondary">
+                    <div className="flex min-h-0 w-full flex-col gap-2 overflow-hidden bg-quaternary p-2 md:flex-row">
+                        {/* ── Client side menu (no icon rail — client-facing) ── */}
+                        <aside className="flex w-full shrink-0 flex-col overflow-hidden rounded-lg bg-primary shadow-sm md:h-full md:w-64">
+                            {/* Client identity */}
+                            <div className="flex items-center gap-3 border-b border-secondary px-4 py-4 md:px-5">
                                 <button
                                     type="button"
-                                    onClick={() => navigate("/dashboard")}
-                                    title="Go to team dashboard"
-                                    className="shrink-0 rounded-lg transition duration-100 ease-linear hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-                                >
-                                    <img src="/hgm logo/Favicon ON LIGHT.svg" alt="HiddenGem — team dashboard" className="size-8" draggable={false} />
-                                </button>
-                            ) : (
-                                <img src="/hgm logo/Favicon ON LIGHT.svg" alt="HiddenGem" className="size-8 shrink-0" draggable={false} />
-                            )}
-                            <span className="flex-1 text-xs text-quaternary">Appearance</span>
-                            <button
-                                type="button"
-                                onClick={() => setTheme(isDark ? "light" : "dark")}
-                                title={isDark ? "Switch to light mode" : "Switch to dark mode"}
-                                className="flex size-9 items-center justify-center rounded-full border border-secondary bg-primary text-secondary transition duration-100 ease-linear hover:bg-tertiary hover:text-primary"
-                            >
-                                {isDark ? <Sun className="size-[18px]" /> : <Moon01 className="size-[18px]" />}
-                            </button>
-                        </div>
-
-                        {/* Sidebar background upload — edit mode only. The solid color above stays
-                        the default until the team sets one; clients see whatever is set. */}
-                        {!isLocked && (
-                            <div className="flex items-center justify-between gap-2 border-t border-secondary px-5 py-3">
-                                <span className="text-xs text-quaternary">Sidebar background</span>
-                                <div className="flex items-center gap-1.5">
-                                    <button
-                                        type="button"
-                                        onClick={() => sidebarBgFileRef.current?.click()}
-                                        title={content.sidebar_bg_url ? "Replace sidebar background" : "Upload sidebar background"}
-                                        className="flex size-9 items-center justify-center rounded-full border border-secondary bg-primary text-secondary transition duration-100 ease-linear hover:bg-tertiary hover:text-primary"
-                                    >
-                                        <UploadCloud02 className="size-[18px]" />
-                                    </button>
-                                    {content.sidebar_bg_url && (
-                                        <button
-                                            type="button"
-                                            onClick={() => setContent((c) => ({ ...c, sidebar_bg_url: "" }))}
-                                            title="Remove sidebar background"
-                                            className="flex size-9 items-center justify-center rounded-full border border-secondary bg-primary text-secondary transition duration-100 ease-linear hover:bg-error-primary hover:text-fg-error-primary"
-                                        >
-                                            <Trash01 className="size-[18px]" />
-                                        </button>
+                                    onClick={() => logoFileRef.current?.click()}
+                                    disabled={isLocked}
+                                    title={isLocked ? undefined : content.logo_url ? "Replace logo" : "Upload logo"}
+                                    className={cx(
+                                        "group relative flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-secondary ring-1 ring-secondary",
+                                        !isLocked && "cursor-pointer",
                                     )}
+                                >
+                                    {content.logo_url ? (
+                                        <img
+                                            src={content.logo_url}
+                                            alt={`${clientName || "Client"} logo`}
+                                            className="size-full object-contain p-1"
+                                            draggable={false}
+                                        />
+                                    ) : (
+                                        <Image01 className="size-5 text-fg-quaternary" aria-hidden="true" />
+                                    )}
+                                    {!isLocked && (
+                                        <span className="absolute inset-0 flex items-center justify-center bg-black/0 text-white opacity-0 transition duration-100 ease-linear group-hover:bg-black/50 group-hover:opacity-100">
+                                            <Camera01 className="size-4" aria-hidden="true" />
+                                        </span>
+                                    )}
+                                </button>
+                                {!isLocked && <input ref={logoFileRef} type="file" accept="image/*" className="hidden" onChange={onPickLogo} />}
+                                <div className="min-w-0">
+                                    <p className="truncate text-sm font-semibold text-primary">{clientName || "Client Name"}</p>
+                                    <BadgeWithDot color={statusColor(content.status)} size="sm" type="pill-color">
+                                        {content.status}
+                                    </BadgeWithDot>
                                 </div>
-                                <input ref={sidebarBgFileRef} type="file" accept="image/*" className="hidden" onChange={onPickSidebarBg} />
                             </div>
-                        )}
-                    </div>
-                </aside>
 
-                {/* ── Main (scrolls) ── */}
-                <div className="min-w-0 flex-1 overflow-y-auto">
-                    {/* Fluid body — the card fills the canvas. Combined with the grey canvas's
-                own p-2 (8px), md:px-6 (24px) yields a 32px gap to the side menu and the
-                right edge; zero vertical padding keeps the card's top/bottom flush with
-                the side menu's. */}
-                    <div className="flex min-h-full w-full flex-col px-4 py-4 md:px-6 md:py-0">
-                        {/* flex-1 + min-h-full wrapper: short sections still fill the canvas
-                            height, so the card's bottom edge lines up with the side menu's. */}
-                        <motion.article
-                            // rounded-lg matches the side menu's corner radius exactly.
-                            className="w-full flex-1 rounded-lg bg-primary shadow-sm ring-1 ring-secondary"
-                            initial={{ opacity: 0, y: 16 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-                        >
-                            {/* px-6 (24px) at every breakpoint — the body's content inset stays
-                                24px left and right; only the vertical rhythm changes per section. */}
-                            <div className={cx("px-6 py-8", activeSection === "flow" && !isLocked ? "md:py-10" : "md:py-12")}>
-                                {/* ── Template banner — prompts the team to spin up a client copy. ── */}
-                                {isTemplate && (
-                                    <div className="mb-8 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-brand/40 bg-brand-50 px-4 py-3 dark:bg-brand-950/30">
-                                        <div className="flex items-center gap-2.5">
-                                            <span className="inline-flex items-center rounded-full bg-brand-600 px-2.5 py-0.5 text-[11px] font-bold tracking-wide text-white uppercase">
-                                                Template
-                                            </span>
-                                            <p className="text-[13px] font-medium text-brand-800 dark:text-brand-200">
-                                                This is the master template. Create a private copy to share with a client.
-                                            </p>
-                                        </div>
-                                        <button
-                                            type="button"
-                                            onClick={handlePlusClick}
-                                            className="flex shrink-0 items-center gap-1.5 rounded-lg bg-brand-solid px-3.5 py-2 text-[13px] font-semibold text-white transition hover:opacity-90"
+                            {/* Dashboard search — client-scoped, directly under the identity block */}
+                            <div className="px-3 pt-3">
+                                <ClientSearchBar hits={searchHits} onSelect={setActiveSection} />
+                            </div>
+
+                            {/* Overview — sits above the funnel groups, not a funnel stage itself */}
+                            <div className="p-3 pb-0 md:pb-0">
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveSection("overview")}
+                                    aria-current={activeSection === "overview" ? "page" : undefined}
+                                    className={cx(
+                                        "flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition duration-100 ease-linear",
+                                        activeSection === "overview"
+                                            ? "bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300"
+                                            : "text-secondary hover:bg-secondary hover:text-primary",
+                                    )}
+                                >
+                                    <OVERVIEW_ITEM.icon className="size-4 shrink-0" aria-hidden="true" />
+                                    <span className="flex-1">{OVERVIEW_ITEM.label}</span>
+                                </button>
+                            </div>
+
+                            {/* Funnel groups — Foundation → Top → Middle → Bottom, the same mental model
+                    Dustin walks every client through on the onboarding call. */}
+                            <motion.nav
+                                className="flex-1 overflow-y-auto p-3 md:overflow-y-auto"
+                                initial="hidden"
+                                animate="show"
+                                variants={{ show: { transition: { staggerChildren: 0.04 } } }}
+                            >
+                                {NAV_GROUPS.map((group, gi) => (
+                                    <div key={group.label} role="group" aria-labelledby={`nav-group-${group.stage}`} className="mt-3 first:mt-1">
+                                        {/* Divider between funnel groups (approved template-lab layout) */}
+                                        {gi > 0 && <div className="mx-1 mb-3 h-px bg-border-secondary" />}
+                                        <p
+                                            id={`nav-group-${group.stage}`}
+                                            className={cx("mb-1 px-3 text-[11px] font-bold tracking-wide uppercase", FUNNEL_STAGES[group.stage].text)}
                                         >
-                                            <Plus className="size-4" aria-hidden="true" />
-                                            Create dashboard for the client
-                                        </button>
+                                            {group.label}
+                                        </p>
+                                        <div className="flex flex-col gap-1">
+                                            {group.items.map((s) => (
+                                                <motion.button
+                                                    key={s.id}
+                                                    type="button"
+                                                    onClick={() => !s.soon && setActiveSection(s.id)}
+                                                    aria-current={activeSection === s.id ? "page" : undefined}
+                                                    variants={{ hidden: { opacity: 0, x: -8 }, show: { opacity: 1, x: 0 } }}
+                                                    className={cx(
+                                                        // pl-5 indents items a step past the group label (px-3)
+                                                        "flex w-full items-center gap-2.5 rounded-lg py-2.5 pr-3 pl-5 text-left text-sm font-medium transition duration-100 ease-linear",
+                                                        activeSection === s.id
+                                                            ? "bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300"
+                                                            : s.soon
+                                                              ? "cursor-not-allowed text-quaternary opacity-60"
+                                                              : "text-secondary hover:bg-secondary hover:text-primary",
+                                                    )}
+                                                >
+                                                    <s.icon className="size-4 shrink-0" aria-hidden="true" />
+                                                    <span className="flex-1">{s.label}</span>
+                                                    {s.soon && <span className="text-[10px] font-semibold text-quaternary uppercase">Soon</span>}
+                                                </motion.button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+                            </motion.nav>
+
+                            {/* Footer — website link + appearance + background upload. Wrapped so the
+                    custom side-menu background (below) starts exactly at its top edge,
+                    whatever this block's height ends up being, instead of a fixed guess. */}
+                            <div className="relative isolate flex flex-col">
+                                {/* Custom side-menu background — optional, uploaded in edit mode below.
+                        The current solid color stays the default everywhere above the footer;
+                        the image only shows behind the footer itself. */}
+                                {content.sidebar_bg_url && (
+                                    <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden="true">
+                                        <img src={content.sidebar_bg_url} alt="" className="size-full object-cover object-bottom" draggable={false} />
+                                        <div className="absolute inset-0 bg-gradient-to-t from-primary/30 to-primary" />
                                     </div>
                                 )}
 
-                                {/* ── Hero (Client Overview only — the side menu carries identity elsewhere) ── */}
-                                {activeSection === "overview" && (
-                                    <>
-                                        <header className="flex flex-wrap items-center justify-between gap-4">
-                                            {/* Flat header — no logo tile (identity already lives in the side menu). */}
-                                            <div className="flex min-w-0 items-center gap-4">
-                                                <div className="min-w-0">
-                                                    <div className="flex flex-wrap items-center gap-2.5">
+                                {/* Website link */}
+                                {websiteHref && (
+                                    <div className="hidden border-t border-secondary p-4 pb-0 md:block">
+                                        <Button
+                                            href={websiteHref}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            color="secondary"
+                                            size="sm"
+                                            iconTrailing={LinkExternal01}
+                                            className="w-full"
+                                        >
+                                            Visit website
+                                        </Button>
+                                    </div>
+                                )}
+
+                                {/* Theme toggle — local to this side menu (the global floating toggle is
+                        suppressed on client-dashboard pages since it overlapped the client badge). */}
+                                <div className="flex items-center gap-3 border-t border-secondary px-5 py-3">
+                                    {/* HGM logo — for signed-in team members it's a shortcut back to the
+                                internal /dashboard; for clients it's a plain, non-clickable logo. */}
+                                    {isTeam ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => navigate("/dashboard")}
+                                            title="Go to team dashboard"
+                                            className="shrink-0 rounded-lg transition duration-100 ease-linear hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+                                        >
+                                            <img src="/hgm logo/Favicon ON LIGHT.svg" alt="HiddenGem — team dashboard" className="size-8" draggable={false} />
+                                        </button>
+                                    ) : (
+                                        <img src="/hgm logo/Favicon ON LIGHT.svg" alt="HiddenGem" className="size-8 shrink-0" draggable={false} />
+                                    )}
+                                    <span className="flex-1 text-xs text-quaternary">Appearance</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => setTheme(isDark ? "light" : "dark")}
+                                        title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+                                        className="flex size-9 items-center justify-center rounded-full border border-secondary bg-primary text-secondary transition duration-100 ease-linear hover:bg-tertiary hover:text-primary"
+                                    >
+                                        {isDark ? <Sun className="size-[18px]" /> : <Moon01 className="size-[18px]" />}
+                                    </button>
+                                </div>
+
+                                {/* Sidebar background upload — edit mode only. The solid color above stays
+                        the default until the team sets one; clients see whatever is set. */}
+                                {!isLocked && (
+                                    <div className="flex items-center justify-between gap-2 border-t border-secondary px-5 py-3">
+                                        <span className="text-xs text-quaternary">Sidebar background</span>
+                                        <div className="flex items-center gap-1.5">
+                                            <button
+                                                type="button"
+                                                onClick={() => sidebarBgFileRef.current?.click()}
+                                                title={content.sidebar_bg_url ? "Replace sidebar background" : "Upload sidebar background"}
+                                                className="flex size-9 items-center justify-center rounded-full border border-secondary bg-primary text-secondary transition duration-100 ease-linear hover:bg-tertiary hover:text-primary"
+                                            >
+                                                <UploadCloud02 className="size-[18px]" />
+                                            </button>
+                                            {content.sidebar_bg_url && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setContent((c) => ({ ...c, sidebar_bg_url: "" }))}
+                                                    title="Remove sidebar background"
+                                                    className="flex size-9 items-center justify-center rounded-full border border-secondary bg-primary text-secondary transition duration-100 ease-linear hover:bg-error-primary hover:text-fg-error-primary"
+                                                >
+                                                    <Trash01 className="size-[18px]" />
+                                                </button>
+                                            )}
+                                        </div>
+                                        <input ref={sidebarBgFileRef} type="file" accept="image/*" className="hidden" onChange={onPickSidebarBg} />
+                                    </div>
+                                )}
+                            </div>
+                        </aside>
+
+                        {/* ── Main (scrolls) ── */}
+                        <div className="min-w-0 flex-1 overflow-y-auto">
+                            {/* Fluid body — the card fills the canvas. Combined with the grey canvas's
+                own p-2 (8px), md:px-6 (24px) yields a 32px gap to the side menu and the
+                right edge; zero vertical padding keeps the card's top/bottom flush with
+                the side menu's. */}
+                            <div className="flex min-h-full w-full flex-col p-0.5 md:p-0.5">
+                                {/* flex-1 + min-h-full wrapper: short sections still fill the canvas
+                            height, so the card's bottom edge lines up with the side menu's. */}
+                                <motion.article
+                                    // rounded-lg matches the side menu's corner radius exactly.
+                                    className="w-full flex-1 rounded-lg bg-primary shadow-sm ring-1 ring-secondary"
+                                    initial={{ opacity: 0, y: 16 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+                                >
+                                    {/* Horizontal inset scales with the card (20 → 24 → 32 → 40px) rather
+                                        than sitting flat, which looked pinched once the card got wide. The
+                                        max-width is the important half: on a 2560px display the card is
+                                        ~2200px, and uncapped that ran prose to ~270 characters a line —
+                                        roughly four times a comfortable measure. Capping the content (not
+                                        the card) keeps the card full-bleed against the canvas while the
+                                        reading column stays sane. */}
+                                    <div
+                                        className={cx(
+                                            "mx-auto w-full max-w-[1240px] px-5 py-8 sm:px-6 md:px-8 lg:px-10",
+                                            activeSection === "flow" && !isLocked ? "md:py-10" : "md:py-12",
+                                        )}
+                                    >
+                                        {/* ── Template banner — prompts the team to spin up a client copy. ── */}
+                                        {isTemplate && (
+                                            <div className="mb-8 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-brand/40 bg-brand-50 px-4 py-3 dark:bg-brand-950/30">
+                                                <div className="flex items-center gap-2.5">
+                                                    <span className="inline-flex items-center rounded-full bg-brand-600 px-2.5 py-0.5 text-[11px] font-bold tracking-wide text-white uppercase">
+                                                        Template
+                                                    </span>
+                                                    <p className="text-[13px] font-medium text-brand-800 dark:text-brand-200">
+                                                        This is the master template. Create a private copy to share with a client.
+                                                    </p>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={handlePlusClick}
+                                                    className="flex shrink-0 items-center gap-1.5 rounded-lg bg-brand-solid px-3.5 py-2 text-[13px] font-semibold text-white transition hover:opacity-90"
+                                                >
+                                                    <Plus className="size-4" aria-hidden="true" />
+                                                    Create dashboard for the client
+                                                </button>
+                                            </div>
+                                        )}
+
+                                        {/* ── Hero (Client Overview only — the side menu carries identity elsewhere) ── */}
+                                        {activeSection === "overview" && (
+                                            <>
+                                                <header className="flex flex-wrap items-center justify-between gap-4">
+                                                    {/* Flat header — no logo tile (identity already lives in the side menu). */}
+                                                    <div className="flex min-w-0 items-center gap-4">
+                                                        <div className="min-w-0">
+                                                            <div className="flex flex-wrap items-center gap-2.5">
+                                                                {isLocked ? (
+                                                                    <h1 className="truncate text-display-xs font-semibold tracking-tight text-primary md:text-display-sm">
+                                                                        {clientName || "Client Name"}
+                                                                    </h1>
+                                                                ) : (
+                                                                    <input
+                                                                        type="text"
+                                                                        placeholder="Client Name"
+                                                                        value={clientName}
+                                                                        onChange={(e) => setClientName(e.target.value)}
+                                                                        className={editInput("max-w-60 text-md font-semibold")}
+                                                                    />
+                                                                )}
+                                                                <BadgeWithDot color={statusColor(content.status)} size="md" type="pill-color">
+                                                                    {content.status}
+                                                                </BadgeWithDot>
+                                                            </div>
+                                                            <p className="mt-1 text-sm text-tertiary">Your business hub — prepared by the HiddenGem Team.</p>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex items-center gap-2">
                                                         {isLocked ? (
-                                                            <h1 className="truncate text-display-xs font-semibold tracking-tight text-primary md:text-display-sm">
-                                                                {clientName || "Client Name"}
-                                                            </h1>
+                                                            websiteHref && (
+                                                                <Button
+                                                                    href={websiteHref}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    color="secondary"
+                                                                    size="sm"
+                                                                    iconTrailing={LinkExternal01}
+                                                                >
+                                                                    Visit website
+                                                                </Button>
+                                                            )
                                                         ) : (
                                                             <input
                                                                 type="text"
-                                                                placeholder="Client Name"
-                                                                value={clientName}
-                                                                onChange={(e) => setClientName(e.target.value)}
-                                                                className={editInput("max-w-60 text-md font-semibold")}
+                                                                placeholder="Client Website"
+                                                                value={clientWebsite}
+                                                                onChange={(e) => setClientWebsite(e.target.value)}
+                                                                className={editInput("max-w-52")}
                                                             />
                                                         )}
-                                                        <BadgeWithDot color={statusColor(content.status)} size="md" type="pill-color">
-                                                            {content.status}
-                                                        </BadgeWithDot>
                                                     </div>
-                                                    <p className="mt-1 text-sm text-tertiary">Your business hub — prepared by the HiddenGem Team.</p>
-                                                </div>
-                                            </div>
+                                                </header>
 
-                                            <div className="flex items-center gap-2">
-                                                {isLocked ? (
-                                                    websiteHref && (
-                                                        <Button
-                                                            href={websiteHref}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            color="secondary"
-                                                            size="sm"
-                                                            iconTrailing={LinkExternal01}
-                                                        >
-                                                            Visit website
-                                                        </Button>
-                                                    )
-                                                ) : (
-                                                    <input
-                                                        type="text"
-                                                        placeholder="Client Website"
-                                                        value={clientWebsite}
-                                                        onChange={(e) => setClientWebsite(e.target.value)}
-                                                        className={editInput("max-w-52")}
-                                                    />
+                                                {/* Edit-only hero controls: logo URL + status */}
+                                                {!isLocked && (
+                                                    <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl bg-secondary p-3">
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Logo image URL"
+                                                            value={content.logo_url}
+                                                            onChange={(e) => setContent((c) => ({ ...c, logo_url: e.target.value }))}
+                                                            className={editInput("max-w-80")}
+                                                        />
+                                                        <div className="flex items-center gap-1.5">
+                                                            {STATUS_OPTIONS.map((s) => (
+                                                                <button
+                                                                    key={s}
+                                                                    type="button"
+                                                                    onClick={() => setContent((c) => ({ ...c, status: s }))}
+                                                                    className={cx(
+                                                                        "rounded-full px-3 py-1 text-xs font-medium transition duration-100 ease-linear",
+                                                                        content.status === s
+                                                                            ? "bg-brand-solid text-white"
+                                                                            : "bg-primary text-tertiary ring-1 ring-secondary hover:text-secondary",
+                                                                    )}
+                                                                >
+                                                                    {s}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
                                                 )}
-                                            </div>
-                                        </header>
 
-                                        {/* Edit-only hero controls: logo URL + status */}
-                                        {!isLocked && (
-                                            <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl bg-secondary p-3">
-                                                <input
-                                                    type="text"
-                                                    placeholder="Logo image URL"
-                                                    value={content.logo_url}
-                                                    onChange={(e) => setContent((c) => ({ ...c, logo_url: e.target.value }))}
-                                                    className={editInput("max-w-80")}
-                                                />
-                                                <div className="flex items-center gap-1.5">
-                                                    {STATUS_OPTIONS.map((s) => (
-                                                        <button
-                                                            key={s}
-                                                            type="button"
-                                                            onClick={() => setContent((c) => ({ ...c, status: s }))}
-                                                            className={cx(
-                                                                "rounded-full px-3 py-1 text-xs font-medium transition duration-100 ease-linear",
-                                                                content.status === s
-                                                                    ? "bg-brand-solid text-white"
-                                                                    : "bg-primary text-tertiary ring-1 ring-secondary hover:text-secondary",
-                                                            )}
-                                                        >
-                                                            {s}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {/* How we grow your bookings — the same funnel Dustin walks every client
+                                                {/* How we grow your bookings — the same funnel Dustin walks every client
                         through on the onboarding call. Foundation feeds Top → Middle → Bottom;
                         clicking a card jumps straight to that stage's first section. */}
+                                                <div className="mt-10">
+                                                    {/* Left-aligned section heading + divider (approved template-lab layout) */}
+                                                    <h2 className="text-lg font-semibold tracking-wide text-brand-secondary uppercase">
+                                                        How we grow your bookings
+                                                    </h2>
+                                                    <p className="mt-2 text-md text-tertiary">
+                                                        Everything below fits one funnel — start with your Foundation, then work top to bottom.
+                                                    </p>
+                                                    <div className="mt-4 h-px bg-border-secondary" />
+                                                    <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                                                        {[
+                                                            {
+                                                                stage: "foundation" as const,
+                                                                title: "Your Master Document",
+                                                                body: "Persona, tone, FAQs, amenities — the source everything else reads from.",
+                                                            },
+                                                            {
+                                                                stage: "top" as const,
+                                                                title: "Get seen",
+                                                                body: "Your website and Instagram bring new guests in.",
+                                                            },
+                                                            {
+                                                                stage: "middle" as const,
+                                                                title: "Nurture",
+                                                                body: "Welcome emails and chat build trust and answer questions.",
+                                                            },
+                                                            {
+                                                                stage: "bottom" as const,
+                                                                title: "Convert",
+                                                                body: "GoHighLevel and your results — turning interest into direct bookings.",
+                                                            },
+                                                        ].map((card) => {
+                                                            const targetId =
+                                                                card.stage === "foundation"
+                                                                    ? "foundation"
+                                                                    : NAV_GROUPS.find((g) => g.stage === card.stage)!.items[0].id;
+                                                            return (
+                                                                <button
+                                                                    key={card.stage}
+                                                                    type="button"
+                                                                    onClick={() => setActiveSection(targetId)}
+                                                                    className="rounded-xl p-6 text-left ring-1 ring-secondary transition duration-100 ease-linear hover:ring-brand"
+                                                                >
+                                                                    <span
+                                                                        className={cx(
+                                                                            "inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold tracking-wide uppercase",
+                                                                            FUNNEL_STAGES[card.stage].bg,
+                                                                            FUNNEL_STAGES[card.stage].text,
+                                                                        )}
+                                                                    >
+                                                                        {FUNNEL_STAGES[card.stage].label}
+                                                                    </span>
+                                                                    <p className="mt-4 text-md font-semibold text-primary">{card.title}</p>
+                                                                    <p className="mt-1.5 text-sm text-tertiary">{card.body}</p>
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            </>
+                                        )}
+
+                                        {/* ── Section content (driven by the side menu) ── */}
                                         <div className="mt-10">
-                                            {/* Left-aligned section heading + divider (approved template-lab layout) */}
-                                            <h2 className="text-lg font-semibold tracking-wide text-brand-secondary uppercase">How we grow your bookings</h2>
-                                            <p className="mt-2 text-md text-tertiary">
-                                                Everything below fits one funnel — start with your Foundation, then work top to bottom.
-                                            </p>
-                                            <div className="mt-4 h-px bg-border-secondary" />
-                                            <div className="mt-6 grid gap-4 sm:grid-cols-2">
-                                                {[
-                                                    {
-                                                        stage: "foundation" as const,
-                                                        title: "Your Master Document",
-                                                        body: "Persona, tone, FAQs, amenities — the source everything else reads from.",
-                                                    },
-                                                    { stage: "top" as const, title: "Get seen", body: "Your website and Instagram bring new guests in." },
-                                                    {
-                                                        stage: "middle" as const,
-                                                        title: "Nurture",
-                                                        body: "Welcome emails and chat build trust and answer questions.",
-                                                    },
-                                                    {
-                                                        stage: "bottom" as const,
-                                                        title: "Convert",
-                                                        body: "GoHighLevel and your results — turning interest into direct bookings.",
-                                                    },
-                                                ].map((card) => {
-                                                    const targetId =
-                                                        card.stage === "foundation"
-                                                            ? "foundation"
-                                                            : NAV_GROUPS.find((g) => g.stage === card.stage)!.items[0].id;
-                                                    return (
-                                                        <button
-                                                            key={card.stage}
-                                                            type="button"
-                                                            onClick={() => setActiveSection(targetId)}
-                                                            className="rounded-xl p-6 text-left ring-1 ring-secondary transition duration-100 ease-linear hover:ring-brand"
-                                                        >
-                                                            <span
-                                                                className={cx(
-                                                                    "inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold tracking-wide uppercase",
-                                                                    FUNNEL_STAGES[card.stage].bg,
-                                                                    FUNNEL_STAGES[card.stage].text,
-                                                                )}
-                                                            >
-                                                                {FUNNEL_STAGES[card.stage].label}
-                                                            </span>
-                                                            <p className="mt-4 text-md font-semibold text-primary">{card.title}</p>
-                                                            <p className="mt-1.5 text-sm text-tertiary">{card.body}</p>
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    </>
-                                )}
-
-                                {/* ── Section content (driven by the side menu) ── */}
-                                <div className="mt-10">
-                                    <div className="min-w-0">
-                                        {activeSection === "flow" && (
-                                            <WelcomeFlowSection slug={slug} clientName={clientName} isLocked={isLocked} isTemplate={isTemplate} />
-                                        )}
-
-                                        {/* ── Client Input — the Onboarding Form (the client's FIRST form) ── */}
-                                        {activeSection === "intake" && (
-                                            <Reveal>
-                                                <SectionEyebrow stage="input" />
-                                                <SectionHeading>Onboarding Form</SectionHeading>
-                                                <p className="mt-3 text-md text-tertiary">
-                                                    The first step — your business details, goals, and the account logins we need before your Kick-Off Call.
-                                                    Completing it at least 12 hours before the call lets our team prepare a customized strategy, and it ends
-                                                    with booking your call.
-                                                </p>
-
-                                                <div className="mt-6 rounded-2xl bg-primary p-5 ring-1 ring-secondary">
-                                                    <div className="flex flex-wrap items-center justify-between gap-4">
-                                                        <div className="flex items-center gap-3">
-                                                            <FeaturedIcon
-                                                                icon={intakeSubmitted ? CheckCircle : ClipboardCheck}
-                                                                color={intakeSubmitted ? "success" : intakeStarted ? "brand" : "gray"}
-                                                                theme="light"
-                                                                size="lg"
-                                                            />
-                                                            <div>
-                                                                <p className="text-md font-semibold text-primary">
-                                                                    {isTemplate
-                                                                        ? "Master template"
-                                                                        : intakeStatus === "error"
-                                                                          ? "Couldn't load your form"
-                                                                          : !intakeReady
-                                                                            ? "Checking your form…"
-                                                                            : intakeSubmitted
-                                                                              ? "Submitted — thank you!"
-                                                                              : intakeStarted
-                                                                                ? "In progress"
-                                                                                : "Not started yet"}
-                                                                </p>
-                                                                <p className="mt-0.5 text-sm text-tertiary" aria-live="polite">
-                                                                    {isTemplate ? (
-                                                                        "Preview of the form every client fills in first."
-                                                                    ) : intakeStatus === "error" ? (
-                                                                        "Check your connection and try again."
-                                                                    ) : !intakeReady ? (
-                                                                        "One moment…"
-                                                                    ) : intakeSubmittedAt ? (
-                                                                        <>
-                                                                            Sent{" "}
-                                                                            {new Date(intakeSubmittedAt).toLocaleDateString(undefined, {
-                                                                                month: "long",
-                                                                                day: "numeric",
-                                                                                year: "numeric",
-                                                                            })}{" "}
-                                                                            · you can still update your answers
-                                                                        </>
-                                                                    ) : (
-                                                                        <>
-                                                                            {intakeInfo.answered} of {intakeInfo.total} questions answered
-                                                                        </>
-                                                                    )}
-                                                                </p>
-                                                            </div>
-                                                        </div>
-                                                        {intakeReady && !intakeSubmitted && (
-                                                            <ProgressBarCircle
-                                                                value={intakeInfo.answered}
-                                                                max={Math.max(intakeInfo.total, 1)}
-                                                                size="xs"
-                                                                label="Form progress"
-                                                                valueFormatter={(_, pct) => `${pct}%`}
-                                                            />
-                                                        )}
-                                                    </div>
-
-                                                    <div className="mt-5 flex flex-wrap items-center gap-3">
-                                                        {intakeStatus === "error" ? (
-                                                            <Button color="secondary" onClick={() => setIntakeStatus("idle")}>
-                                                                Try again
-                                                            </Button>
-                                                        ) : !isTemplate && !intakeReady ? (
-                                                            <Button isDisabled iconTrailing={ArrowRight}>
-                                                                Open the form
-                                                            </Button>
-                                                        ) : (
-                                                            <Button href={intakeHref} iconTrailing={ArrowRight}>
-                                                                {intakeSubmitted ? "Review your answers" : intakeStarted ? "Continue the form" : "Start the form"}
-                                                            </Button>
-                                                        )}
-                                                        {isTeam && !isTemplate && intakeSlug && intakeReady && (
-                                                            <Button
-                                                                color="secondary"
-                                                                iconLeading={Copy01}
-                                                                onClick={() => {
-                                                                    void navigator.clipboard.writeText(`${window.location.origin}/${intakeSlug}`);
-                                                                    setCopiedIntakeLink(true);
-                                                                    window.setTimeout(() => setCopiedIntakeLink(false), 2000);
-                                                                }}
-                                                            >
-                                                                {copiedIntakeLink ? "Link copied" : "Copy link for the client"}
-                                                            </Button>
-                                                        )}
-                                                    </div>
-
-                                                    {isTeam && !isTemplate && intakeSlug && (
-                                                        <p className="mt-4 border-t border-secondary pt-3 text-xs text-quaternary">
-                                                            Form page: <span className="font-medium text-tertiary">/{intakeSlug}</span>
-                                                        </p>
-                                                    )}
-                                                </div>
-                                            </Reveal>
-                                        )}
-
-                                        {/* ── Client Input — the Brand Vision Form the client fills in themselves ── */}
-                                        {activeSection === "onboarding" && (
-                                            <Reveal>
-                                                <SectionEyebrow stage="input" />
-                                                <SectionHeading>Brand Vision Form</SectionHeading>
-                                                <p className="mt-3 text-md text-tertiary">
-                                                    Your Brand Vision Form — {ONBOARDING_TOTAL_QUESTIONS} quick questions about why you built this property, who
-                                                    it's for, and how it should feel. It takes 5–10 minutes, and it's what everything below is built from: your
-                                                    Master Document, brand kit, emails, and chat widget all start here.
-                                                </p>
-
-                                                <div className="mt-6 rounded-2xl bg-primary p-5 ring-1 ring-secondary">
-                                                    <div className="flex flex-wrap items-center justify-between gap-4">
-                                                        <div className="flex items-center gap-3">
-                                                            <FeaturedIcon
-                                                                icon={onboardingSubmitted ? CheckCircle : ClipboardCheck}
-                                                                color={onboardingSubmitted ? "success" : onboardingStarted ? "brand" : "gray"}
-                                                                theme="light"
-                                                                size="lg"
-                                                            />
-                                                            <div>
-                                                                <p className="text-md font-semibold text-primary">
-                                                                    {isTemplate
-                                                                        ? "Master template"
-                                                                        : onboardingStatus === "error"
-                                                                          ? "Couldn't load your form"
-                                                                          : !onboardingReady
-                                                                            ? "Checking your form…"
-                                                                            : onboardingSubmitted
-                                                                              ? "Submitted — thank you!"
-                                                                              : onboardingStarted
-                                                                                ? "In progress"
-                                                                                : "Not started yet"}
-                                                                </p>
-                                                                <p className="mt-0.5 text-sm text-tertiary" aria-live="polite">
-                                                                    {isTemplate ? (
-                                                                        "Preview of the form every client fills in."
-                                                                    ) : onboardingStatus === "error" ? (
-                                                                        "Check your connection and try again."
-                                                                    ) : !onboardingReady ? (
-                                                                        "One moment…"
-                                                                    ) : onboardingSubmittedAt ? (
-                                                                        <>
-                                                                            Sent{" "}
-                                                                            {new Date(onboardingSubmittedAt).toLocaleDateString(undefined, {
-                                                                                month: "long",
-                                                                                day: "numeric",
-                                                                                year: "numeric",
-                                                                            })}{" "}
-                                                                            · you can still update your answers
-                                                                        </>
-                                                                    ) : (
-                                                                        <>
-                                                                            {onboardingInfo.answered} of {onboardingInfo.total} questions answered
-                                                                        </>
-                                                                    )}
-                                                                </p>
-                                                            </div>
-                                                        </div>
-                                                        {onboardingReady && !onboardingSubmitted && (
-                                                            <ProgressBarCircle
-                                                                value={onboardingInfo.answered}
-                                                                max={Math.max(onboardingInfo.total, 1)}
-                                                                size="xs"
-                                                                label="Form progress"
-                                                                valueFormatter={(_, pct) => `${pct}%`}
-                                                            />
-                                                        )}
-                                                    </div>
-
-                                                    <div className="mt-5 flex flex-wrap items-center gap-3">
-                                                        {onboardingStatus === "error" ? (
-                                                            <Button color="secondary" onClick={() => setOnboardingStatus("idle")}>
-                                                                Try again
-                                                            </Button>
-                                                        ) : !isTemplate && !onboardingReady ? (
-                                                            // A disabled link renders an empty href — plain button until the check lands.
-                                                            <Button isDisabled iconTrailing={ArrowRight}>
-                                                                Open the form
-                                                            </Button>
-                                                        ) : (
-                                                            <Button href={onboardingHref} iconTrailing={ArrowRight}>
-                                                                {onboardingSubmitted
-                                                                    ? "Review your answers"
-                                                                    : onboardingStarted
-                                                                      ? "Continue the form"
-                                                                      : "Start the form"}
-                                                            </Button>
-                                                        )}
-                                                        {isTeam && !isTemplate && onboardingSlug && onboardingReady && (
-                                                            <Button
-                                                                color="secondary"
-                                                                iconLeading={Copy01}
-                                                                onClick={() => {
-                                                                    void navigator.clipboard.writeText(`${window.location.origin}/${onboardingSlug}`);
-                                                                    setCopiedOnboardingLink(true);
-                                                                    window.setTimeout(() => setCopiedOnboardingLink(false), 2000);
-                                                                }}
-                                                            >
-                                                                {copiedOnboardingLink ? "Link copied" : "Copy link for the client"}
-                                                            </Button>
-                                                        )}
-                                                    </div>
-
-                                                    {/* Team-only: the exact form this dashboard is wired to, so a mismatched
-                                                        copy created from the form's own wizard is visible instead of silent. */}
-                                                    {isTeam && !isTemplate && onboardingSlug && (
-                                                        <p className="mt-4 border-t border-secondary pt-3 text-xs text-quaternary">
-                                                            Form page: <span className="font-medium text-tertiary">/{onboardingSlug}</span>
-                                                        </p>
-                                                    )}
-                                                </div>
-                                            </Reveal>
-                                        )}
-
-                                        {/* ── Master Document — the Foundation everything downstream reads from ── */}
-                                        {activeSection === "foundation" && (
-                                            <Reveal>
-                                                <SectionEyebrow stage="foundation" />
-                                                <SectionHeading>Master Document</SectionHeading>
-                                                <p className="mt-3 text-md text-tertiary">
-                                                    This is where it starts. Everyone — you, your team, and ours — keeps this updated. It's what your Welcome
-                                                    Emails, chat widget, and every future AI feature read from, so the more complete it is, the smarter
-                                                    everything downstream gets.
-                                                </p>
-
-                                                {/* Team-only: compile the answers into the AM-ready doc. */}
-                                                {isTeam && (
-                                                    <div className="mt-4">
-                                                        <Button
-                                                            size="sm"
-                                                            color="secondary"
-                                                            iconLeading={FileCheck02}
-                                                            onClick={() => setShowMasterDocModal(true)}
-                                                        >
-                                                            Generate for AM review
-                                                        </Button>
-                                                    </div>
+                                            <div className="min-w-0">
+                                                {activeSection === "flow" && (
+                                                    <WelcomeFlowSection slug={slug} clientName={clientName} isLocked={isLocked} isTemplate={isTemplate} />
                                                 )}
 
-                                                <div className="mt-6 flex flex-col gap-6">
-                                                    {(
-                                                        [
-                                                            {
-                                                                key: "propertyBasics",
-                                                                label: "Property basics",
-                                                                hint: "Name, type, location, vibe.",
-                                                                placeholder:
-                                                                    "e.g. Oceanview Cottage — a 3-bed boutique rental on the Big Sur coast, rustic-luxury vibe.",
-                                                            },
-                                                            {
-                                                                key: "persona",
-                                                                label: "Ideal guest persona",
-                                                                hint: "Who books, why they come, what they care about.",
-                                                                placeholder:
-                                                                    "e.g. Couples celebrating an anniversary, mid-30s to 50s, want privacy + a view, not big groups.",
-                                                            },
-                                                            {
-                                                                key: "toneOfVoice",
-                                                                label: "Tone of voice",
-                                                                hint: "How your brand talks.",
-                                                                placeholder: "e.g. Warm and personal, a little playful — never corporate.",
-                                                            },
-                                                            {
-                                                                key: "amenities",
-                                                                label: "Amenities & house rules",
-                                                                hint: "What's included, what's not allowed.",
-                                                                placeholder: "e.g. Hot tub, full kitchen, pet-friendly. No parties, quiet hours after 10pm.",
-                                                            },
-                                                            {
-                                                                key: "localRecommendations",
-                                                                label: "Local recommendations",
-                                                                hint: "Food, activities, hidden gems.",
-                                                                placeholder:
-                                                                    "e.g. Nepenthe for sunset dinner, McWay Falls trail, Big Sur Bakery for breakfast.",
-                                                            },
-                                                            {
-                                                                key: "bookingLinks",
-                                                                label: "Booking & upsell links",
-                                                                hint: "Where guests book, and anything you'd like to upsell.",
-                                                                placeholder:
-                                                                    "e.g. Book direct at oceanviewcottage.com/book — ask about our late-checkout add-on.",
-                                                            },
-                                                        ] as const
-                                                    ).map((f) => (
-                                                        <div key={f.key}>
-                                                            <p className="text-sm font-semibold text-primary">{f.label}</p>
-                                                            <p className="mt-0.5 text-xs text-tertiary">{f.hint}</p>
-                                                            {isLocked ? (
-                                                                foundation[f.key] ? (
-                                                                    <p className="mt-2 rounded-xl bg-secondary px-4 py-3 text-sm whitespace-pre-wrap text-secondary">
-                                                                        {foundation[f.key]}
-                                                                    </p>
+                                                {/* ── Client Input — the Onboarding Form (the client's FIRST form) ── */}
+                                                {activeSection === "intake" && (
+                                                    <Reveal>
+                                                        <SectionEyebrow stage="input" />
+                                                        <SectionHeading>Onboarding Form</SectionHeading>
+                                                        <p className="mt-3 text-md text-tertiary">
+                                                            The first step — your business details, goals, and the account logins we need before your Kick-Off
+                                                            Call. Completing it at least 12 hours before the call lets our team prepare a customized strategy,
+                                                            and it ends with booking your call.
+                                                        </p>
+
+                                                        <div className="mt-6 rounded-2xl bg-primary p-5 ring-1 ring-secondary">
+                                                            <div className="flex flex-wrap items-center justify-between gap-4">
+                                                                <div className="flex items-center gap-3">
+                                                                    <FeaturedIcon
+                                                                        icon={intakeSubmitted ? CheckCircle : ClipboardCheck}
+                                                                        color={intakeSubmitted ? "success" : intakeStarted ? "brand" : "gray"}
+                                                                        theme="light"
+                                                                        size="lg"
+                                                                    />
+                                                                    <div>
+                                                                        <p className="text-md font-semibold text-primary">
+                                                                            {isTemplate
+                                                                                ? "Master template"
+                                                                                : intakeStatus === "error"
+                                                                                  ? "Couldn't load your form"
+                                                                                  : !intakeReady
+                                                                                    ? "Checking your form…"
+                                                                                    : intakeSubmitted
+                                                                                      ? "Submitted — thank you!"
+                                                                                      : intakeStarted
+                                                                                        ? "In progress"
+                                                                                        : "Not started yet"}
+                                                                        </p>
+                                                                        <p className="mt-0.5 text-sm text-tertiary" aria-live="polite">
+                                                                            {isTemplate ? (
+                                                                                "Preview of the form every client fills in first."
+                                                                            ) : intakeStatus === "error" ? (
+                                                                                "Check your connection and try again."
+                                                                            ) : !intakeReady ? (
+                                                                                "One moment…"
+                                                                            ) : intakeSubmittedAt ? (
+                                                                                <>
+                                                                                    Sent{" "}
+                                                                                    {new Date(intakeSubmittedAt).toLocaleDateString(undefined, {
+                                                                                        month: "long",
+                                                                                        day: "numeric",
+                                                                                        year: "numeric",
+                                                                                    })}{" "}
+                                                                                    · you can still update your answers
+                                                                                </>
+                                                                            ) : (
+                                                                                <>
+                                                                                    {intakeInfo.answered} of {intakeInfo.total} questions answered
+                                                                                </>
+                                                                            )}
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
+                                                                {intakeReady && !intakeSubmitted && (
+                                                                    <ProgressBarCircle
+                                                                        value={intakeInfo.answered}
+                                                                        max={Math.max(intakeInfo.total, 1)}
+                                                                        size="xs"
+                                                                        label="Form progress"
+                                                                        valueFormatter={(_, pct) => `${pct}%`}
+                                                                    />
+                                                                )}
+                                                            </div>
+
+                                                            <div className="mt-5 flex flex-wrap items-center gap-3">
+                                                                {intakeStatus === "error" ? (
+                                                                    <Button color="secondary" onClick={() => setIntakeStatus("idle")}>
+                                                                        Try again
+                                                                    </Button>
+                                                                ) : !isTemplate && !intakeReady ? (
+                                                                    <Button isDisabled iconTrailing={ArrowRight}>
+                                                                        Open the form
+                                                                    </Button>
                                                                 ) : (
-                                                                    <p className="mt-2 rounded-xl border border-dashed border-secondary px-4 py-3 text-sm text-quaternary italic">
-                                                                        Not filled in yet.
-                                                                    </p>
-                                                                )
-                                                            ) : (
-                                                                <textarea
-                                                                    rows={2}
-                                                                    placeholder={f.placeholder}
-                                                                    value={foundation[f.key]}
-                                                                    onChange={(e) => patchFoundation({ [f.key]: e.target.value })}
-                                                                    className={cx(editInput(), "mt-2 resize-y")}
+                                                                    <Button
+                                                                        iconTrailing={ArrowRight}
+                                                                        {...(isTemplate ? { href: intakeHref } : { onClick: () => setFormModal("intake") })}
+                                                                    >
+                                                                        {intakeSubmitted
+                                                                            ? "Review your answers"
+                                                                            : intakeStarted
+                                                                              ? "Continue the form"
+                                                                              : "Start the form"}
+                                                                    </Button>
+                                                                )}
+                                                                {isTeam && !isTemplate && intakeSlug && intakeReady && (
+                                                                    <Button
+                                                                        color="secondary"
+                                                                        iconLeading={Copy01}
+                                                                        onClick={() => {
+                                                                            void navigator.clipboard.writeText(`${window.location.origin}/${intakeSlug}`);
+                                                                            setCopiedIntakeLink(true);
+                                                                            window.setTimeout(() => setCopiedIntakeLink(false), 2000);
+                                                                        }}
+                                                                    >
+                                                                        {copiedIntakeLink ? "Link copied" : "Copy link for the client"}
+                                                                    </Button>
+                                                                )}
+                                                            </div>
+
+                                                            {isTeam && !isTemplate && intakeSlug && (
+                                                                <p className="mt-4 border-t border-secondary pt-3 text-xs text-quaternary">
+                                                                    Form page: <span className="font-medium text-tertiary">/{intakeSlug}</span>
+                                                                </p>
+                                                            )}
+
+                                                            {/* Once it's in, the answers ARE the useful content — showing them
+                                                        here saves a trip through the review screen. */}
+                                                            {intakeSubmitted && intakeData && (
+                                                                <OnboardingAnswers
+                                                                    data={intakeData}
+                                                                    onEdit={(field) => {
+                                                                        setFormModalField(field);
+                                                                        setFormModal("intake");
+                                                                    }}
                                                                 />
                                                             )}
                                                         </div>
-                                                    ))}
-                                                </div>
+                                                    </Reveal>
+                                                )}
 
-                                                {/* FAQ bank — client & AM can both add */}
-                                                <div className="mt-8 border-t border-secondary pt-6">
-                                                    <div className="flex items-center gap-2">
-                                                        <HelpCircle className="size-4 text-fg-quaternary" aria-hidden="true" />
-                                                        <p className="text-sm font-semibold text-primary">FAQ bank</p>
-                                                    </div>
-                                                    <p className="mt-0.5 text-xs text-tertiary">
-                                                        Questions guests ask often — the chat widget answers straight from this list.
-                                                    </p>
+                                                {/* ── Client Input — the Brand Vision Form the client fills in themselves ── */}
+                                                {activeSection === "onboarding" && (
+                                                    <Reveal>
+                                                        <SectionEyebrow stage="input" />
+                                                        <SectionHeading>Brand Vision Form</SectionHeading>
+                                                        <p className="mt-3 text-md text-tertiary">
+                                                            Your Brand Vision Form — {ONBOARDING_TOTAL_QUESTIONS} quick questions about why you built this
+                                                            property, who it's for, and how it should feel. It takes 5–10 minutes, and it's what everything
+                                                            below is built from: your Master Document, brand kit, emails, and chat widget all start here.
+                                                        </p>
 
-                                                    <div className="mt-4 flex flex-col gap-3">
-                                                        {foundation.faqs.length === 0 && isLocked && (
-                                                            <p className="rounded-xl border border-dashed border-secondary px-4 py-3 text-sm text-quaternary italic">
-                                                                No FAQs yet.
-                                                            </p>
-                                                        )}
-                                                        {foundation.faqs.map((f, i) =>
-                                                            isLocked ? (
-                                                                <div key={f.id} className="rounded-xl p-4 ring-1 ring-secondary">
-                                                                    <p className="text-sm font-semibold text-primary">{f.question || "Untitled question"}</p>
-                                                                    <p className="mt-1 text-sm text-tertiary">{f.answer || "No answer yet."}</p>
+                                                        <div className="mt-6 rounded-2xl bg-primary p-5 ring-1 ring-secondary">
+                                                            <div className="flex flex-wrap items-center justify-between gap-4">
+                                                                <div className="flex items-center gap-3">
+                                                                    <FeaturedIcon
+                                                                        icon={onboardingSubmitted ? CheckCircle : ClipboardCheck}
+                                                                        color={onboardingSubmitted ? "success" : onboardingStarted ? "brand" : "gray"}
+                                                                        theme="light"
+                                                                        size="lg"
+                                                                    />
+                                                                    <div>
+                                                                        <p className="text-md font-semibold text-primary">
+                                                                            {isTemplate
+                                                                                ? "Master template"
+                                                                                : onboardingStatus === "error"
+                                                                                  ? "Couldn't load your form"
+                                                                                  : !onboardingReady
+                                                                                    ? "Checking your form…"
+                                                                                    : onboardingSubmitted
+                                                                                      ? "Submitted — thank you!"
+                                                                                      : onboardingStarted
+                                                                                        ? "In progress"
+                                                                                        : "Not started yet"}
+                                                                        </p>
+                                                                        <p className="mt-0.5 text-sm text-tertiary" aria-live="polite">
+                                                                            {isTemplate ? (
+                                                                                "Preview of the form every client fills in."
+                                                                            ) : onboardingStatus === "error" ? (
+                                                                                "Check your connection and try again."
+                                                                            ) : !onboardingReady ? (
+                                                                                "One moment…"
+                                                                            ) : onboardingSubmittedAt ? (
+                                                                                <>
+                                                                                    Sent{" "}
+                                                                                    {new Date(onboardingSubmittedAt).toLocaleDateString(undefined, {
+                                                                                        month: "long",
+                                                                                        day: "numeric",
+                                                                                        year: "numeric",
+                                                                                    })}{" "}
+                                                                                    · you can still update your answers
+                                                                                </>
+                                                                            ) : (
+                                                                                <>
+                                                                                    {onboardingInfo.answered} of {onboardingInfo.total} questions answered
+                                                                                </>
+                                                                            )}
+                                                                        </p>
+                                                                    </div>
                                                                 </div>
-                                                            ) : (
-                                                                <div key={f.id} className="flex flex-col gap-1.5 rounded-xl p-4 ring-1 ring-secondary">
-                                                                    <div className="flex items-center gap-1.5">
-                                                                        <input
-                                                                            type="text"
-                                                                            placeholder="Question"
-                                                                            value={f.question}
-                                                                            onChange={(e) => updateFaq(i, { question: e.target.value })}
-                                                                            className={editInput("font-semibold")}
+                                                                {onboardingReady && !onboardingSubmitted && (
+                                                                    <ProgressBarCircle
+                                                                        value={onboardingInfo.answered}
+                                                                        max={Math.max(onboardingInfo.total, 1)}
+                                                                        size="xs"
+                                                                        label="Form progress"
+                                                                        valueFormatter={(_, pct) => `${pct}%`}
+                                                                    />
+                                                                )}
+                                                            </div>
+
+                                                            <div className="mt-5 flex flex-wrap items-center gap-3">
+                                                                {onboardingStatus === "error" ? (
+                                                                    <Button color="secondary" onClick={() => setOnboardingStatus("idle")}>
+                                                                        Try again
+                                                                    </Button>
+                                                                ) : !isTemplate && !onboardingReady ? (
+                                                                    // A disabled link renders an empty href — plain button until the check lands.
+                                                                    <Button isDisabled iconTrailing={ArrowRight}>
+                                                                        Open the form
+                                                                    </Button>
+                                                                ) : (
+                                                                    <Button
+                                                                        iconTrailing={ArrowRight}
+                                                                        {...(isTemplate ? { href: onboardingHref } : { onClick: () => setFormModal("brand") })}
+                                                                    >
+                                                                        {onboardingSubmitted
+                                                                            ? "Review your answers"
+                                                                            : onboardingStarted
+                                                                              ? "Continue the form"
+                                                                              : "Start the form"}
+                                                                    </Button>
+                                                                )}
+                                                                {isTeam && !isTemplate && onboardingSlug && onboardingReady && (
+                                                                    <Button
+                                                                        color="secondary"
+                                                                        iconLeading={Copy01}
+                                                                        onClick={() => {
+                                                                            void navigator.clipboard.writeText(`${window.location.origin}/${onboardingSlug}`);
+                                                                            setCopiedOnboardingLink(true);
+                                                                            window.setTimeout(() => setCopiedOnboardingLink(false), 2000);
+                                                                        }}
+                                                                    >
+                                                                        {copiedOnboardingLink ? "Link copied" : "Copy link for the client"}
+                                                                    </Button>
+                                                                )}
+                                                            </div>
+
+                                                            {/* Team-only: the exact form this dashboard is wired to, so a mismatched
+                                                        copy created from the form's own wizard is visible instead of silent. */}
+                                                            {isTeam && !isTemplate && onboardingSlug && (
+                                                                <p className="mt-4 border-t border-secondary pt-3 text-xs text-quaternary">
+                                                                    Form page: <span className="font-medium text-tertiary">/{onboardingSlug}</span>
+                                                                </p>
+                                                            )}
+                                                        </div>
+                                                    </Reveal>
+                                                )}
+
+                                                {/* ── Master Document — the Foundation everything downstream reads from ── */}
+                                                {activeSection === "foundation" && (
+                                                    <Reveal>
+                                                        <SectionEyebrow stage="foundation" />
+                                                        <SectionHeading>Master Document</SectionHeading>
+                                                        <p className="mt-3 text-md text-tertiary">
+                                                            This is where it starts. Everyone — you, your team, and ours — keeps this updated. It's what your
+                                                            Welcome Emails, chat widget, and every future AI feature read from, so the more complete it is, the
+                                                            smarter everything downstream gets.
+                                                        </p>
+
+                                                        {/* Team-only: compile the answers into the AM-ready doc. */}
+                                                        {isTeam && (
+                                                            <div className="mt-4">
+                                                                <Button
+                                                                    size="sm"
+                                                                    color="secondary"
+                                                                    iconLeading={FileCheck02}
+                                                                    onClick={() => setShowMasterDocModal(true)}
+                                                                >
+                                                                    Generate for AM review
+                                                                </Button>
+                                                            </div>
+                                                        )}
+
+                                                        <div className="mt-6 flex flex-col gap-6">
+                                                            {(
+                                                                [
+                                                                    {
+                                                                        key: "propertyBasics",
+                                                                        label: "Property basics",
+                                                                        hint: "Name, type, location, vibe.",
+                                                                        placeholder:
+                                                                            "e.g. Oceanview Cottage — a 3-bed boutique rental on the Big Sur coast, rustic-luxury vibe.",
+                                                                    },
+                                                                    {
+                                                                        key: "persona",
+                                                                        label: "Ideal guest persona",
+                                                                        hint: "Who books, why they come, what they care about.",
+                                                                        placeholder:
+                                                                            "e.g. Couples celebrating an anniversary, mid-30s to 50s, want privacy + a view, not big groups.",
+                                                                    },
+                                                                    {
+                                                                        key: "toneOfVoice",
+                                                                        label: "Tone of voice",
+                                                                        hint: "How your brand talks.",
+                                                                        placeholder: "e.g. Warm and personal, a little playful — never corporate.",
+                                                                    },
+                                                                    {
+                                                                        key: "amenities",
+                                                                        label: "Amenities & house rules",
+                                                                        hint: "What's included, what's not allowed.",
+                                                                        placeholder:
+                                                                            "e.g. Hot tub, full kitchen, pet-friendly. No parties, quiet hours after 10pm.",
+                                                                    },
+                                                                    {
+                                                                        key: "localRecommendations",
+                                                                        label: "Local recommendations",
+                                                                        hint: "Food, activities, hidden gems.",
+                                                                        placeholder:
+                                                                            "e.g. Nepenthe for sunset dinner, McWay Falls trail, Big Sur Bakery for breakfast.",
+                                                                    },
+                                                                    {
+                                                                        key: "bookingLinks",
+                                                                        label: "Booking & upsell links",
+                                                                        hint: "Where guests book, and anything you'd like to upsell.",
+                                                                        placeholder:
+                                                                            "e.g. Book direct at oceanviewcottage.com/book — ask about our late-checkout add-on.",
+                                                                    },
+                                                                ] as const
+                                                            ).map((f) => (
+                                                                <div key={f.key}>
+                                                                    <p className="text-sm font-semibold text-primary">{f.label}</p>
+                                                                    <p className="mt-0.5 text-xs text-tertiary">{f.hint}</p>
+                                                                    {isLocked ? (
+                                                                        foundation[f.key] ? (
+                                                                            <p className="mt-2 rounded-xl bg-secondary px-4 py-3 text-sm whitespace-pre-wrap text-secondary">
+                                                                                {foundation[f.key]}
+                                                                            </p>
+                                                                        ) : (
+                                                                            <p className="mt-2 rounded-xl border border-dashed border-secondary px-4 py-3 text-sm text-quaternary italic">
+                                                                                Not filled in yet.
+                                                                            </p>
+                                                                        )
+                                                                    ) : (
+                                                                        <textarea
+                                                                            rows={2}
+                                                                            placeholder={f.placeholder}
+                                                                            value={foundation[f.key]}
+                                                                            onChange={(e) => patchFoundation({ [f.key]: e.target.value })}
+                                                                            className={cx(editInput(), "mt-2 resize-y")}
                                                                         />
+                                                                    )}
+                                                                </div>
+                                                            ))}
+                                                        </div>
+
+                                                        {/* FAQ bank — client & AM can both add */}
+                                                        <div className="mt-8 border-t border-secondary pt-6">
+                                                            <div className="flex items-center gap-2">
+                                                                <HelpCircle className="size-4 text-fg-quaternary" aria-hidden="true" />
+                                                                <p className="text-sm font-semibold text-primary">FAQ bank</p>
+                                                            </div>
+                                                            <p className="mt-0.5 text-xs text-tertiary">
+                                                                Questions guests ask often — the chat widget answers straight from this list.
+                                                            </p>
+
+                                                            <div className="mt-4 flex flex-col gap-3">
+                                                                {foundation.faqs.length === 0 && isLocked && (
+                                                                    <p className="rounded-xl border border-dashed border-secondary px-4 py-3 text-sm text-quaternary italic">
+                                                                        No FAQs yet.
+                                                                    </p>
+                                                                )}
+                                                                {foundation.faqs.map((f, i) =>
+                                                                    isLocked ? (
+                                                                        <div key={f.id} className="rounded-xl p-4 ring-1 ring-secondary">
+                                                                            <p className="text-sm font-semibold text-primary">
+                                                                                {f.question || "Untitled question"}
+                                                                            </p>
+                                                                            <p className="mt-1 text-sm text-tertiary">{f.answer || "No answer yet."}</p>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div key={f.id} className="flex flex-col gap-1.5 rounded-xl p-4 ring-1 ring-secondary">
+                                                                            <div className="flex items-center gap-1.5">
+                                                                                <input
+                                                                                    type="text"
+                                                                                    placeholder="Question"
+                                                                                    value={f.question}
+                                                                                    onChange={(e) => updateFaq(i, { question: e.target.value })}
+                                                                                    className={editInput("font-semibold")}
+                                                                                />
+                                                                                <button
+                                                                                    type="button"
+                                                                                    title="Remove FAQ"
+                                                                                    onClick={() =>
+                                                                                        patchFoundation({ faqs: foundation.faqs.filter((_, j) => j !== i) })
+                                                                                    }
+                                                                                    className={removeButton}
+                                                                                >
+                                                                                    <Trash01 className="size-4" aria-hidden="true" />
+                                                                                </button>
+                                                                            </div>
+                                                                            <textarea
+                                                                                rows={2}
+                                                                                placeholder="Answer"
+                                                                                value={f.answer}
+                                                                                onChange={(e) => updateFaq(i, { answer: e.target.value })}
+                                                                                className={cx(editInput(), "resize-y text-xs")}
+                                                                            />
+                                                                        </div>
+                                                                    ),
+                                                                )}
+                                                                {!isLocked && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() =>
+                                                                            patchFoundation({
+                                                                                faqs: [...foundation.faqs, { id: uid(), question: "", answer: "" }],
+                                                                            })
+                                                                        }
+                                                                        className="flex items-center gap-2 rounded-lg px-2 py-1 text-sm font-medium text-tertiary transition duration-100 ease-linear hover:text-brand-secondary"
+                                                                    >
+                                                                        <Plus className="size-4" aria-hidden="true" />
+                                                                        Add FAQ
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </Reveal>
+                                                )}
+
+                                                {/* ── Brand Kit ── */}
+                                                {activeSection === "brand" && (
+                                                    <Reveal>
+                                                        <SectionEyebrow stage="foundation" />
+                                                        <div className="flex flex-wrap items-end justify-between gap-3">
+                                                            <SectionHeading>Brand Kit</SectionHeading>
+                                                            {isLocked ? (
+                                                                content.brand.folder_link && (
+                                                                    <Button
+                                                                        href={content.brand.folder_link}
+                                                                        target="_blank"
+                                                                        rel="noopener noreferrer"
+                                                                        color="link-color"
+                                                                        size="md"
+                                                                        iconTrailing={LinkExternal01}
+                                                                    >
+                                                                        Open brand folder
+                                                                    </Button>
+                                                                )
+                                                            ) : (
+                                                                <input
+                                                                    type="text"
+                                                                    placeholder="Brand folder link (Drive / Canva)"
+                                                                    value={content.brand.folder_link}
+                                                                    onChange={(e) => patchBrand({ folder_link: e.target.value })}
+                                                                    className={editInput("max-w-80")}
+                                                                />
+                                                            )}
+                                                        </div>
+                                                        <p className="mt-3 text-md text-tertiary">
+                                                            Your official colors and typography. Use these everywhere so your brand stays consistent.
+                                                        </p>
+
+                                                        <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
+                                                            {content.brand.colors.map((color, i) => (
+                                                                <div key={i} className="overflow-hidden rounded-xl ring-1 ring-secondary">
+                                                                    <div className="h-20" style={{ backgroundColor: color.hex }} />
+                                                                    <div className="p-3">
+                                                                        {isLocked ? (
+                                                                            <>
+                                                                                <p className="text-sm font-semibold text-primary">{color.name}</p>
+                                                                                <p className="mt-0.5 font-mono text-xs text-tertiary uppercase">{color.hex}</p>
+                                                                            </>
+                                                                        ) : (
+                                                                            <div className="flex flex-col gap-1.5">
+                                                                                <input
+                                                                                    type="text"
+                                                                                    placeholder="Name"
+                                                                                    value={color.name}
+                                                                                    onChange={(e) => updateColor(i, { name: e.target.value })}
+                                                                                    className={editInput("px-2 py-1 text-xs")}
+                                                                                />
+                                                                                <div className="flex items-center gap-1">
+                                                                                    <input
+                                                                                        type="text"
+                                                                                        placeholder="#000000"
+                                                                                        value={color.hex}
+                                                                                        onChange={(e) => updateColor(i, { hex: e.target.value })}
+                                                                                        className={editInput("px-2 py-1 font-mono text-xs")}
+                                                                                    />
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        title="Remove color"
+                                                                                        onClick={() =>
+                                                                                            patchBrand({
+                                                                                                colors: content.brand.colors.filter((_, j) => j !== i),
+                                                                                            })
+                                                                                        }
+                                                                                        className={removeButton}
+                                                                                    >
+                                                                                        <Trash01 className="size-4" aria-hidden="true" />
+                                                                                    </button>
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                            {!isLocked && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        patchBrand({ colors: [...content.brand.colors, { name: "New color", hex: "#888888" }] })
+                                                                    }
+                                                                    className="flex min-h-32 flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-secondary text-sm font-medium text-tertiary transition duration-100 ease-linear hover:border-brand hover:text-brand-secondary"
+                                                                >
+                                                                    <Plus className="size-5" aria-hidden="true" />
+                                                                    Add color
+                                                                </button>
+                                                            )}
+                                                        </div>
+
+                                                        <div className="mt-4 flex items-center gap-3 rounded-xl bg-secondary px-4 py-3">
+                                                            <span className="text-sm font-medium text-secondary">Fonts:</span>
+                                                            {isLocked ? (
+                                                                <span className="text-sm text-tertiary">{content.brand.fonts || "—"}</span>
+                                                            ) : (
+                                                                <input
+                                                                    type="text"
+                                                                    placeholder="e.g. Inter, Playfair Display"
+                                                                    value={content.brand.fonts}
+                                                                    onChange={(e) => patchBrand({ fonts: e.target.value })}
+                                                                    className={editInput("max-w-72")}
+                                                                />
+                                                            )}
+                                                        </div>
+                                                    </Reveal>
+                                                )}
+
+                                                {/* ── Instagram Highlights ── */}
+                                                {activeSection === "instagram" && (
+                                                    <Reveal>
+                                                        <SectionEyebrow stage="top" />
+                                                        <div className="flex flex-wrap items-end justify-between gap-3">
+                                                            <SectionHeading>Instagram Highlights</SectionHeading>
+                                                            {isLocked ? (
+                                                                content.instagram.profile_url && (
+                                                                    <Button
+                                                                        href={content.instagram.profile_url}
+                                                                        target="_blank"
+                                                                        rel="noopener noreferrer"
+                                                                        color="link-color"
+                                                                        size="md"
+                                                                        iconTrailing={LinkExternal01}
+                                                                    >
+                                                                        View profile
+                                                                    </Button>
+                                                                )
+                                                            ) : (
+                                                                <input
+                                                                    type="text"
+                                                                    placeholder="Instagram profile URL"
+                                                                    value={content.instagram.profile_url}
+                                                                    onChange={(e) => patchInstagram({ profile_url: e.target.value })}
+                                                                    className={editInput("max-w-80")}
+                                                                />
+                                                            )}
+                                                        </div>
+                                                        <p className="mt-3 text-md text-tertiary">
+                                                            Your highlight covers, ready to download and add to your Instagram profile.
+                                                        </p>
+
+                                                        {content.instagram.highlights.length === 0 && isLocked ? (
+                                                            <div className="mt-6 flex items-center gap-3 rounded-xl bg-secondary px-4 py-5">
+                                                                <Instagram className="size-5 shrink-0 text-fg-quaternary" aria-hidden="true" />
+                                                                <p className="text-sm text-tertiary">
+                                                                    Highlight covers are on the way — the HiddenGem team will add them here.
+                                                                </p>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="mt-6 flex flex-wrap gap-5">
+                                                                {content.instagram.highlights.map((h, i) => (
+                                                                    <div key={i} className="flex w-24 flex-col items-center gap-2">
+                                                                        <div className="flex size-20 items-center justify-center overflow-hidden rounded-full bg-secondary p-0.5 ring-2 ring-secondary">
+                                                                            {h.image_url ? (
+                                                                                <img
+                                                                                    src={h.image_url}
+                                                                                    alt={h.title}
+                                                                                    className="size-full rounded-full object-cover"
+                                                                                    draggable={false}
+                                                                                />
+                                                                            ) : (
+                                                                                <Image01 className="size-6 text-fg-quaternary" aria-hidden="true" />
+                                                                            )}
+                                                                        </div>
+                                                                        {isLocked ? (
+                                                                            <p className="w-full truncate text-center text-xs font-medium text-secondary">
+                                                                                {h.title}
+                                                                            </p>
+                                                                        ) : (
+                                                                            <div className="flex w-full flex-col gap-1">
+                                                                                <input
+                                                                                    type="text"
+                                                                                    placeholder="Title"
+                                                                                    value={h.title}
+                                                                                    onChange={(e) => updateHighlight(i, { title: e.target.value })}
+                                                                                    className={editInput("px-2 py-1 text-center text-xs")}
+                                                                                />
+                                                                                <input
+                                                                                    type="text"
+                                                                                    placeholder="Image URL"
+                                                                                    value={h.image_url}
+                                                                                    onChange={(e) => updateHighlight(i, { image_url: e.target.value })}
+                                                                                    className={editInput("px-2 py-1 text-xs")}
+                                                                                />
+                                                                                <button
+                                                                                    type="button"
+                                                                                    title="Remove highlight"
+                                                                                    onClick={() =>
+                                                                                        patchInstagram({
+                                                                                            highlights: content.instagram.highlights.filter((_, j) => j !== i),
+                                                                                        })
+                                                                                    }
+                                                                                    className={cx(removeButton, "self-center")}
+                                                                                >
+                                                                                    <Trash01 className="size-4" aria-hidden="true" />
+                                                                                </button>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                ))}
+                                                                {!isLocked && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() =>
+                                                                            patchInstagram({
+                                                                                highlights: [...content.instagram.highlights, { title: "New", image_url: "" }],
+                                                                            })
+                                                                        }
+                                                                        className="flex size-20 items-center justify-center rounded-full border border-dashed border-secondary text-tertiary transition duration-100 ease-linear hover:border-brand hover:text-brand-secondary"
+                                                                        title="Add highlight"
+                                                                    >
+                                                                        <Plus className="size-5" aria-hidden="true" />
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </Reveal>
+                                                )}
+
+                                                {/* ── GoHighLevel Setup ── */}
+                                                {activeSection === "ghl" && (
+                                                    <Reveal>
+                                                        <SectionEyebrow stage="bottom" />
+                                                        <div className="flex flex-wrap items-end justify-between gap-3">
+                                                            <SectionHeading>GoHighLevel Setup</SectionHeading>
+                                                            {isLocked ? (
+                                                                content.ghl.login_url && (
+                                                                    <Button
+                                                                        href={content.ghl.login_url}
+                                                                        target="_blank"
+                                                                        rel="noopener noreferrer"
+                                                                        color="link-color"
+                                                                        size="md"
+                                                                        iconTrailing={LinkExternal01}
+                                                                    >
+                                                                        Log in to GoHighLevel
+                                                                    </Button>
+                                                                )
+                                                            ) : (
+                                                                <input
+                                                                    type="text"
+                                                                    placeholder="GHL login URL"
+                                                                    value={content.ghl.login_url}
+                                                                    onChange={(e) => patchGhl({ login_url: e.target.value })}
+                                                                    className={editInput("max-w-80")}
+                                                                />
+                                                            )}
+                                                        </div>
+                                                        <p className="mt-3 text-md text-tertiary">
+                                                            Everything we're configuring in your CRM. Ticked items are live.
+                                                        </p>
+
+                                                        <div className="mt-6 flex flex-col items-center gap-8 rounded-xl p-6 ring-1 ring-secondary md:flex-row md:items-start">
+                                                            <div className="shrink-0 pt-1">
+                                                                <ProgressBarCircle
+                                                                    value={ghlDone}
+                                                                    max={Math.max(ghlTotal, 1)}
+                                                                    size="xs"
+                                                                    label="Setup progress"
+                                                                    valueFormatter={(_, pct) => `${pct}%`}
+                                                                />
+                                                                <p className="mt-2 text-center text-xs font-medium text-tertiary">
+                                                                    {ghlDone} of {ghlTotal} complete
+                                                                </p>
+                                                            </div>
+
+                                                            <ul className="grid w-full gap-2.5 md:grid-cols-2">
+                                                                {content.ghl.items.map((item, i) => (
+                                                                    <li key={i} className="flex items-center gap-3">
                                                                         <button
                                                                             type="button"
-                                                                            title="Remove FAQ"
-                                                                            onClick={() => patchFoundation({ faqs: foundation.faqs.filter((_, j) => j !== i) })}
-                                                                            className={removeButton}
+                                                                            disabled={isLocked}
+                                                                            onClick={() => updateGhlItem(i, { done: !item.done })}
+                                                                            title={isLocked ? undefined : "Toggle status"}
+                                                                            className={cx(
+                                                                                "flex size-5 shrink-0 items-center justify-center rounded-full transition duration-100 ease-linear",
+                                                                                item.done
+                                                                                    ? "bg-brand-solid text-white"
+                                                                                    : "text-transparent ring-1 ring-primary ring-inset",
+                                                                                isLocked ? "cursor-default" : "cursor-pointer hover:opacity-80",
+                                                                            )}
                                                                         >
-                                                                            <Trash01 className="size-4" aria-hidden="true" />
+                                                                            <Check className="size-3.5" strokeWidth={3} aria-hidden="true" />
+                                                                        </button>
+                                                                        {isLocked ? (
+                                                                            <span className={cx("text-sm", item.done ? "text-primary" : "text-tertiary")}>
+                                                                                {item.label}
+                                                                            </span>
+                                                                        ) : (
+                                                                            <>
+                                                                                <input
+                                                                                    type="text"
+                                                                                    value={item.label}
+                                                                                    onChange={(e) => updateGhlItem(i, { label: e.target.value })}
+                                                                                    className={editInput("px-2 py-1 text-sm")}
+                                                                                />
+                                                                                <button
+                                                                                    type="button"
+                                                                                    title="Remove item"
+                                                                                    onClick={() =>
+                                                                                        patchGhl({ items: content.ghl.items.filter((_, j) => j !== i) })
+                                                                                    }
+                                                                                    className={removeButton}
+                                                                                >
+                                                                                    <Trash01 className="size-4" aria-hidden="true" />
+                                                                                </button>
+                                                                            </>
+                                                                        )}
+                                                                    </li>
+                                                                ))}
+                                                                {!isLocked && (
+                                                                    <li>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() =>
+                                                                                patchGhl({
+                                                                                    items: [...content.ghl.items, { label: "New setup item", done: false }],
+                                                                                })
+                                                                            }
+                                                                            className="flex items-center gap-2 rounded-lg px-2 py-1 text-sm font-medium text-tertiary transition duration-100 ease-linear hover:text-brand-secondary"
+                                                                        >
+                                                                            <Plus className="size-4" aria-hidden="true" />
+                                                                            Add item
+                                                                        </button>
+                                                                    </li>
+                                                                )}
+                                                            </ul>
+                                                        </div>
+                                                    </Reveal>
+                                                )}
+
+                                                {/* ── Revenue & Results ── */}
+                                                {activeSection === "revenue" && (
+                                                    <Reveal>
+                                                        <SectionEyebrow stage="bottom" />
+                                                        <div className="flex flex-wrap items-end justify-between gap-3">
+                                                            <SectionHeading>Revenue &amp; Results</SectionHeading>
+                                                            {!isLocked && (
+                                                                <input
+                                                                    type="text"
+                                                                    placeholder="Currency (e.g. USD)"
+                                                                    value={content.revenue.currency}
+                                                                    onChange={(e) => patchRevenue({ currency: e.target.value.toUpperCase() })}
+                                                                    className={editInput("max-w-36 uppercase")}
+                                                                />
+                                                            )}
+                                                        </div>
+                                                        <p className="mt-3 text-md text-tertiary">
+                                                            Results from your campaigns, updated monthly by the HiddenGem team.
+                                                        </p>
+
+                                                        {months.length === 0 && isLocked ? (
+                                                            <div className="mt-6 rounded-xl bg-secondary px-4 py-6 text-center">
+                                                                <p className="text-sm text-tertiary">
+                                                                    No results yet — your first month's numbers will appear here.
+                                                                </p>
+                                                            </div>
+                                                        ) : (
+                                                            <>
+                                                                {/* Stat tiles */}
+                                                                <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+                                                                    <StatTile
+                                                                        label="This month"
+                                                                        value={latest ? fmtMoney(latest.revenue) : "—"}
+                                                                        change={
+                                                                            momChange !== null ? (
+                                                                                <BadgeWithIcon
+                                                                                    iconLeading={momChange >= 0 ? ArrowUp : ArrowDown}
+                                                                                    color={momChange >= 0 ? "success" : "error"}
+                                                                                    size="md"
+                                                                                >
+                                                                                    {`${Math.abs(momChange).toFixed(0)}%`}
+                                                                                </BadgeWithIcon>
+                                                                            ) : undefined
+                                                                        }
+                                                                    />
+                                                                    <StatTile label="Total revenue" value={fmtMoney(totalRevenue)} />
+                                                                    <StatTile label="Leads captured" value={totalLeads.toLocaleString()} />
+                                                                    <StatTile label="Appointments booked" value={totalAppointments.toLocaleString()} />
+                                                                </div>
+
+                                                                {/* Revenue bar chart — single series, brand hue, tooltip on hover */}
+                                                                {months.length > 0 && (
+                                                                    <div className="mt-6 rounded-xl p-5 ring-1 ring-secondary">
+                                                                        <p className="text-sm font-semibold text-primary">Monthly revenue</p>
+                                                                        <div className="mt-4 h-72 w-full text-quaternary">
+                                                                            <ResponsiveContainer width="100%" height="100%">
+                                                                                <BarChart data={months} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                                                                                    <CartesianGrid
+                                                                                        vertical={false}
+                                                                                        stroke="currentColor"
+                                                                                        className="text-border-tertiary"
+                                                                                    />
+                                                                                    <XAxis
+                                                                                        dataKey="month"
+                                                                                        axisLine={false}
+                                                                                        tickLine={false}
+                                                                                        tick={{ fill: "currentColor", fontSize: 12 }}
+                                                                                        dy={6}
+                                                                                    />
+                                                                                    <YAxis
+                                                                                        axisLine={false}
+                                                                                        tickLine={false}
+                                                                                        width={44}
+                                                                                        tick={{ fill: "currentColor", fontSize: 12 }}
+                                                                                        tickFormatter={(v: number) => fmtCompact(v)}
+                                                                                    />
+                                                                                    <RechartsTooltip
+                                                                                        cursor={{ fill: "currentColor", opacity: 0.06 }}
+                                                                                        content={
+                                                                                            <ChartTooltipContent
+                                                                                                formatter={(value) => fmtMoney(Number(value))}
+                                                                                            />
+                                                                                        }
+                                                                                    />
+                                                                                    <Bar
+                                                                                        dataKey="revenue"
+                                                                                        name="Revenue"
+                                                                                        className="fill-utility-brand-600"
+                                                                                        radius={[4, 4, 0, 0]}
+                                                                                        maxBarSize={32}
+                                                                                    />
+                                                                                </BarChart>
+                                                                            </ResponsiveContainer>
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+
+                                                                {/* Edit-only data table */}
+                                                                {!isLocked && (
+                                                                    <div className="mt-6 overflow-x-auto rounded-xl p-4 ring-1 ring-secondary">
+                                                                        <div className="grid min-w-120 grid-cols-[1fr_1fr_1fr_1fr_2.5rem] items-center gap-2">
+                                                                            {["Month", "Revenue", "Leads", "Appointments", ""].map((h) => (
+                                                                                <span key={h} className="px-1 text-xs font-semibold text-quaternary">
+                                                                                    {h}
+                                                                                </span>
+                                                                            ))}
+                                                                            {months.map((m, i) => (
+                                                                                <div key={i} className="col-span-5 grid grid-cols-subgrid items-center">
+                                                                                    <input
+                                                                                        type="text"
+                                                                                        placeholder="Jul"
+                                                                                        value={m.month}
+                                                                                        onChange={(e) => updateMonth(i, { month: e.target.value })}
+                                                                                        className={editInput()}
+                                                                                    />
+                                                                                    <input
+                                                                                        type="number"
+                                                                                        value={m.revenue}
+                                                                                        onChange={(e) =>
+                                                                                            updateMonth(i, { revenue: Number(e.target.value) || 0 })
+                                                                                        }
+                                                                                        className={editInput()}
+                                                                                    />
+                                                                                    <input
+                                                                                        type="number"
+                                                                                        value={m.leads}
+                                                                                        onChange={(e) => updateMonth(i, { leads: Number(e.target.value) || 0 })}
+                                                                                        className={editInput()}
+                                                                                    />
+                                                                                    <input
+                                                                                        type="number"
+                                                                                        value={m.appointments}
+                                                                                        onChange={(e) =>
+                                                                                            updateMonth(i, { appointments: Number(e.target.value) || 0 })
+                                                                                        }
+                                                                                        className={editInput()}
+                                                                                    />
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        title="Remove month"
+                                                                                        onClick={() =>
+                                                                                            patchRevenue({ months: months.filter((_, j) => j !== i) })
+                                                                                        }
+                                                                                        className={removeButton}
+                                                                                    >
+                                                                                        <Trash01 className="size-4" aria-hidden="true" />
+                                                                                    </button>
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() =>
+                                                                                patchRevenue({
+                                                                                    months: [...months, { month: "", revenue: 0, leads: 0, appointments: 0 }],
+                                                                                })
+                                                                            }
+                                                                            className="mt-3 flex items-center gap-2 rounded-lg px-2 py-1 text-sm font-medium text-tertiary transition duration-100 ease-linear hover:text-brand-secondary"
+                                                                        >
+                                                                            <Plus className="size-4" aria-hidden="true" />
+                                                                            Add month
                                                                         </button>
                                                                     </div>
-                                                                    <textarea
-                                                                        rows={2}
-                                                                        placeholder="Answer"
-                                                                        value={f.answer}
-                                                                        onChange={(e) => updateFaq(i, { answer: e.target.value })}
-                                                                        className={cx(editInput(), "resize-y text-xs")}
-                                                                    />
-                                                                </div>
-                                                            ),
+                                                                )}
+                                                            </>
                                                         )}
-                                                        {!isLocked && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() =>
-                                                                    patchFoundation({ faqs: [...foundation.faqs, { id: uid(), question: "", answer: "" }] })
-                                                                }
-                                                                className="flex items-center gap-2 rounded-lg px-2 py-1 text-sm font-medium text-tertiary transition duration-100 ease-linear hover:text-brand-secondary"
-                                                            >
-                                                                <Plus className="size-4" aria-hidden="true" />
-                                                                Add FAQ
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </Reveal>
-                                        )}
+                                                    </Reveal>
+                                                )}
 
-                                        {/* ── Brand Kit ── */}
-                                        {activeSection === "brand" && (
-                                            <Reveal>
-                                                <SectionEyebrow stage="foundation" />
-                                                <div className="flex flex-wrap items-end justify-between gap-3">
-                                                    <SectionHeading>Brand Kit</SectionHeading>
-                                                    {isLocked ? (
-                                                        content.brand.folder_link && (
-                                                            <Button
-                                                                href={content.brand.folder_link}
-                                                                target="_blank"
-                                                                rel="noopener noreferrer"
-                                                                color="link-color"
-                                                                size="md"
-                                                                iconTrailing={LinkExternal01}
-                                                            >
-                                                                Open brand folder
-                                                            </Button>
-                                                        )
-                                                    ) : (
-                                                        <input
-                                                            type="text"
-                                                            placeholder="Brand folder link (Drive / Canva)"
-                                                            value={content.brand.folder_link}
-                                                            onChange={(e) => patchBrand({ folder_link: e.target.value })}
-                                                            className={editInput("max-w-80")}
-                                                        />
-                                                    )}
-                                                </div>
-                                                <p className="mt-3 text-md text-tertiary">
-                                                    Your official colors and typography. Use these everywhere so your brand stays consistent.
-                                                </p>
+                                                {/* ── Website — top-of-funnel tools embedded on your own site ── */}
+                                                {activeSection === "website" && (
+                                                    <Reveal>
+                                                        <SectionEyebrow stage="top" />
+                                                        <SectionHeading>Website</SectionHeading>
+                                                        <p className="mt-3 text-md text-tertiary">
+                                                            Your site is the first real impression — these are the tools we've set up on it to turn visitors
+                                                            into leads.
+                                                        </p>
 
-                                                <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
-                                                    {content.brand.colors.map((color, i) => (
-                                                        <div key={i} className="overflow-hidden rounded-xl ring-1 ring-secondary">
-                                                            <div className="h-20" style={{ backgroundColor: color.hex }} />
-                                                            <div className="p-3">
-                                                                {isLocked ? (
-                                                                    <>
-                                                                        <p className="text-sm font-semibold text-primary">{color.name}</p>
-                                                                        <p className="mt-0.5 font-mono text-xs text-tertiary uppercase">{color.hex}</p>
-                                                                    </>
+                                                        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                                                            {websiteLinks.map((link, i) =>
+                                                                isLocked ? (
+                                                                    <a
+                                                                        key={i}
+                                                                        href={link.url}
+                                                                        target={link.url.startsWith("/") ? undefined : "_blank"}
+                                                                        rel={link.url.startsWith("/") ? undefined : "noopener noreferrer"}
+                                                                        className="group rounded-xl p-5 ring-1 ring-secondary transition duration-100 ease-linear hover:ring-brand"
+                                                                    >
+                                                                        <div className="flex items-start justify-between gap-2">
+                                                                            <FeaturedIcon icon={ArrowUpRight} size="sm" color="brand" theme="light" />
+                                                                            <ArrowUpRight
+                                                                                className="size-4 text-fg-quaternary opacity-0 transition duration-100 ease-linear group-hover:opacity-100"
+                                                                                aria-hidden="true"
+                                                                            />
+                                                                        </div>
+                                                                        <p className="mt-3 text-sm font-semibold text-primary">{link.title}</p>
+                                                                        <p className="mt-1 text-sm text-tertiary">{link.description}</p>
+                                                                    </a>
                                                                 ) : (
-                                                                    <div className="flex flex-col gap-1.5">
-                                                                        <input
-                                                                            type="text"
-                                                                            placeholder="Name"
-                                                                            value={color.name}
-                                                                            onChange={(e) => updateColor(i, { name: e.target.value })}
-                                                                            className={editInput("px-2 py-1 text-xs")}
-                                                                        />
-                                                                        <div className="flex items-center gap-1">
+                                                                    <div key={i} className="flex flex-col gap-1.5 rounded-xl p-4 ring-1 ring-secondary">
+                                                                        <div className="flex items-center gap-1.5">
                                                                             <input
                                                                                 type="text"
-                                                                                placeholder="#000000"
-                                                                                value={color.hex}
-                                                                                onChange={(e) => updateColor(i, { hex: e.target.value })}
-                                                                                className={editInput("px-2 py-1 font-mono text-xs")}
+                                                                                placeholder="Title"
+                                                                                value={link.title}
+                                                                                onChange={(e) => updateLink(link, { title: e.target.value })}
+                                                                                className={editInput("font-semibold")}
                                                                             />
                                                                             <button
                                                                                 type="button"
-                                                                                title="Remove color"
+                                                                                title="Remove link"
+                                                                                onClick={() => removeLink(link)}
+                                                                                className={removeButton}
+                                                                            >
+                                                                                <Trash01 className="size-4" aria-hidden="true" />
+                                                                            </button>
+                                                                        </div>
+                                                                        <input
+                                                                            type="text"
+                                                                            placeholder="Description"
+                                                                            value={link.description}
+                                                                            onChange={(e) => updateLink(link, { description: e.target.value })}
+                                                                            className={editInput("text-xs")}
+                                                                        />
+                                                                        <input
+                                                                            type="text"
+                                                                            placeholder="/acme-metapixel or https://…"
+                                                                            value={link.url}
+                                                                            onChange={(e) => updateLink(link, { url: e.target.value })}
+                                                                            className={editInput("font-mono text-xs")}
+                                                                        />
+                                                                    </div>
+                                                                ),
+                                                            )}
+                                                            {!isLocked && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        setContent((c) => ({
+                                                                            ...c,
+                                                                            links: [...c.links, { title: "New page", description: "", url: "" }],
+                                                                        }))
+                                                                    }
+                                                                    className="flex min-h-28 flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-secondary text-sm font-medium text-tertiary transition duration-100 ease-linear hover:border-brand hover:text-brand-secondary"
+                                                                >
+                                                                    <Plus className="size-5" aria-hidden="true" />
+                                                                    Add link
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </Reveal>
+                                                )}
+
+                                                {/* ── Chat Widget — middle-of-funnel, answers guest questions from the Master Document ── */}
+                                                {activeSection === "chatwidget" && (
+                                                    <Reveal>
+                                                        <SectionEyebrow stage="middle" />
+                                                        <SectionHeading>Chat Widget</SectionHeading>
+                                                        <p className="mt-3 text-md text-tertiary">
+                                                            An AI chat on your website that answers guest questions instantly, straight from your Master
+                                                            Document's FAQ bank — so no question goes unanswered while you're offline.
+                                                        </p>
+
+                                                        <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                                                            {chatWidgetLinks.length === 0 && isLocked && (
+                                                                <p className="rounded-xl border border-dashed border-secondary px-4 py-5 text-sm text-quaternary italic sm:col-span-2">
+                                                                    Your chat widget setup guide will appear here once it's ready.
+                                                                </p>
+                                                            )}
+                                                            {chatWidgetLinks.map((link, i) =>
+                                                                isLocked ? (
+                                                                    <a
+                                                                        key={i}
+                                                                        href={link.url}
+                                                                        target={link.url.startsWith("/") ? undefined : "_blank"}
+                                                                        rel={link.url.startsWith("/") ? undefined : "noopener noreferrer"}
+                                                                        className="group rounded-xl p-5 ring-1 ring-secondary transition duration-100 ease-linear hover:ring-brand"
+                                                                    >
+                                                                        <div className="flex items-start justify-between gap-2">
+                                                                            <FeaturedIcon icon={MessageChatCircle} size="sm" color="brand" theme="light" />
+                                                                            <ArrowUpRight
+                                                                                className="size-4 text-fg-quaternary opacity-0 transition duration-100 ease-linear group-hover:opacity-100"
+                                                                                aria-hidden="true"
+                                                                            />
+                                                                        </div>
+                                                                        <p className="mt-3 text-sm font-semibold text-primary">{link.title}</p>
+                                                                        <p className="mt-1 text-sm text-tertiary">{link.description}</p>
+                                                                    </a>
+                                                                ) : (
+                                                                    <div key={i} className="flex flex-col gap-1.5 rounded-xl p-4 ring-1 ring-secondary">
+                                                                        <div className="flex items-center gap-1.5">
+                                                                            <input
+                                                                                type="text"
+                                                                                placeholder="Title"
+                                                                                value={link.title}
+                                                                                onChange={(e) => updateLink(link, { title: e.target.value })}
+                                                                                className={editInput("font-semibold")}
+                                                                            />
+                                                                            <button
+                                                                                type="button"
+                                                                                title="Remove link"
+                                                                                onClick={() => removeLink(link)}
+                                                                                className={removeButton}
+                                                                            >
+                                                                                <Trash01 className="size-4" aria-hidden="true" />
+                                                                            </button>
+                                                                        </div>
+                                                                        <input
+                                                                            type="text"
+                                                                            placeholder="Description"
+                                                                            value={link.description}
+                                                                            onChange={(e) => updateLink(link, { description: e.target.value })}
+                                                                            className={editInput("text-xs")}
+                                                                        />
+                                                                        <input
+                                                                            type="text"
+                                                                            placeholder="/acme-chatwidget"
+                                                                            value={link.url}
+                                                                            onChange={(e) => updateLink(link, { url: e.target.value })}
+                                                                            className={editInput("font-mono text-xs")}
+                                                                        />
+                                                                    </div>
+                                                                ),
+                                                            )}
+                                                            {!isLocked && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        setContent((c) => ({
+                                                                            ...c,
+                                                                            links: [
+                                                                                ...c.links,
+                                                                                {
+                                                                                    title: "Chat Widget",
+                                                                                    description: "",
+                                                                                    url: slug ? `/${slug}-chatwidget` : "",
+                                                                                },
+                                                                            ],
+                                                                        }))
+                                                                    }
+                                                                    className="flex min-h-28 flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-secondary text-sm font-medium text-tertiary transition duration-100 ease-linear hover:border-brand hover:text-brand-secondary"
+                                                                >
+                                                                    <Plus className="size-5" aria-hidden="true" />
+                                                                    Add link
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </Reveal>
+                                                )}
+
+                                                {/* ── Video Guides ── */}
+                                                {activeSection === "videos" && (
+                                                    <Reveal>
+                                                        <SectionEyebrow stage="foundation" />
+                                                        <SectionHeading>Video Guides</SectionHeading>
+                                                        <p className="mt-3 text-md text-tertiary">
+                                                            Short walkthrough videos recorded for you by the HiddenGem team.
+                                                        </p>
+
+                                                        {isLocked ? (
+                                                            videoGuides.some((v) => v.url) ? (
+                                                                <div className="mt-6 grid gap-6 sm:grid-cols-2">
+                                                                    {videoGuides
+                                                                        .filter((v) => v.url)
+                                                                        .map((v) => (
+                                                                            <div key={v.id}>
+                                                                                <p className="text-sm font-semibold text-primary">{v.title}</p>
+                                                                                <VideoEmbed url={v.url} className="mt-3" />
+                                                                            </div>
+                                                                        ))}
+                                                                </div>
+                                                            ) : (
+                                                                <p className="mt-6 rounded-xl border border-dashed border-secondary px-4 py-5 text-sm text-quaternary italic">
+                                                                    No videos yet.
+                                                                </p>
+                                                            )
+                                                        ) : (
+                                                            <div className="mt-6 flex flex-col gap-4">
+                                                                {videoGuides.map((v, i) => (
+                                                                    <div key={v.id} className="flex flex-col gap-1.5 rounded-xl p-4 ring-1 ring-secondary">
+                                                                        <div className="flex items-center gap-1.5">
+                                                                            <input
+                                                                                type="text"
+                                                                                placeholder="Video title"
+                                                                                value={v.title}
+                                                                                onChange={(e) => updateVideo(i, { title: e.target.value })}
+                                                                                className={editInput("font-semibold")}
+                                                                            />
+                                                                            <button
+                                                                                type="button"
+                                                                                title="Remove video"
                                                                                 onClick={() =>
-                                                                                    patchBrand({ colors: content.brand.colors.filter((_, j) => j !== i) })
+                                                                                    setContent((c) => ({
+                                                                                        ...c,
+                                                                                        videos: (c.videos ?? []).filter((_, j) => j !== i),
+                                                                                    }))
                                                                                 }
                                                                                 className={removeButton}
                                                                             >
                                                                                 <Trash01 className="size-4" aria-hidden="true" />
                                                                             </button>
                                                                         </div>
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                    {!isLocked && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() =>
-                                                                patchBrand({ colors: [...content.brand.colors, { name: "New color", hex: "#888888" }] })
-                                                            }
-                                                            className="flex min-h-32 flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-secondary text-sm font-medium text-tertiary transition duration-100 ease-linear hover:border-brand hover:text-brand-secondary"
-                                                        >
-                                                            <Plus className="size-5" aria-hidden="true" />
-                                                            Add color
-                                                        </button>
-                                                    )}
-                                                </div>
-
-                                                <div className="mt-4 flex items-center gap-3 rounded-xl bg-secondary px-4 py-3">
-                                                    <span className="text-sm font-medium text-secondary">Fonts:</span>
-                                                    {isLocked ? (
-                                                        <span className="text-sm text-tertiary">{content.brand.fonts || "—"}</span>
-                                                    ) : (
-                                                        <input
-                                                            type="text"
-                                                            placeholder="e.g. Inter, Playfair Display"
-                                                            value={content.brand.fonts}
-                                                            onChange={(e) => patchBrand({ fonts: e.target.value })}
-                                                            className={editInput("max-w-72")}
-                                                        />
-                                                    )}
-                                                </div>
-                                            </Reveal>
-                                        )}
-
-                                        {/* ── Instagram Highlights ── */}
-                                        {activeSection === "instagram" && (
-                                            <Reveal>
-                                                <SectionEyebrow stage="top" />
-                                                <div className="flex flex-wrap items-end justify-between gap-3">
-                                                    <SectionHeading>Instagram Highlights</SectionHeading>
-                                                    {isLocked ? (
-                                                        content.instagram.profile_url && (
-                                                            <Button
-                                                                href={content.instagram.profile_url}
-                                                                target="_blank"
-                                                                rel="noopener noreferrer"
-                                                                color="link-color"
-                                                                size="md"
-                                                                iconTrailing={LinkExternal01}
-                                                            >
-                                                                View profile
-                                                            </Button>
-                                                        )
-                                                    ) : (
-                                                        <input
-                                                            type="text"
-                                                            placeholder="Instagram profile URL"
-                                                            value={content.instagram.profile_url}
-                                                            onChange={(e) => patchInstagram({ profile_url: e.target.value })}
-                                                            className={editInput("max-w-80")}
-                                                        />
-                                                    )}
-                                                </div>
-                                                <p className="mt-3 text-md text-tertiary">
-                                                    Your highlight covers, ready to download and add to your Instagram profile.
-                                                </p>
-
-                                                {content.instagram.highlights.length === 0 && isLocked ? (
-                                                    <div className="mt-6 flex items-center gap-3 rounded-xl bg-secondary px-4 py-5">
-                                                        <Instagram className="size-5 shrink-0 text-fg-quaternary" aria-hidden="true" />
-                                                        <p className="text-sm text-tertiary">
-                                                            Highlight covers are on the way — the HiddenGem team will add them here.
-                                                        </p>
-                                                    </div>
-                                                ) : (
-                                                    <div className="mt-6 flex flex-wrap gap-5">
-                                                        {content.instagram.highlights.map((h, i) => (
-                                                            <div key={i} className="flex w-24 flex-col items-center gap-2">
-                                                                <div className="flex size-20 items-center justify-center overflow-hidden rounded-full bg-secondary p-0.5 ring-2 ring-secondary">
-                                                                    {h.image_url ? (
-                                                                        <img
-                                                                            src={h.image_url}
-                                                                            alt={h.title}
-                                                                            className="size-full rounded-full object-cover"
-                                                                            draggable={false}
+                                                                        <VideoAttach
+                                                                            value={v.url || undefined}
+                                                                            onChange={(url) => updateVideo(i, { url: url ?? "" })}
                                                                         />
-                                                                    ) : (
-                                                                        <Image01 className="size-6 text-fg-quaternary" aria-hidden="true" />
-                                                                    )}
-                                                                </div>
-                                                                {isLocked ? (
-                                                                    <p className="w-full truncate text-center text-xs font-medium text-secondary">{h.title}</p>
-                                                                ) : (
-                                                                    <div className="flex w-full flex-col gap-1">
-                                                                        <input
-                                                                            type="text"
-                                                                            placeholder="Title"
-                                                                            value={h.title}
-                                                                            onChange={(e) => updateHighlight(i, { title: e.target.value })}
-                                                                            className={editInput("px-2 py-1 text-center text-xs")}
-                                                                        />
-                                                                        <input
-                                                                            type="text"
-                                                                            placeholder="Image URL"
-                                                                            value={h.image_url}
-                                                                            onChange={(e) => updateHighlight(i, { image_url: e.target.value })}
-                                                                            className={editInput("px-2 py-1 text-xs")}
-                                                                        />
-                                                                        <button
-                                                                            type="button"
-                                                                            title="Remove highlight"
-                                                                            onClick={() =>
-                                                                                patchInstagram({
-                                                                                    highlights: content.instagram.highlights.filter((_, j) => j !== i),
-                                                                                })
-                                                                            }
-                                                                            className={cx(removeButton, "self-center")}
-                                                                        >
-                                                                            <Trash01 className="size-4" aria-hidden="true" />
-                                                                        </button>
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        ))}
-                                                        {!isLocked && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() =>
-                                                                    patchInstagram({
-                                                                        highlights: [...content.instagram.highlights, { title: "New", image_url: "" }],
-                                                                    })
-                                                                }
-                                                                className="flex size-20 items-center justify-center rounded-full border border-dashed border-secondary text-tertiary transition duration-100 ease-linear hover:border-brand hover:text-brand-secondary"
-                                                                title="Add highlight"
-                                                            >
-                                                                <Plus className="size-5" aria-hidden="true" />
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                )}
-                                            </Reveal>
-                                        )}
-
-                                        {/* ── GoHighLevel Setup ── */}
-                                        {activeSection === "ghl" && (
-                                            <Reveal>
-                                                <SectionEyebrow stage="bottom" />
-                                                <div className="flex flex-wrap items-end justify-between gap-3">
-                                                    <SectionHeading>GoHighLevel Setup</SectionHeading>
-                                                    {isLocked ? (
-                                                        content.ghl.login_url && (
-                                                            <Button
-                                                                href={content.ghl.login_url}
-                                                                target="_blank"
-                                                                rel="noopener noreferrer"
-                                                                color="link-color"
-                                                                size="md"
-                                                                iconTrailing={LinkExternal01}
-                                                            >
-                                                                Log in to GoHighLevel
-                                                            </Button>
-                                                        )
-                                                    ) : (
-                                                        <input
-                                                            type="text"
-                                                            placeholder="GHL login URL"
-                                                            value={content.ghl.login_url}
-                                                            onChange={(e) => patchGhl({ login_url: e.target.value })}
-                                                            className={editInput("max-w-80")}
-                                                        />
-                                                    )}
-                                                </div>
-                                                <p className="mt-3 text-md text-tertiary">Everything we're configuring in your CRM. Ticked items are live.</p>
-
-                                                <div className="mt-6 flex flex-col items-center gap-8 rounded-xl p-6 ring-1 ring-secondary md:flex-row md:items-start">
-                                                    <div className="shrink-0 pt-1">
-                                                        <ProgressBarCircle
-                                                            value={ghlDone}
-                                                            max={Math.max(ghlTotal, 1)}
-                                                            size="xs"
-                                                            label="Setup progress"
-                                                            valueFormatter={(_, pct) => `${pct}%`}
-                                                        />
-                                                        <p className="mt-2 text-center text-xs font-medium text-tertiary">
-                                                            {ghlDone} of {ghlTotal} complete
-                                                        </p>
-                                                    </div>
-
-                                                    <ul className="grid w-full gap-2.5 md:grid-cols-2">
-                                                        {content.ghl.items.map((item, i) => (
-                                                            <li key={i} className="flex items-center gap-3">
-                                                                <button
-                                                                    type="button"
-                                                                    disabled={isLocked}
-                                                                    onClick={() => updateGhlItem(i, { done: !item.done })}
-                                                                    title={isLocked ? undefined : "Toggle status"}
-                                                                    className={cx(
-                                                                        "flex size-5 shrink-0 items-center justify-center rounded-full transition duration-100 ease-linear",
-                                                                        item.done
-                                                                            ? "bg-brand-solid text-white"
-                                                                            : "text-transparent ring-1 ring-primary ring-inset",
-                                                                        isLocked ? "cursor-default" : "cursor-pointer hover:opacity-80",
-                                                                    )}
-                                                                >
-                                                                    <Check className="size-3.5" strokeWidth={3} aria-hidden="true" />
-                                                                </button>
-                                                                {isLocked ? (
-                                                                    <span className={cx("text-sm", item.done ? "text-primary" : "text-tertiary")}>
-                                                                        {item.label}
-                                                                    </span>
-                                                                ) : (
-                                                                    <>
-                                                                        <input
-                                                                            type="text"
-                                                                            value={item.label}
-                                                                            onChange={(e) => updateGhlItem(i, { label: e.target.value })}
-                                                                            className={editInput("px-2 py-1 text-sm")}
-                                                                        />
-                                                                        <button
-                                                                            type="button"
-                                                                            title="Remove item"
-                                                                            onClick={() => patchGhl({ items: content.ghl.items.filter((_, j) => j !== i) })}
-                                                                            className={removeButton}
-                                                                        >
-                                                                            <Trash01 className="size-4" aria-hidden="true" />
-                                                                        </button>
-                                                                    </>
-                                                                )}
-                                                            </li>
-                                                        ))}
-                                                        {!isLocked && (
-                                                            <li>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() =>
-                                                                        patchGhl({ items: [...content.ghl.items, { label: "New setup item", done: false }] })
-                                                                    }
-                                                                    className="flex items-center gap-2 rounded-lg px-2 py-1 text-sm font-medium text-tertiary transition duration-100 ease-linear hover:text-brand-secondary"
-                                                                >
-                                                                    <Plus className="size-4" aria-hidden="true" />
-                                                                    Add item
-                                                                </button>
-                                                            </li>
-                                                        )}
-                                                    </ul>
-                                                </div>
-                                            </Reveal>
-                                        )}
-
-                                        {/* ── Revenue & Results ── */}
-                                        {activeSection === "revenue" && (
-                                            <Reveal>
-                                                <SectionEyebrow stage="bottom" />
-                                                <div className="flex flex-wrap items-end justify-between gap-3">
-                                                    <SectionHeading>Revenue &amp; Results</SectionHeading>
-                                                    {!isLocked && (
-                                                        <input
-                                                            type="text"
-                                                            placeholder="Currency (e.g. USD)"
-                                                            value={content.revenue.currency}
-                                                            onChange={(e) => patchRevenue({ currency: e.target.value.toUpperCase() })}
-                                                            className={editInput("max-w-36 uppercase")}
-                                                        />
-                                                    )}
-                                                </div>
-                                                <p className="mt-3 text-md text-tertiary">
-                                                    Results from your campaigns, updated monthly by the HiddenGem team.
-                                                </p>
-
-                                                {months.length === 0 && isLocked ? (
-                                                    <div className="mt-6 rounded-xl bg-secondary px-4 py-6 text-center">
-                                                        <p className="text-sm text-tertiary">No results yet — your first month's numbers will appear here.</p>
-                                                    </div>
-                                                ) : (
-                                                    <>
-                                                        {/* Stat tiles */}
-                                                        <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-                                                            <StatTile
-                                                                label="This month"
-                                                                value={latest ? fmtMoney(latest.revenue) : "—"}
-                                                                change={
-                                                                    momChange !== null ? (
-                                                                        <BadgeWithIcon
-                                                                            iconLeading={momChange >= 0 ? ArrowUp : ArrowDown}
-                                                                            color={momChange >= 0 ? "success" : "error"}
-                                                                            size="md"
-                                                                        >
-                                                                            {`${Math.abs(momChange).toFixed(0)}%`}
-                                                                        </BadgeWithIcon>
-                                                                    ) : undefined
-                                                                }
-                                                            />
-                                                            <StatTile label="Total revenue" value={fmtMoney(totalRevenue)} />
-                                                            <StatTile label="Leads captured" value={totalLeads.toLocaleString()} />
-                                                            <StatTile label="Appointments booked" value={totalAppointments.toLocaleString()} />
-                                                        </div>
-
-                                                        {/* Revenue bar chart — single series, brand hue, tooltip on hover */}
-                                                        {months.length > 0 && (
-                                                            <div className="mt-6 rounded-xl p-5 ring-1 ring-secondary">
-                                                                <p className="text-sm font-semibold text-primary">Monthly revenue</p>
-                                                                <div className="mt-4 h-72 w-full text-quaternary">
-                                                                    <ResponsiveContainer width="100%" height="100%">
-                                                                        <BarChart data={months} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-                                                                            <CartesianGrid
-                                                                                vertical={false}
-                                                                                stroke="currentColor"
-                                                                                className="text-border-tertiary"
-                                                                            />
-                                                                            <XAxis
-                                                                                dataKey="month"
-                                                                                axisLine={false}
-                                                                                tickLine={false}
-                                                                                tick={{ fill: "currentColor", fontSize: 12 }}
-                                                                                dy={6}
-                                                                            />
-                                                                            <YAxis
-                                                                                axisLine={false}
-                                                                                tickLine={false}
-                                                                                width={44}
-                                                                                tick={{ fill: "currentColor", fontSize: 12 }}
-                                                                                tickFormatter={(v: number) => fmtCompact(v)}
-                                                                            />
-                                                                            <RechartsTooltip
-                                                                                cursor={{ fill: "currentColor", opacity: 0.06 }}
-                                                                                content={<ChartTooltipContent formatter={(value) => fmtMoney(Number(value))} />}
-                                                                            />
-                                                                            <Bar
-                                                                                dataKey="revenue"
-                                                                                name="Revenue"
-                                                                                className="fill-utility-brand-600"
-                                                                                radius={[4, 4, 0, 0]}
-                                                                                maxBarSize={32}
-                                                                            />
-                                                                        </BarChart>
-                                                                    </ResponsiveContainer>
-                                                                </div>
-                                                            </div>
-                                                        )}
-
-                                                        {/* Edit-only data table */}
-                                                        {!isLocked && (
-                                                            <div className="mt-6 overflow-x-auto rounded-xl p-4 ring-1 ring-secondary">
-                                                                <div className="grid min-w-120 grid-cols-[1fr_1fr_1fr_1fr_2.5rem] items-center gap-2">
-                                                                    {["Month", "Revenue", "Leads", "Appointments", ""].map((h) => (
-                                                                        <span key={h} className="px-1 text-xs font-semibold text-quaternary">
-                                                                            {h}
-                                                                        </span>
-                                                                    ))}
-                                                                    {months.map((m, i) => (
-                                                                        <div key={i} className="col-span-5 grid grid-cols-subgrid items-center">
-                                                                            <input
-                                                                                type="text"
-                                                                                placeholder="Jul"
-                                                                                value={m.month}
-                                                                                onChange={(e) => updateMonth(i, { month: e.target.value })}
-                                                                                className={editInput()}
-                                                                            />
-                                                                            <input
-                                                                                type="number"
-                                                                                value={m.revenue}
-                                                                                onChange={(e) => updateMonth(i, { revenue: Number(e.target.value) || 0 })}
-                                                                                className={editInput()}
-                                                                            />
-                                                                            <input
-                                                                                type="number"
-                                                                                value={m.leads}
-                                                                                onChange={(e) => updateMonth(i, { leads: Number(e.target.value) || 0 })}
-                                                                                className={editInput()}
-                                                                            />
-                                                                            <input
-                                                                                type="number"
-                                                                                value={m.appointments}
-                                                                                onChange={(e) => updateMonth(i, { appointments: Number(e.target.value) || 0 })}
-                                                                                className={editInput()}
-                                                                            />
-                                                                            <button
-                                                                                type="button"
-                                                                                title="Remove month"
-                                                                                onClick={() => patchRevenue({ months: months.filter((_, j) => j !== i) })}
-                                                                                className={removeButton}
-                                                                            >
-                                                                                <Trash01 className="size-4" aria-hidden="true" />
-                                                                            </button>
-                                                                        </div>
-                                                                    ))}
-                                                                </div>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() =>
-                                                                        patchRevenue({
-                                                                            months: [...months, { month: "", revenue: 0, leads: 0, appointments: 0 }],
-                                                                        })
-                                                                    }
-                                                                    className="mt-3 flex items-center gap-2 rounded-lg px-2 py-1 text-sm font-medium text-tertiary transition duration-100 ease-linear hover:text-brand-secondary"
-                                                                >
-                                                                    <Plus className="size-4" aria-hidden="true" />
-                                                                    Add month
-                                                                </button>
-                                                            </div>
-                                                        )}
-                                                    </>
-                                                )}
-                                            </Reveal>
-                                        )}
-
-                                        {/* ── Website — top-of-funnel tools embedded on your own site ── */}
-                                        {activeSection === "website" && (
-                                            <Reveal>
-                                                <SectionEyebrow stage="top" />
-                                                <SectionHeading>Website</SectionHeading>
-                                                <p className="mt-3 text-md text-tertiary">
-                                                    Your site is the first real impression — these are the tools we've set up on it to turn visitors into leads.
-                                                </p>
-
-                                                <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                                                    {websiteLinks.map((link, i) =>
-                                                        isLocked ? (
-                                                            <a
-                                                                key={i}
-                                                                href={link.url}
-                                                                target={link.url.startsWith("/") ? undefined : "_blank"}
-                                                                rel={link.url.startsWith("/") ? undefined : "noopener noreferrer"}
-                                                                className="group rounded-xl p-5 ring-1 ring-secondary transition duration-100 ease-linear hover:ring-brand"
-                                                            >
-                                                                <div className="flex items-start justify-between gap-2">
-                                                                    <FeaturedIcon icon={ArrowUpRight} size="sm" color="brand" theme="light" />
-                                                                    <ArrowUpRight
-                                                                        className="size-4 text-fg-quaternary opacity-0 transition duration-100 ease-linear group-hover:opacity-100"
-                                                                        aria-hidden="true"
-                                                                    />
-                                                                </div>
-                                                                <p className="mt-3 text-sm font-semibold text-primary">{link.title}</p>
-                                                                <p className="mt-1 text-sm text-tertiary">{link.description}</p>
-                                                            </a>
-                                                        ) : (
-                                                            <div key={i} className="flex flex-col gap-1.5 rounded-xl p-4 ring-1 ring-secondary">
-                                                                <div className="flex items-center gap-1.5">
-                                                                    <input
-                                                                        type="text"
-                                                                        placeholder="Title"
-                                                                        value={link.title}
-                                                                        onChange={(e) => updateLink(link, { title: e.target.value })}
-                                                                        className={editInput("font-semibold")}
-                                                                    />
-                                                                    <button
-                                                                        type="button"
-                                                                        title="Remove link"
-                                                                        onClick={() => removeLink(link)}
-                                                                        className={removeButton}
-                                                                    >
-                                                                        <Trash01 className="size-4" aria-hidden="true" />
-                                                                    </button>
-                                                                </div>
-                                                                <input
-                                                                    type="text"
-                                                                    placeholder="Description"
-                                                                    value={link.description}
-                                                                    onChange={(e) => updateLink(link, { description: e.target.value })}
-                                                                    className={editInput("text-xs")}
-                                                                />
-                                                                <input
-                                                                    type="text"
-                                                                    placeholder="/acme-metapixel or https://…"
-                                                                    value={link.url}
-                                                                    onChange={(e) => updateLink(link, { url: e.target.value })}
-                                                                    className={editInput("font-mono text-xs")}
-                                                                />
-                                                            </div>
-                                                        ),
-                                                    )}
-                                                    {!isLocked && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() =>
-                                                                setContent((c) => ({
-                                                                    ...c,
-                                                                    links: [...c.links, { title: "New page", description: "", url: "" }],
-                                                                }))
-                                                            }
-                                                            className="flex min-h-28 flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-secondary text-sm font-medium text-tertiary transition duration-100 ease-linear hover:border-brand hover:text-brand-secondary"
-                                                        >
-                                                            <Plus className="size-5" aria-hidden="true" />
-                                                            Add link
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </Reveal>
-                                        )}
-
-                                        {/* ── Chat Widget — middle-of-funnel, answers guest questions from the Master Document ── */}
-                                        {activeSection === "chatwidget" && (
-                                            <Reveal>
-                                                <SectionEyebrow stage="middle" />
-                                                <SectionHeading>Chat Widget</SectionHeading>
-                                                <p className="mt-3 text-md text-tertiary">
-                                                    An AI chat on your website that answers guest questions instantly, straight from your Master Document's FAQ
-                                                    bank — so no question goes unanswered while you're offline.
-                                                </p>
-
-                                                <div className="mt-6 grid gap-4 sm:grid-cols-2">
-                                                    {chatWidgetLinks.length === 0 && isLocked && (
-                                                        <p className="rounded-xl border border-dashed border-secondary px-4 py-5 text-sm text-quaternary italic sm:col-span-2">
-                                                            Your chat widget setup guide will appear here once it's ready.
-                                                        </p>
-                                                    )}
-                                                    {chatWidgetLinks.map((link, i) =>
-                                                        isLocked ? (
-                                                            <a
-                                                                key={i}
-                                                                href={link.url}
-                                                                target={link.url.startsWith("/") ? undefined : "_blank"}
-                                                                rel={link.url.startsWith("/") ? undefined : "noopener noreferrer"}
-                                                                className="group rounded-xl p-5 ring-1 ring-secondary transition duration-100 ease-linear hover:ring-brand"
-                                                            >
-                                                                <div className="flex items-start justify-between gap-2">
-                                                                    <FeaturedIcon icon={MessageChatCircle} size="sm" color="brand" theme="light" />
-                                                                    <ArrowUpRight
-                                                                        className="size-4 text-fg-quaternary opacity-0 transition duration-100 ease-linear group-hover:opacity-100"
-                                                                        aria-hidden="true"
-                                                                    />
-                                                                </div>
-                                                                <p className="mt-3 text-sm font-semibold text-primary">{link.title}</p>
-                                                                <p className="mt-1 text-sm text-tertiary">{link.description}</p>
-                                                            </a>
-                                                        ) : (
-                                                            <div key={i} className="flex flex-col gap-1.5 rounded-xl p-4 ring-1 ring-secondary">
-                                                                <div className="flex items-center gap-1.5">
-                                                                    <input
-                                                                        type="text"
-                                                                        placeholder="Title"
-                                                                        value={link.title}
-                                                                        onChange={(e) => updateLink(link, { title: e.target.value })}
-                                                                        className={editInput("font-semibold")}
-                                                                    />
-                                                                    <button
-                                                                        type="button"
-                                                                        title="Remove link"
-                                                                        onClick={() => removeLink(link)}
-                                                                        className={removeButton}
-                                                                    >
-                                                                        <Trash01 className="size-4" aria-hidden="true" />
-                                                                    </button>
-                                                                </div>
-                                                                <input
-                                                                    type="text"
-                                                                    placeholder="Description"
-                                                                    value={link.description}
-                                                                    onChange={(e) => updateLink(link, { description: e.target.value })}
-                                                                    className={editInput("text-xs")}
-                                                                />
-                                                                <input
-                                                                    type="text"
-                                                                    placeholder="/acme-chatwidget"
-                                                                    value={link.url}
-                                                                    onChange={(e) => updateLink(link, { url: e.target.value })}
-                                                                    className={editInput("font-mono text-xs")}
-                                                                />
-                                                            </div>
-                                                        ),
-                                                    )}
-                                                    {!isLocked && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() =>
-                                                                setContent((c) => ({
-                                                                    ...c,
-                                                                    links: [
-                                                                        ...c.links,
-                                                                        { title: "Chat Widget", description: "", url: slug ? `/${slug}-chatwidget` : "" },
-                                                                    ],
-                                                                }))
-                                                            }
-                                                            className="flex min-h-28 flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-secondary text-sm font-medium text-tertiary transition duration-100 ease-linear hover:border-brand hover:text-brand-secondary"
-                                                        >
-                                                            <Plus className="size-5" aria-hidden="true" />
-                                                            Add link
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </Reveal>
-                                        )}
-
-                                        {/* ── Video Guides ── */}
-                                        {activeSection === "videos" && (
-                                            <Reveal>
-                                                <SectionEyebrow stage="foundation" />
-                                                <SectionHeading>Video Guides</SectionHeading>
-                                                <p className="mt-3 text-md text-tertiary">Short walkthrough videos recorded for you by the HiddenGem team.</p>
-
-                                                {isLocked ? (
-                                                    videoGuides.some((v) => v.url) ? (
-                                                        <div className="mt-6 grid gap-6 sm:grid-cols-2">
-                                                            {videoGuides
-                                                                .filter((v) => v.url)
-                                                                .map((v) => (
-                                                                    <div key={v.id}>
-                                                                        <p className="text-sm font-semibold text-primary">{v.title}</p>
-                                                                        <VideoEmbed url={v.url} className="mt-3" />
                                                                     </div>
                                                                 ))}
-                                                        </div>
-                                                    ) : (
-                                                        <p className="mt-6 rounded-xl border border-dashed border-secondary px-4 py-5 text-sm text-quaternary italic">
-                                                            No videos yet.
-                                                        </p>
-                                                    )
-                                                ) : (
-                                                    <div className="mt-6 flex flex-col gap-4">
-                                                        {videoGuides.map((v, i) => (
-                                                            <div key={v.id} className="flex flex-col gap-1.5 rounded-xl p-4 ring-1 ring-secondary">
-                                                                <div className="flex items-center gap-1.5">
-                                                                    <input
-                                                                        type="text"
-                                                                        placeholder="Video title"
-                                                                        value={v.title}
-                                                                        onChange={(e) => updateVideo(i, { title: e.target.value })}
-                                                                        className={editInput("font-semibold")}
-                                                                    />
-                                                                    <button
-                                                                        type="button"
-                                                                        title="Remove video"
-                                                                        onClick={() =>
-                                                                            setContent((c) => ({ ...c, videos: (c.videos ?? []).filter((_, j) => j !== i) }))
-                                                                        }
-                                                                        className={removeButton}
-                                                                    >
-                                                                        <Trash01 className="size-4" aria-hidden="true" />
-                                                                    </button>
-                                                                </div>
-                                                                <VideoAttach
-                                                                    value={v.url || undefined}
-                                                                    onChange={(url) => updateVideo(i, { url: url ?? "" })}
-                                                                />
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        setContent((c) => ({
+                                                                            ...c,
+                                                                            videos: [...(c.videos ?? []), { id: crypto.randomUUID(), title: "", url: "" }],
+                                                                        }))
+                                                                    }
+                                                                    className="flex min-h-28 flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-secondary text-sm font-medium text-tertiary transition duration-100 ease-linear hover:border-brand hover:text-brand-secondary"
+                                                                >
+                                                                    <Plus className="size-5" aria-hidden="true" />
+                                                                    Add video
+                                                                </button>
                                                             </div>
-                                                        ))}
-                                                        <button
-                                                            type="button"
-                                                            onClick={() =>
-                                                                setContent((c) => ({
-                                                                    ...c,
-                                                                    videos: [...(c.videos ?? []), { id: crypto.randomUUID(), title: "", url: "" }],
-                                                                }))
-                                                            }
-                                                            className="flex min-h-28 flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-secondary text-sm font-medium text-tertiary transition duration-100 ease-linear hover:border-brand hover:text-brand-secondary"
-                                                        >
-                                                            <Plus className="size-5" aria-hidden="true" />
-                                                            Add video
-                                                        </button>
-                                                    </div>
+                                                        )}
+                                                    </Reveal>
                                                 )}
-                                            </Reveal>
-                                        )}
 
-                                        {/* ── Communication Log — not built yet, nav item is disabled ── */}
-                                        {activeSection === "comms" && (
-                                            <Reveal>
-                                                <SectionEyebrow stage="foundation" />
-                                                <SectionHeading>Communication Log</SectionHeading>
-                                                <p className="mt-3 text-md text-tertiary">
-                                                    Coming soon — a shared log of calls and updates between you and your Account Manager.
-                                                </p>
-                                            </Reveal>
-                                        )}
+                                                {/* ── Communication Log — not built yet, nav item is disabled ── */}
+                                                {activeSection === "comms" && (
+                                                    <Reveal>
+                                                        <SectionEyebrow stage="foundation" />
+                                                        <SectionHeading>Communication Log</SectionHeading>
+                                                        <p className="mt-3 text-md text-tertiary">
+                                                            Coming soon — a shared log of calls and updates between you and your Account Manager.
+                                                        </p>
+                                                    </Reveal>
+                                                )}
 
-                                        {/* ── Still need support? (Overview only) ── */}
-                                        {activeSection === "overview" && (
-                                            <Reveal className="mt-16">
-                                                {/* Simple, left-aligned contact panel (approved template-lab layout) */}
-                                                <div className="rounded-2xl bg-secondary px-6 py-8 md:px-10 md:py-10">
-                                                    <h2 className="text-display-xs font-semibold text-primary">Questions about your dashboard?</h2>
-                                                    <h3 className="mt-3 text-sm font-semibold text-brand-secondary">Contact us</h3>
-                                                    <p className="mt-1.5 max-w-xl text-sm text-tertiary">
-                                                        Our team is here to help. Reach out to HiddenGem about your brand, setup, or results anytime.
-                                                    </p>
-                                                    <div className="mt-5">
-                                                        <Button href={CONTACT_MAILTO} size="lg" color="primary" iconTrailing={ArrowRight}>
-                                                            Contact HiddenGem Team
-                                                        </Button>
-                                                    </div>
-                                                </div>
-                                            </Reveal>
-                                        )}
+                                                {/* ── Still need support? (Overview only) ── */}
+                                                {activeSection === "overview" && (
+                                                    <Reveal className="mt-16">
+                                                        {/* Simple, left-aligned contact panel (approved template-lab layout) */}
+                                                        <div className="rounded-2xl bg-secondary px-6 py-8 md:px-10 md:py-10">
+                                                            <h2 className="text-display-xs font-semibold text-primary">Questions about your dashboard?</h2>
+                                                            <h3 className="mt-3 text-sm font-semibold text-brand-secondary">Contact us</h3>
+                                                            <p className="mt-1.5 max-w-xl text-sm text-tertiary">
+                                                                Our team is here to help. Reach out to HiddenGem about your brand, setup, or results anytime.
+                                                            </p>
+                                                            <div className="mt-5">
+                                                                <Button href={CONTACT_MAILTO} size="lg" color="primary" iconTrailing={ArrowRight}>
+                                                                    Contact HiddenGem Team
+                                                                </Button>
+                                                            </div>
+                                                        </div>
+                                                    </Reveal>
+                                                )}
+                                            </div>
+                                        </div>
+
                                     </div>
-                                </div>
-
-                                {/* ── Footer ── */}
-                                <footer className="mt-14 flex justify-center border-t border-secondary pt-6">
-                                    <a href="https://hiddengem.media/" target="_blank" rel="noopener noreferrer">
-                                        <img
-                                            src="/hgm logo/Logo ON LIGHT.svg"
-                                            alt="HiddenGem Media"
-                                            className="h-14 opacity-60 transition duration-100 ease-linear hover:opacity-90 dark:hidden"
-                                            draggable={false}
-                                        />
-                                        <img
-                                            src="/hgm logo/LOGO ON Dark.svg"
-                                            alt="HiddenGem Media"
-                                            className="hidden h-14 opacity-70 transition duration-100 ease-linear hover:opacity-100 dark:block"
-                                            draggable={false}
-                                        />
-                                    </a>
-                                </footer>
+                                </motion.article>
                             </div>
-                        </motion.article>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -2377,6 +2594,43 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                 {masterDocCopied ? "Copied!" : "Copy document"}
                             </Button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Client-input form modal ──
+                The form keeps its own Typeform-style chrome (progress bar, counter,
+                Enter-to-advance) and autosaves as normal — the modal only replaces the
+                full-page navigation. Backdrop click closes; nothing is lost because the
+                answer and the resume position are both already saved. */}
+            {formModal && (
+                <div
+                    // Matches the shared ModalOverlay treatment (modals/modal.tsx): semantic
+                    // bg-overlay so it adapts in dark mode, plus a backdrop blur so the
+                    // dashboard behind recedes and the question has the room to itself.
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/70 p-4 backdrop-blur-[6px] duration-300 ease-out animate-in fade-in sm:p-8"
+                    onClick={(e) => e.target === e.currentTarget && closeFormModal()}
+                >
+                    <div className="h-full max-h-[900px] w-full max-w-5xl overflow-hidden rounded-2xl shadow-2xl ring-1 ring-secondary">
+                        {formModal === "intake" ? (
+                            <ClientOnboardingFormPage
+                                slug={intakeSlug}
+                                initialClientName={clientName}
+                                initialData={intakeData}
+                                embedded
+                                onClose={closeFormModal}
+                                startAtField={formModalField}
+                            />
+                        ) : (
+                            <HostOnboardingFormPage
+                                slug={onboardingSlug}
+                                initialClientName={clientName}
+                                initialClientWebsite={clientWebsite}
+                                initialData={brandData}
+                                embedded
+                                onClose={closeFormModal}
+                            />
+                        )}
                     </div>
                 </div>
             )}

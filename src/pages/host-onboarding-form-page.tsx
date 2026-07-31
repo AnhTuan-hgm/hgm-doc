@@ -1,4 +1,57 @@
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { type FC, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import {
+    Backpack,
+    BankNote01,
+    BatteryFull,
+    Bell01,
+    BookOpen01,
+    Briefcase01,
+    Building03,
+    Building05,
+    Camera01,
+    Clock,
+    Cloud01,
+    CloudSun01,
+    Compass03,
+    Diamond01,
+    Diamond02,
+    Droplets01,
+    FaceHappy,
+    FaceWink,
+    Feather,
+    Glasses01,
+    Globe01,
+    HeartHand,
+    HeartRounded,
+    Hearts,
+    Home01,
+    Home03,
+    Home05,
+    Laptop01,
+    Lightbulb02,
+    Lightbulb03,
+    Lock01,
+    MarkerPin01,
+    MessageChatCircle,
+    Microphone01,
+    Moon01,
+    MusicNote01,
+    Palette,
+    PiggyBank01,
+    Rocket01,
+    Route,
+    Square,
+    Star01,
+    Sun,
+    Sunrise,
+    Sunset,
+    Trophy01,
+    Umbrella01,
+    Users01,
+    Users02,
+    Waves,
+    Zap,
+} from "@untitledui-pro/icons/line";
 import {
     AlertCircle,
     ArrowLeft,
@@ -23,6 +76,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Checkbox as AriaCheckbox, CheckboxGroup as AriaCheckboxGroup } from "react-aria-components";
 import { useNavigate, useSearchParams } from "react-router";
 import { AppShell } from "@/components/application/icon-rail";
+import { MediaAnswer, RecordingPlayer } from "@/components/application/media-answer";
 import { VideoAttach } from "@/components/application/video-block";
 import { FeaturedIcon } from "@/components/foundations/featured-icon/featured-icon";
 import { type CheckboxAnswer, type HostOnboardingData, supabase } from "@/lib/supabase";
@@ -71,6 +125,7 @@ function mergeData(partial?: Partial<HostOnboardingData> | null): HostOnboarding
     return {
         email: partial?.email ?? "",
         businessName: partial?.businessName ?? "",
+        mediaAnswers: { ...(partial?.mediaAnswers ?? {}) },
         purpose: cb(partial?.purpose),
         guestFeelings: cb(partial?.guestFeelings),
         threeWords: partial?.threeWords ?? "",
@@ -314,72 +369,84 @@ const SECTIONS: SectionDef[] = [
 const inputCls =
     "w-full rounded-lg border border-secondary bg-primary px-3.5 py-2.5 text-sm text-primary placeholder:text-placeholder outline-none transition duration-100 ease-linear focus:border-brand focus:ring-1 focus:ring-brand";
 
-/** A little personality per option — purely cosmetic, keyed by the exact option
- * text so it needs zero changes to the data model. Falls back to a sparkle. */
-const OPTION_EMOJI: Record<string, string> = {
-    "To reconnect people with nature": "🌿",
-    "To offer escape from busy city life": "🌄",
-    "To create meaningful family memories": "👨‍👩‍👧‍👦",
-    "To showcase sustainable living": "♻️",
-    "To provide romantic getaways": "💕",
-    "To inspire adventure and exploration": "🧭",
-    "To preserve/share a unique location": "📍",
-    "Refreshed and recharged": "🔋",
-    "Connected to nature": "🌳",
-    "Closer to their partner/family": "🤝",
-    "Inspired and creative": "🎨",
-    "Adventurous and alive": "⚡",
-    "Peaceful and grounded": "🧘",
-    "Pampered and luxurious": "✨",
-    "Unique architecture/design": "🏛️",
-    "Stunning natural location": "🏞️",
-    "Luxury amenities (hot tub, sauna, etc.)": "🛁",
-    "Off-grid/sustainable features": "🌱",
-    "Privacy and seclusion": "🔒",
-    "Instagram-worthy interiors": "📸",
-    "Pet-friendly": "🐾",
-    "Adventure activities nearby": "🚵",
-    "Couples seeking romance": "💑",
-    "Families with kids": "👶",
-    "Friend groups": "👯",
-    "Solo travellers": "🎒",
-    "Remote workers": "💻",
-    "Adventure seekers": "🏔️",
-    "Luxury travellers": "💎",
-    "Budget-friendly getaway": "💰",
-    "Mid-range comfort": "🛋️",
-    "Premium experience": "⭐",
-    "Luxury escape": "👑",
-    "Warm and welcoming (like a friendly host)": "🤗",
-    "Sophisticated and elegant (like a luxury concierge)": "🎩",
-    "Adventurous and bold (like an expedition guide)": "🧗",
-    "Calm and zen (like a wellness retreat)": "🕊️",
-    "Playful and fun (like a creative friend)": "🎉",
-    "Down-to-earth and authentic (like a local neighbor)": "🌻",
-    "Professional and polished": "👔",
-    "Casual and conversational": "💬",
-    "Poetic and inspiring": "🖋️",
-    "Simple and straightforward": "✅",
-    "Witty and clever": "😏",
-    "Rustic / Cabin Vibes": "🪵",
-    "Modern Minimalist": "⬜",
-    "Boho / Free-Spirited": "🌾",
-    "Luxe Boutique Hotel": "🛎️",
-    "Scandinavian / Light & Airy": "☁️",
-    "Desert / Southwest": "🌵",
-    "Coastal / Beachy": "🌊",
-    "Industrial / Urban": "🏗️",
-    "Vintage / Retro": "📻",
-    "Dark & Moody": "🌑",
-    "Most unique design": "🏆",
-    "Best location/views": "🌅",
-    "Ultimate luxury experience": "💎",
-    "Most Instagram-worthy": "📸",
-    "Best value for price": "💵",
-    "Most romantic spot": "❤️",
-    "Perfect family destination": "👨‍👩‍👧",
-    "Best for adventure lovers": "🏕️",
+/** A line icon per option — Untitled UI PRO, matching the rest of the app's
+ * iconography instead of emoji (which render differently on every OS and can't
+ * take a theme colour). Keyed by the exact option text, so the data model and
+ * every stored answer are untouched. Falls back to a star. */
+const OPTION_ICON: Record<string, FC<{ className?: string }>> = {
+    // Section 2 — The WHY (purpose)
+    "To reconnect people with nature": CloudSun01,
+    "To offer escape from busy city life": Sunset,
+    "To create meaningful family memories": Users01,
+    "To showcase sustainable living": Globe01,
+    "To provide romantic getaways": Heart,
+    "To inspire adventure and exploration": Compass03,
+    "To preserve/share a unique location": MarkerPin01,
+    // …how guests should feel
+    "Refreshed and recharged": BatteryFull,
+    "Connected to nature": Sun,
+    "Closer to their partner/family": HeartHand,
+    "Inspired and creative": Palette,
+    "Adventurous and alive": Zap,
+    "Peaceful and grounded": Feather,
+    "Pampered and luxurious": Stars01,
+    // Section 3 — The HOW (differentiators)
+    "Unique architecture/design": Building05,
+    "Stunning natural location": Sunrise,
+    "Luxury amenities (hot tub, sauna, etc.)": Droplets01,
+    "Off-grid/sustainable features": Lightbulb02,
+    "Privacy and seclusion": Lock01,
+    "Instagram-worthy interiors": Camera01,
+    "Pet-friendly": HeartRounded,
+    "Adventure activities nearby": Route,
+    // Section 4 — The WHAT (ideal guest & tier)
+    "Couples seeking romance": Hearts,
+    "Families with kids": Users01,
+    "Friend groups": Users02,
+    "Solo travellers": Backpack,
+    "Remote workers": Laptop01,
+    "Adventure seekers": Compass01,
+    "Luxury travellers": Diamond01,
+    "Budget-friendly getaway": PiggyBank01,
+    "Mid-range comfort": Home03,
+    "Premium experience": Star01,
+    "Luxury escape": Diamond02,
+    // Section 5 — Brand personality & voice
+    "Warm and welcoming (like a friendly host)": FaceHappy,
+    "Sophisticated and elegant (like a luxury concierge)": Glasses01,
+    "Adventurous and bold (like an expedition guide)": Rocket01,
+    "Calm and zen (like a wellness retreat)": Feather,
+    "Playful and fun (like a creative friend)": FaceWink,
+    "Down-to-earth and authentic (like a local neighbor)": Home01,
+    "Professional and polished": Briefcase01,
+    "Casual and conversational": MessageChatCircle,
+    "Poetic and inspiring": BookOpen01,
+    "Simple and straightforward": Check,
+    "Witty and clever": Lightbulb03,
+    // …aesthetic
+    "Rustic / Cabin Vibes": Home05,
+    "Modern Minimalist": Square,
+    "Boho / Free-Spirited": Waves,
+    "Luxe Boutique Hotel": Bell01,
+    "Scandinavian / Light & Airy": Cloud01,
+    "Desert / Southwest": Sun,
+    "Coastal / Beachy": Umbrella01,
+    "Industrial / Urban": Building03,
+    "Vintage / Retro": MusicNote01,
+    "Dark & Moody": Moon01,
+    // Section 6 — Brand ambition
+    "Most unique design": Trophy01,
+    "Best location/views": Sunrise,
+    "Ultimate luxury experience": Diamond01,
+    "Most Instagram-worthy": Camera01,
+    "Best value for price": BankNote01,
+    "Most romantic spot": Heart,
+    "Perfect family destination": Users01,
+    "Best for adventure lovers": Compass03,
 };
+
+/** Resolve an option's icon, falling back to a star for anything unmapped. */
+const optionIcon = (opt: string): FC<{ className?: string }> => OPTION_ICON[opt] ?? Star01;
 
 /* ── Step model — SECTIONS flattened into one-screen-per-question steps ── */
 
@@ -410,17 +477,38 @@ const stepVariants = {
     exit: (dir: 1 | -1) => ({ opacity: 0, y: dir === 1 ? -24 : 24 }),
 };
 
+/**
+ * Questions where a spoken answer beats a typed one.
+ *
+ * The principle: recording helps when the answer is *nuance* — a story, a
+ * feeling, a reason — and gets in the way when it's a fact or a pick. So the
+ * email, the business name and "describe it in exactly 3 words" stay typed
+ * (talking is slower than typing three words), and most of the checkbox
+ * questions stay taps. These four are the ones where the structured answer
+ * flattens something worth hearing in the host's own voice, and they're the
+ * answers that feed the Master Brand Document.
+ */
+const RECORDABLE_FIELDS = new Set([
+    "purpose", // "Why did you create this property? … beyond income" — a story, not a checklist
+    "guestFeelings", // how guests should FEEL — emotional, hard to tick
+    "reviewMention", // the one thing guests always mention — usually a quote
+    "completeSentence", // "We want to help guests ___" — the brand's ambition
+]);
+
+const mediaFor = (data: HostOnboardingData, field: string) => data.mediaAnswers?.[field];
+const hasMediaAnswer = (data: HostOnboardingData, field: string) => !!mediaFor(data, field)?.path;
+
 function validateStep(step: Step, data: HostOnboardingData): string | null {
     if (step.kind !== "question") return null;
     const q = step.q;
     if (q.type === "text") {
         const v = data[q.field].trim();
-        if (q.required && !v) return "Please fill this in";
+        if (q.required && !v && !hasMediaAnswer(data, q.field)) return "Please fill this in, or record your answer";
         if (q.field === "email" && v && !/^\S+@\S+\.\S+$/.test(v)) return "Hmm… that email doesn't look right";
         return null;
     }
     const a = data[q.field];
-    if (q.required && a.picked.length === 0 && !a.other.trim()) return "Please make a selection";
+    if (q.required && a.picked.length === 0 && !a.other.trim() && !hasMediaAnswer(data, q.field)) return "Please make a selection, or record your answer";
     return null;
 }
 
@@ -542,9 +630,15 @@ const ChoiceGroup = ({
                             {({ isSelected }) => (
                                 <>
                                     <LetterBadge letter={LETTERS[i]} checked={isSelected} />
-                                    <span className="text-lg leading-none" aria-hidden="true">
-                                        {OPTION_EMOJI[opt] ?? "✨"}
-                                    </span>
+                                    {(() => {
+                                        const OptIcon = optionIcon(opt);
+                                        return (
+                                            <OptIcon
+                                                className={cx("size-5 shrink-0", isSelected ? "text-fg-brand-primary" : "text-fg-quaternary")}
+                                                aria-hidden="true"
+                                            />
+                                        );
+                                    })()}
                                     <span className={cx("flex-1 text-sm leading-snug font-medium", isSelected ? "text-brand-secondary" : "text-secondary")}>
                                         {opt}
                                     </span>
@@ -593,9 +687,60 @@ const NavChevrons = ({ canBack, canNext, onBack, onNext }: { canBack: boolean; c
 /* ── Review / summary screen — every answer on one page, with a table of contents ── */
 
 const isAnswered = (q: Question, data: HostOnboardingData): boolean => {
+    // A recording answers the question just as a typed or picked answer does.
+    if (hasMediaAnswer(data, q.field)) return true;
     if (q.type === "text") return data[q.field].trim().length > 0;
     const a = data[q.field];
     return a.picked.length > 0 || a.other.trim().length > 0;
+};
+
+/**
+ * Where a returning host picks back up. Prefers the question they were last on
+ * (matched by field name, so a reordered questionnaire can't land them on the
+ * wrong screen), then the first unanswered question, then question 1.
+ */
+const resumeStepIndex = (data: HostOnboardingData) => {
+    if (data.lastField) {
+        const i = STEPS.findIndex((s) => s.kind === "question" && s.q.field === data.lastField);
+        if (i > 0) return i;
+    }
+    const firstGap = STEPS.findIndex((s) => s.kind === "question" && !isAnswered(s.q, data));
+    return firstGap > 0 ? firstGap : 1;
+};
+
+/** Signed-URL playback of a recorded answer on the review page. */
+const ReviewRecording = ({ media }: { media: { path: string; kind: "audio" | "video" } }) => {
+    const [url, setUrl] = useState("");
+    useEffect(() => {
+        let live = true;
+        supabase.storage
+            .from("recordings")
+            .createSignedUrl(media.path, 60 * 60)
+            .then(({ data }) => {
+                if (live && data?.signedUrl) setUrl(data.signedUrl);
+            });
+        return () => {
+            live = false;
+        };
+    }, [media.path]);
+
+    return (
+        <div className="mt-2.5 flex flex-col gap-1.5">
+            <p className="flex items-center gap-1.5 text-xs font-medium text-tertiary">
+                {media.kind === "video" ? <VideoRecorder className="size-3.5" aria-hidden="true" /> : <Microphone01 className="size-3.5" aria-hidden="true" />}
+                {media.kind === "video" ? "Video answer" : "Voice answer"}
+            </p>
+            {url ? (
+                <RecordingPlayer
+                    src={url}
+                    kind={media.kind}
+                    className={media.kind === "video" ? "aspect-video w-full max-w-sm rounded-lg bg-secondary" : "w-full max-w-sm"}
+                />
+            ) : (
+                <p className="text-xs text-quaternary">Loading…</p>
+            )}
+        </div>
+    );
 };
 
 const chipCls = "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-sm font-medium ring-1";
@@ -677,7 +822,10 @@ const AnswerValue = ({ q, data }: { q: Question; data: HostOnboardingData }) => 
         <div className="flex flex-wrap gap-2">
             {a.picked.map((opt) => (
                 <span key={opt} className={cx(chipCls, "bg-brand-primary_alt text-brand-secondary ring-brand")}>
-                    <span aria-hidden="true">{OPTION_EMOJI[opt] ?? "✨"}</span>
+                    {(() => {
+                        const OptIcon = optionIcon(opt);
+                        return <OptIcon className="size-3.5 shrink-0" aria-hidden="true" />;
+                    })()}
                     {opt}
                 </span>
             ))}
@@ -837,6 +985,7 @@ const ReviewScreen = ({
                                             </div>
                                             <div className="mt-3">
                                                 <AnswerValue q={q} data={data} />
+                                                {hasMediaAnswer(data, q.field) && <ReviewRecording media={mediaFor(data, q.field)!} />}
                                             </div>
                                         </div>
                                     );
@@ -926,14 +1075,40 @@ const ConfettiBurst = () => {
     );
 };
 
+/**
+ * Outer chrome. Standalone the form owns the whole viewport via AppShell; inside
+ * the dashboard modal it just fills the dialog. Declared at module scope (not
+ * inline in the render) so switching branches never remounts the form and throws
+ * away half-typed answers.
+ */
+const FormShell = ({ embedded, children }: { embedded: boolean; children: ReactNode }) =>
+    embedded ? (
+        <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl bg-tertiary">{children}</div>
+    ) : (
+        <AppShell className="flex">{children}</AppShell>
+    );
+
 export interface HostOnboardingFormPageProps {
     slug?: string;
     initialClientName?: string;
     initialClientWebsite?: string;
     initialData?: Partial<HostOnboardingData> | null;
+    /** Rendered inside the dashboard's form modal rather than as a standalone page:
+        fills its container instead of the viewport, and drops the AppShell chrome.
+        The client's own shared link (/{client}-hostonboarding) always renders full-page. */
+    embedded?: boolean;
+    /** Shown as a close control when embedded. */
+    onClose?: () => void;
 }
 
-export const HostOnboardingFormPage = ({ slug, initialClientName = "", initialClientWebsite = "", initialData }: HostOnboardingFormPageProps) => {
+export const HostOnboardingFormPage = ({
+    slug,
+    initialClientName = "",
+    initialClientWebsite = "",
+    initialData,
+    embedded = false,
+    onClose,
+}: HostOnboardingFormPageProps) => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const isTemplate = !slug;
@@ -947,7 +1122,9 @@ export const HostOnboardingFormPage = ({ slug, initialClientName = "", initialCl
     // Step index + travel direction together, so AnimatePresence reads both atomically.
     // Client copies open straight on question 1 (the welcome screen stays reachable
     // via Back, and the master template still opens on it so the team can preview it).
-    const [[stepIndex, direction], setStep] = useState<[number, 1 | -1]>(() => (alreadySubmittedOnLoad.current ? [THANKYOU_INDEX, 1] : [slug ? 1 : 0, 1]));
+    const [[stepIndex, direction], setStep] = useState<[number, 1 | -1]>(() =>
+        alreadySubmittedOnLoad.current ? [THANKYOU_INDEX, 1] : [slug ? resumeStepIndex(data) : 0, 1],
+    );
     const [error, setError] = useState<{ msg: string; nonce: number } | null>(null);
     const [submitState, setSubmitState] = useState<"idle" | "saving" | "error">("idle");
     // Review mode = the read-only summary of every answer. `editingFromReview`
@@ -971,6 +1148,16 @@ export const HostOnboardingFormPage = ({ slug, initialClientName = "", initialCl
         if (searchParams.get("create") === "1") setShowCreate(true);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // Remember the question they're on so "Continue the form" resumes here. Folded
+    // into `data` so it rides along on the debounced autosave below rather than
+    // issuing a second write per step.
+    useEffect(() => {
+        if (!slug) return;
+        const current = STEPS[stepIndex];
+        if (current?.kind !== "question") return;
+        setData((d) => (d.lastField === current.q.field ? d : { ...d, lastField: current.q.field }));
+    }, [stepIndex, slug]);
 
     // Autosave — debounced, client copies only (the master template has nowhere
     // to save to). Guarded so the initial hydration from `initialData` never
@@ -1229,8 +1416,18 @@ export const HostOnboardingFormPage = ({ slug, initialClientName = "", initialCl
     const progressPct = showReview ? 100 : step.kind === "welcome" ? 0 : step.kind === "question" ? (step.num / TOTAL_QUESTIONS) * 100 : 100;
 
     return (
-        <AppShell className="flex">
+        <FormShell embedded={embedded}>
             <main className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+                {embedded && onClose && (
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        title="Close"
+                        className="absolute top-2.5 right-3 z-30 flex size-9 items-center justify-center rounded-lg text-fg-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-fg-secondary"
+                    >
+                        <XClose className="size-5" aria-hidden="true" />
+                    </button>
+                )}
                 {/* ── Top bar — title, counter, slim progress (visible on mobile too) ── */}
                 {/* bg-tertiary matches the AppShell card surface, so long review content
                     scrolls under an opaque bar instead of bleeding through it. */}
@@ -1342,8 +1539,14 @@ export const HostOnboardingFormPage = ({ slug, initialClientName = "", initialCl
                                             connect with the right guests.
                                         </p>
                                         <div className="mt-4 flex flex-col gap-1.5 text-md text-tertiary">
-                                            <p>🕐 Takes 5–10 minutes, and helps us avoid back-and-forth later.</p>
-                                            <p>✨ The more insight you give, the better the result.</p>
+                                            <p className="flex items-start gap-2.5">
+                                                <Clock className="mt-1 size-4 shrink-0 text-fg-quaternary" aria-hidden="true" />
+                                                Takes 5–10 minutes, and helps us avoid back-and-forth later.
+                                            </p>
+                                            <p className="flex items-start gap-2.5">
+                                                <Stars01 className="mt-1 size-4 shrink-0 text-fg-quaternary" aria-hidden="true" />
+                                                The more insight you give, the better the result.
+                                            </p>
                                         </div>
                                         <div className="mt-8 flex items-center gap-3">
                                             <button type="button" onClick={goNext} className={cx(okBtnCls, "rounded-xl px-7 py-3")}>
@@ -1402,6 +1605,25 @@ export const HostOnboardingFormPage = ({ slug, initialClientName = "", initialCl
                                             <TextQuestion q={step.q} value={data[step.q.field]} onChange={onText} />
                                         ) : (
                                             <ChoiceGroup q={step.q} answer={data[step.q.field]} onPicked={onPicked} onOther={onOther} />
+                                        )}
+
+                                        {/* Voice / video alternative on the narrative questions — never a
+                                            replacement for typing or picking, always an addition. */}
+                                        {RECORDABLE_FIELDS.has(step.q.field) && (
+                                            <MediaAnswer
+                                                slug={slug}
+                                                field={step.q.field}
+                                                path={mediaFor(data, step.q.field)?.path ?? ""}
+                                                kind={mediaFor(data, step.q.field)?.kind ?? ""}
+                                                onChange={(path, kind) =>
+                                                    setData((d) => {
+                                                        const next = { ...(d.mediaAnswers ?? {}) };
+                                                        if (path && kind) next[step.q.field] = { path, kind };
+                                                        else delete next[step.q.field];
+                                                        return { ...d, mediaAnswers: next };
+                                                    })
+                                                }
+                                            />
                                         )}
 
                                         {error && <ErrorShake key={error.nonce} msg={error.msg} />}
@@ -1617,6 +1839,6 @@ export const HostOnboardingFormPage = ({ slug, initialClientName = "", initialCl
                     </motion.div>
                 )}
             </AnimatePresence>
-        </AppShell>
+        </FormShell>
     );
 };

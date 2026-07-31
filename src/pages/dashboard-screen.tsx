@@ -2150,7 +2150,8 @@ const OverviewContent = ({ department, tab, editing, isOwner }: { department: De
 
 /* ── Clients (Client List) ────────────────────────────────────────── */
 
-type ClientFilter = { type: "tier" | "am" | "ma"; value: string };
+/** `all` is the unfiltered view (every tier); `value` is unused for it. */
+type ClientFilter = { type: "all" | "tier" | "am" | "ma"; value: string };
 
 /** Create/edit modal for a client record. Mirrors AddCardModal. */
 /** Dropdown options for a person field: None + the canonical roster, plus the
@@ -2465,7 +2466,7 @@ const ClientCard = ({
     layout?: "grid" | "list";
     /** Active list filter — when filtered by one role, cards show only the
         counterpart's chip (AM view shows the MA, and vice versa). */
-    filterType?: "tier" | "am" | "ma";
+    filterType?: "all" | "tier" | "am" | "ma";
     onStar: (id: string, starred: boolean) => void;
     onDelete: (id: string) => void;
     onEdit: (client: ClientRecord) => void;
@@ -2598,7 +2599,14 @@ const ClientCard = ({
             whileHover={clickable ? { y: -4 } : undefined}
             onClick={open}
             className={cx(
-                "group relative flex aspect-square flex-col items-center justify-center rounded-2xl bg-primary p-5 text-center transition-shadow duration-200",
+                // Always 1:1. The card's content is a fixed 304px tall (96 logo + name +
+                // handle + tier + chips + location + padding), so the grid below only ever
+                // hands out columns ≥304px — otherwise the square would be shorter than its
+                // content and, because the text children are `truncate` (overflow-hidden and
+                // therefore freely shrinkable), the name and handle would be squeezed away
+                // rather than overflowing. min-h-[304px] is the belt-and-braces guard for
+                // viewports too narrow for even one 304px column.
+                "group relative flex aspect-square min-h-[304px] flex-col items-center justify-center rounded-2xl bg-primary p-5 text-center transition-shadow duration-200",
                 // Private/template clients (only their owner sees them) get a blue ring so
                 // they never read as a real client card.
                 client.private_to ? "ring-2 ring-brand" : "ring-1 ring-secondary",
@@ -2817,7 +2825,8 @@ const ClientListContent = ({
     const mas = [...MARKETING_ASSISTANTS, ...extraNames(MARKETING_ASSISTANTS, clients.map((c) => c.marketing_assistant))];
 
     const filtered = clients.filter((c) =>
-        filter.type === "tier" ? c.tier === filter.value
+        filter.type === "all" ? true
+        : filter.type === "tier" ? c.tier === filter.value
         : filter.type === "am" ? c.am.trim() === filter.value
         : (c.marketing_assistant ?? "").trim() === filter.value,
     );
@@ -2840,7 +2849,7 @@ const ClientListContent = ({
     ];
     const sortLabel = SORT_OPTIONS.find((o) => o.id === sortBy)?.label ?? "Sort";
 
-    const headerLabel = filter.type === "tier" ? tierLabel(filter.value) : filter.value;
+    const headerLabel = filter.type === "all" ? "All Clients" : filter.type === "tier" ? tierLabel(filter.value) : filter.value;
 
     const handleStar = async (id: string, starred: boolean) => {
         setClients((prev) => prev.map((c) => (c.id === id ? { ...c, starred } : c)));
@@ -3029,6 +3038,24 @@ const ClientListContent = ({
                     primary way to slice the list. Pill style matches the
                     reference ("Channels" pill). */}
                 <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-secondary bg-primary px-6 py-3">
+                    {/* Unfiltered view — every tier at once. Sits left of the tiers,
+                        separated by a rule so it reads as "no filter" rather than a
+                        fourth tier. */}
+                    <button
+                        type="button"
+                        onClick={() => setFilter({ type: "all", value: "" })}
+                        className={cx(
+                            "flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-semibold transition duration-100 ease-linear",
+                            filter.type === "all" ? "bg-brand-solid text-white" : "text-tertiary hover:bg-secondary hover:text-secondary",
+                        )}
+                    >
+                        <Users01 className="size-4" aria-hidden="true" />
+                        All Clients
+                        <span className={cx("text-xs tabular-nums", filter.type === "all" ? "text-white/70" : "text-quaternary")}>
+                            {clients.filter((c) => !c.private_to).length}
+                        </span>
+                    </button>
+                    <span className="mx-1 h-4 w-px shrink-0 bg-border-secondary" aria-hidden="true" />
                     {TIERS.map((t) => {
                         const active = filter.type === "tier" && filter.value === t.id;
                         return (
@@ -3060,7 +3087,20 @@ const ClientListContent = ({
                         ) : (
                             // Fluid grid — square cards, capped at 5 per row; beyond
                             // that the cards themselves grow instead of adding columns.
-                            <div className={cx(view === "grid" ? "grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5" : "flex flex-col gap-2.5")}>
+                            <div
+                                className={cx(
+                                    // Columns come from the space actually available, not from
+                                    // viewport breakpoints: the icon rail + Client List sidebar eat
+                                    // ~420px, so breakpoints kept handing out more columns than the
+                                    // grid could afford (at 1536px the 5-column rule produced 206px
+                                    // cards — narrower than at 1440px). auto-fill with a 310px floor
+                                    // keeps every card square and roomy, and re-flows on its own
+                                    // when the sidebar collapses.
+                                    view === "grid"
+                                        ? "grid grid-cols-[repeat(auto-fill,minmax(310px,1fr))] gap-5"
+                                        : "flex flex-col gap-2.5",
+                                )}
+                            >
                                 {sorted.map((client) => (
                                         <ClientCard
                                             key={client.id}
