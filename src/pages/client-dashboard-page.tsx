@@ -23,6 +23,7 @@ import {
     Moon01,
     PlayCircle,
     Plus,
+    RefreshCw01,
     SearchLg,
     Sun,
     Target04,
@@ -712,6 +713,54 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
         } else if (which === "brand") {
             onboardingFetchRef.current = false;
             setOnboardingStatus("idle");
+        }
+    };
+
+    /* ── Reset a client-input form ──
+       Destructive and team-only: it throws away answers the client already gave,
+       including any voice/video they recorded. Two-step by design — the first click
+       only arms it — because there is no undo. Writing `{}` is enough to clear the
+       row: both forms run their answers through mergeData(), which fills defaults
+       from an empty object. */
+    const [armedReset, setArmedReset] = useState<null | "intake" | "brand">(null);
+    const [resetting, setResetting] = useState(false);
+
+    const resetForm = async (kind: "intake" | "brand") => {
+        const slugToClear = kind === "intake" ? intakeSlug : onboardingSlug;
+        const table = kind === "intake" ? "client_onboarding_pages" : "host_onboarding_pages";
+        if (!slugToClear) return;
+        setResetting(true);
+        try {
+            // Delete the recordings first. Wiping the row would otherwise strand the
+            // files in the bucket with nothing referencing them.
+            const paths =
+                kind === "intake"
+                    ? Object.entries(intakeData?.answers ?? {})
+                          .filter(([k, v]) => k.endsWith("__media") && (v ?? "").trim())
+                          .map(([, v]) => v as string)
+                    : Object.values(brandData?.mediaAnswers ?? {})
+                          .map((m) => m?.path)
+                          .filter((x): x is string => !!x);
+            if (paths.length) await supabase.storage.from("recordings").remove(paths);
+
+            const { error } = await supabase.from(table).update({ data: {} }).eq("slug", slugToClear);
+            if (error) throw error;
+
+            // Re-run the section's progress fetch so the card reflects the empty form.
+            if (kind === "intake") {
+                setIntakeData(null);
+                intakeFetchRef.current = false;
+                setIntakeStatus("idle");
+            } else {
+                setBrandData(null);
+                onboardingFetchRef.current = false;
+                setOnboardingStatus("idle");
+            }
+            setArmedReset(null);
+        } catch (e) {
+            console.error("[form reset]", e);
+        } finally {
+            setResetting(false);
         }
     };
 
@@ -1437,6 +1486,37 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                         {copiedIntakeLink ? "Link copied" : "Copy link for the client"}
                                                                     </Button>
                                                                 )}
+                                                                {isTeam &&
+                                                                    !isTemplate &&
+                                                                    intakeSlug &&
+                                                                    intakeReady &&
+                                                                    (armedReset === "intake" ? (
+                                                                        <>
+                                                                            <Button
+                                                                                color="primary-destructive"
+                                                                                isLoading={resetting}
+                                                                                showTextWhileLoading
+                                                                                onClick={() => void resetForm("intake")}
+                                                                            >
+                                                                                {resetting ? "Resetting…" : "Yes, erase all answers"}
+                                                                            </Button>
+                                                                            <Button
+                                                                                color="secondary"
+                                                                                isDisabled={resetting}
+                                                                                onClick={() => setArmedReset(null)}
+                                                                            >
+                                                                                Cancel
+                                                                            </Button>
+                                                                        </>
+                                                                    ) : (
+                                                                        <Button
+                                                                            color="tertiary-destructive"
+                                                                            iconLeading={RefreshCw01}
+                                                                            onClick={() => setArmedReset("intake")}
+                                                                        >
+                                                                            Reset form
+                                                                        </Button>
+                                                                    ))}
                                                             </div>
 
                                                             {isTeam && !isTemplate && intakeSlug && (
@@ -1565,6 +1645,37 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                         {copiedOnboardingLink ? "Link copied" : "Copy link for the client"}
                                                                     </Button>
                                                                 )}
+                                                                {isTeam &&
+                                                                    !isTemplate &&
+                                                                    onboardingSlug &&
+                                                                    onboardingReady &&
+                                                                    (armedReset === "brand" ? (
+                                                                        <>
+                                                                            <Button
+                                                                                color="primary-destructive"
+                                                                                isLoading={resetting}
+                                                                                showTextWhileLoading
+                                                                                onClick={() => void resetForm("brand")}
+                                                                            >
+                                                                                {resetting ? "Resetting…" : "Yes, erase all answers"}
+                                                                            </Button>
+                                                                            <Button
+                                                                                color="secondary"
+                                                                                isDisabled={resetting}
+                                                                                onClick={() => setArmedReset(null)}
+                                                                            >
+                                                                                Cancel
+                                                                            </Button>
+                                                                        </>
+                                                                    ) : (
+                                                                        <Button
+                                                                            color="tertiary-destructive"
+                                                                            iconLeading={RefreshCw01}
+                                                                            onClick={() => setArmedReset("brand")}
+                                                                        >
+                                                                            Reset form
+                                                                        </Button>
+                                                                    ))}
                                                             </div>
 
                                                             {/* Team-only: the exact form this dashboard is wired to, so a mismatched
@@ -2539,7 +2650,6 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                 )}
                                             </div>
                                         </div>
-
                                     </div>
                                 </motion.article>
                             </div>

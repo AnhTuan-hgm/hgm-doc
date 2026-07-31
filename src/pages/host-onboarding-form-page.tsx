@@ -478,22 +478,15 @@ const stepVariants = {
 };
 
 /**
- * Questions where a spoken answer beats a typed one.
+ * Every question can be answered by voice or video, with one exception.
  *
- * The principle: recording helps when the answer is *nuance* — a story, a
- * feeling, a reason — and gets in the way when it's a fact or a pick. So the
- * email, the business name and "describe it in exactly 3 words" stay typed
- * (talking is slower than typing three words), and most of the checkbox
- * questions stay taps. These four are the ones where the structured answer
- * flattens something worth hearing in the host's own voice, and they're the
- * answers that feed the Master Brand Document.
+ * `email` is excluded deliberately, not as an oversight: it is the address we
+ * reply to and it is regex-validated, so a recording cannot satisfy it. If a
+ * spoken answer counted as filling it in, a host could submit with no usable
+ * email at all. Every other question offers the choice, short ones included.
  */
-const RECORDABLE_FIELDS = new Set([
-    "purpose", // "Why did you create this property? … beyond income" — a story, not a checklist
-    "guestFeelings", // how guests should FEEL — emotional, hard to tick
-    "reviewMention", // the one thing guests always mention — usually a quote
-    "completeSentence", // "We want to help guests ___" — the brand's ambition
-]);
+const NON_RECORDABLE_FIELDS = new Set(["email"]);
+const canRecordField = (field: string) => !NON_RECORDABLE_FIELDS.has(field);
 
 const mediaFor = (data: HostOnboardingData, field: string) => data.mediaAnswers?.[field];
 const hasMediaAnswer = (data: HostOnboardingData, field: string) => !!mediaFor(data, field)?.path;
@@ -1609,7 +1602,7 @@ export const HostOnboardingFormPage = ({
 
                                         {/* Voice / video alternative on the narrative questions — never a
                                             replacement for typing or picking, always an addition. */}
-                                        {RECORDABLE_FIELDS.has(step.q.field) && (
+                                        {canRecordField(step.q.field) && (
                                             <MediaAnswer
                                                 slug={slug}
                                                 field={step.q.field}
