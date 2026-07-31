@@ -153,6 +153,21 @@ export const MediaAnswer = ({
         [],
     );
 
+    /**
+     * Attach the camera feed AFTER the preview mounts. The <video> only renders
+     * once `recording` is set, so assigning srcObject inside start() — which runs
+     * before that state update — silently did nothing and left the host looking at
+     * an empty box while they were being recorded.
+     */
+    useEffect(() => {
+        if (recording !== "video") return;
+        const el = previewRef.current;
+        const stream = streamRef.current;
+        if (!el || !stream) return;
+        el.srcObject = stream;
+        void el.play().catch(() => {});
+    }, [recording]);
+
     useEffect(() => {
         if (!recording) return;
         const id = window.setInterval(() => setElapsed((e) => e + 1), 1000);
@@ -188,11 +203,6 @@ export const MediaAnswer = ({
             tokenRef.current = token;
             chunksRef.current = [];
             setElapsed(0);
-
-            if (k === "video" && previewRef.current) {
-                previewRef.current.srcObject = stream;
-                void previewRef.current.play().catch(() => {});
-            }
 
             const mimeType = pickMimeType(k);
             const rec = new MediaRecorder(stream, mimeType ? { mimeType, ...BITRATE } : BITRATE);
