@@ -7,6 +7,7 @@ import { TemplateScreen } from "@/pages/template-screen";
 import { DashboardScreen } from "@/pages/dashboard-screen";
 import { AiWebsiteSetupScreen } from "@/pages/ai-website-setup-screen";
 import { ComponentLibraryArchitectureScreen } from "@/pages/component-library-architecture-screen";
+import { ReadingYourClientsScreen } from "@/pages/reading-your-clients-screen";
 import { TemplateOneScreen } from "@/pages/template-one-screen";
 import { WelcomeEmailFlowOverviewScreen } from "@/pages/welcome-email-flow-overview-screen";
 import { PromptLibraryScreen } from "@/pages/prompt-library-screen";
@@ -40,7 +41,7 @@ import "@/styles/globals.css";
 // floating toggle is hidden there to avoid duplicates. The account avatar is NOT
 // shown globally — it's a team-only settings shortcut that lives in the dashboard
 // rail, and it must never appear on client-facing pages (owner guides, popups, etc.).
-const PAGES_WITHOUT_FLOATING_CHROME = ["/designsystem", "/home", "/home2", "/dashboard", "/webteam/ai-website-setup", "/webteam/component-library-architecture", "/template-1", "/welcome-email-flow-overview", "/prompt-library", "/settings", "/roadmap", "/chat-widget-overview", "/client-dashboard-overview", "/homepage-overview", "/questions"];
+const PAGES_WITHOUT_FLOATING_CHROME = ["/designsystem", "/home", "/home2", "/dashboard", "/webteam/ai-website-setup", "/webteam/component-library-architecture", "/clients/reading-your-clients", "/template-1", "/welcome-email-flow-overview", "/prompt-library", "/settings", "/roadmap", "/chat-widget-overview", "/client-dashboard-overview", "/homepage-overview", "/questions"];
 
 // The floating "?" help menu is a team tool. It renders ONLY on internal team
 // pages and is hidden on every client-facing page — all client slugs
@@ -134,6 +135,7 @@ createRoot(document.getElementById("root")!).render(
                         <Route path="/dashboard" element={<DashboardScreen />} />
                         <Route path="/webteam/ai-website-setup" element={<AiWebsiteSetupScreen />} />
                         <Route path="/webteam/component-library-architecture" element={<ComponentLibraryArchitectureScreen />} />
+                        <Route path="/clients/reading-your-clients" element={<ReadingYourClientsScreen />} />
                         <Route path="/template-1" element={<TemplateOneScreen />} />
                         <Route path="/welcome-email-flow-overview" element={<WelcomeEmailFlowOverviewScreen />} />
                         <Route path="/prompt-library" element={<PromptLibraryScreen />} />
