@@ -246,8 +246,8 @@ const CONVENTIONS: { title: string; body: string; code: string }[] = [
         code: 'variants={{ show: { transition: { staggerChildren: 0.05 } } }}',
     },
     {
-        title: "Persistence — Supabase first",
-        body: "Editable page content saves to Supabase (Firebase Firestore as the outage fallback via db-sync) — never localStorage-only.",
+        title: "Persistence — Supabase",
+        body: "Editable page content saves to Supabase via db-sync — never localStorage-only.",
         code: 'import { readSopPage, writeSopPage } from "@/lib/db-sync";',
     },
     {

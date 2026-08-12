@@ -13,8 +13,7 @@ A client-facing **guide / documentation site** (Meta Pixel setup, website popups
 - **react-router 7** — client-side routing (`src/main.tsx`)
 - **Tailwind CSS v4.2** — styling via a CSS-variable theme
 - **React Aria Components 1.16** — accessibility/behavior foundation
-- **Supabase** — primary persistence for editable page content (never localStorage-only)
-- **Firebase Firestore** — fallback/dual-write layer (survives Supabase outages; see Persistence section)
+- **Supabase** — the only persistence for editable page content (never localStorage-only)
 - **motion** (Framer Motion) — animation
 
 ## How pages work
@@ -76,7 +75,7 @@ src/
 │   ├── marketing/       # Marketing components
 │   └── shared-assets/   # Reusable assets & illustrations
 ├── hooks/               # Custom React hooks
-├── lib/                 # supabase.ts, firebase.ts, db-sync.ts, db-logger.ts, requests.ts
+├── lib/                 # supabase.ts, db-sync.ts, db-logger.ts, requests.ts
 ├── pages/               # Route components (client-screen.tsx fans out client slugs)
 ├── providers/           # React context (theme-provider, router-provider)
 ├── styles/              # globals.css, theme.css (brand color vars), typography.css
@@ -90,16 +89,17 @@ src/
 - Utilities: `src/utils/cx.ts`, `src/utils/is-react-component.ts`; hooks in `src/hooks/`.
 - Styles: `src/styles/globals.css`, `theme.css` (edit `--color-brand-*` to rebrand), `typography.css`.
 
-## Persistence (Supabase + Firebase fallback)
-Editable page content persists to **Supabase first**, with **Firebase Firestore as a fallback** for Supabase outages.
+## Persistence (Supabase)
+Editable page content persists to **Supabase** — the single source of truth. There is no secondary database.
 
-**Primary path (Supabase):** `src/lib/supabase.ts` — uses anon/publishable key (never `service_role`/secret in client code). When adding any `insert`/`update`/`delete`, ensure RLS policies cover BOTH `anon` and `authenticated` roles.
+**Client:** `src/lib/supabase.ts` — uses anon/publishable key (never `service_role`/secret in client code). When adding any `insert`/`update`/`delete`, ensure RLS policies cover BOTH `anon` and `authenticated` roles.
 
-**Fallback path (Firebase):** For read/write operations that must survive Supabase downtime, use `src/lib/db-sync.ts` instead of calling `supabase.from(...)` directly:
-- `readSopPage(slug)` — tries Supabase first, falls back to Firebase if down
-- `writeSopPage(slug, data)` — dual-writes to both Supabase AND Firebase (so data stays synced)
-- Firebase config is hardcoded in `src/lib/firebase.ts` (not `.env`-driven)
-- `src/lib/db-logger.ts` provides colored dev-console logging for fallback ops
+**`sop_pages` helpers:** for owner guides, templates and the project-log pages, use `src/lib/db-sync.ts` rather than calling `supabase.from("sop_pages")` directly, so the table name and error handling stay in one place:
+- `readSopPage(slug)` — returns the row; **throws** when it's missing (callers rely on that to fall back to seed content or a master template)
+- `writeSopPage(slug, data)` — upserts the row; **throws** on failure (callers render an unsaved/error state, so never swallow it)
+- `src/lib/db-logger.ts` provides colored dev-console logging for these ops
+
+> Firebase Firestore was a dual-write fallback here until 2026-08-06. It was removed because Firestore's rules denied the anon client both reads and writes — every fallback read failed and every backup write was silently swallowed, so it could not have survived an outage. Don't reintroduce a second database without rules that actually permit the client.
 
 **Local offline dev:** Run `supabase start` (Docker) to spin up a local Supabase stack on ports 54321 (API) / 54322 (DB). Update `.env.local` to point `VITE_SUPABASE_URL` to `http://127.0.0.1:54321`.
 

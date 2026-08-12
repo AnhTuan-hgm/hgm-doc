@@ -138,7 +138,7 @@ const todayIso = () => {
 const DEFAULT_DATA: RoadmapData = {
     overview: {
         paragraph:
-            "hgm-doc is HiddenGem Media's client guide & documentation site. The team creates per-client setup guides — Meta Pixel, lead-capture popups, owner guides, chat widgets — from master templates, edits them in place, and shares them with clients via private URLs. Content persists to Supabase with a Firebase fallback, and the site auto-deploys to Netlify on every push to main.",
+            "hgm-doc is HiddenGem Media's client guide & documentation site. The team creates per-client setup guides — Meta Pixel, lead-capture popups, owner guides, chat widgets — from master templates, edits them in place, and shares them with clients via private URLs. Content persists to Supabase, and the site auto-deploys to Netlify on every push to main.",
         internalFeatures: [
             { id: uid(), text: "Dashboard with department rails & client cards" },
             { id: uid(), text: "Sitewide search from the icon rail (Shift+F)" },
@@ -179,7 +179,8 @@ const DEFAULT_DATA: RoadmapData = {
             id: uid(),
             date: "2026-07-01",
             title: "Firebase fallback layer",
-            description: "Editable content now dual-writes to Supabase and Firestore, so edits survive Supabase outages.",
+            description:
+                "Editable content dual-wrote to Supabase and Firestore, intended to survive Supabase outages. Removed 2026-08-06 — Firestore's rules denied the anon client, so the fallback never actually worked.",
         },
         {
             id: uid(),
@@ -462,7 +463,7 @@ export const RoadmapScreen = () => {
         },
     });
 
-    /** Update state immediately, persist (debounced) to Supabase + Firebase. */
+    /** Update state immediately, persist (debounced) to Supabase. */
     const persist = (next: RoadmapData) => {
         setData(next);
         setSaveState("saving");

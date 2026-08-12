@@ -1,125 +1,49 @@
-import { supabase } from "@/lib/supabase";
-import { firestore } from "@/lib/firebase";
-import { doc, setDoc, getDoc } from "firebase/firestore";
 import { dbLogger } from "@/lib/db-logger";
-
-export type DbOperation = "read" | "write";
+import { supabase } from "@/lib/supabase";
 
 /**
- * Attempts Supabase first, falls back to Firebase if Supabase fails.
- * Used for reading SOP pages (owner guides, templates).
+ * Read/write helpers for the `sop_pages` table (owner guides, templates and the
+ * project-log pages).
+ *
+ * These wrapped `supabase.from("sop_pages")` calls in a Firebase Firestore
+ * fallback until 2026-08-06. The fallback was removed: Firestore's rules denied
+ * reads and writes for the anon client, so every fallback read failed and every
+ * backup write was silently swallowed — it could not have served a request.
+ * Supabase is the single source of truth.
+ *
+ * The helpers are kept (rather than inlining the queries at each call site) so
+ * the table name, row shape and error handling live in one place.
+ */
+
+/**
+ * Fetch one `sop_pages` row by slug.
+ *
+ * Throws when the row is missing (`.single()` treats no-rows as an error) —
+ * callers rely on that to fall back to seed content or a master template, so
+ * don't soften it into a `null` return.
  */
 export async function readSopPage(slug: string) {
-  try {
-    // Try Supabase first (primary)
-    const { data, error } = await supabase
-      .from("sop_pages")
-      .select("*")
-      .eq("slug", slug)
-      .single();
+    const { data, error } = await supabase.from("sop_pages").select("*").eq("slug", slug).single();
 
-    if (error) throw error;
-    return data;
-  } catch (sbError) {
-    dbLogger.error(`Supabase read failed for ${slug}, trying Firebase`, sbError as Error);
-    dbLogger.fallback("sop_pages", "Supabase unavailable");
-
-    try {
-      // Fallback to Firebase
-      const docRef = doc(firestore, "sop_pages", slug);
-      const docSnap = await getDoc(docRef);
-
-      if (docSnap.exists()) {
-        // Normalize to the Supabase row shape ({ slug, data, ... }) so callers
-        // reading `row.data` work on both paths. Legacy Firebase docs were
-        // written as a SPREAD of the payload ({...data}) — when the payload was
-        // an array (owner-guide steps) that produced numeric keys, so rebuild
-        // the array from them.
-        const raw = docSnap.data() as Record<string, unknown>;
-        if (raw && "data" in raw) return { slug, ...raw };
-        const numericKeys = Object.keys(raw ?? {}).filter((k) => /^\d+$/.test(k));
-        if (numericKeys.length) {
-          const arr = numericKeys.sort((a, b) => Number(a) - Number(b)).map((k) => raw[k]);
-          return { slug, data: arr, updated_at: raw.updated_at };
-        }
-        return { slug, data: raw };
-      } else {
-        throw new Error("Document not found in Firebase either");
-      }
-    } catch (fbError) {
-      dbLogger.error(`Firebase fallback also failed for ${slug}`, fbError as Error);
-      throw new Error("Failed to read from both Supabase and Firebase");
+    if (error) {
+        dbLogger.error(`Read failed for sop_pages:${slug}`, error as unknown as Error);
+        throw error;
     }
-  }
+    return data;
 }
 
 /**
- * Dual-write: writes to Supabase first, then writes to Firebase as backup.
- * Used for saving owner guide updates.
+ * Upsert one `sop_pages` row.
+ *
+ * Throws on failure. Callers surface that as an "error"/unsaved state, so a
+ * swallowed rejection here would render as a successful save.
  */
-export async function writeSopPage(slug: string, data: any) {
-  let sbSuccess = false;
-  let fbSuccess = false;
+export async function writeSopPage(slug: string, data: unknown) {
+    const { error } = await supabase.from("sop_pages").upsert({ slug, data, updated_at: new Date().toISOString() });
 
-  try {
-    // Write to Supabase (primary)
-    dbLogger.dualWrite("sop_pages", "update", "supabase");
-    const { error: sbError } = await supabase
-      .from("sop_pages")
-      .upsert({ slug, data, updated_at: new Date().toISOString() });
-
-    if (sbError) throw sbError;
+    if (error) {
+        dbLogger.error(`Write failed for sop_pages:${slug}`, error as unknown as Error);
+        throw error;
+    }
     dbLogger.success(`sop_pages:${slug} written to Supabase`);
-    sbSuccess = true;
-  } catch (sbErr) {
-    dbLogger.error(`Supabase write failed for ${slug}`, sbErr as Error);
-  }
-
-  try {
-    // Always write to Firebase as backup (even if Supabase succeeded).
-    // Keep the payload under a `data` field (NOT spread — spreading an array
-    // produced numeric keys) and JSON round-trip it: Firestore rejects
-    // `undefined` field values anywhere in the tree, which made every guide
-    // backup silently fail for months.
-    dbLogger.dualWrite("sop_pages", "update", "firebase");
-    const docRef = doc(firestore, "sop_pages", slug);
-    const clean = JSON.parse(JSON.stringify(data));
-    await setDoc(docRef, { data: clean, updated_at: new Date().toISOString() });
-    dbLogger.success(`sop_pages:${slug} written to Firebase`);
-    fbSuccess = true;
-  } catch (fbErr) {
-    dbLogger.error(`Firebase write failed for ${slug}`, fbErr as Error);
-  }
-
-  // At least one DB must succeed
-  if (!sbSuccess && !fbSuccess) {
-    throw new Error("Failed to write to both Supabase and Firebase");
-  }
-
-  return { sbSuccess, fbSuccess };
-}
-
-/**
- * Check which DB is currently available (for diagnostics).
- */
-export async function checkDbHealth() {
-  const health = { supabase: false, firebase: false };
-
-  try {
-    const { error } = await supabase
-      .from("sop_pages")
-      .select("count", { count: "exact", head: true });
-    health.supabase = !error;
-  } catch {
-    health.supabase = false;
-  }
-
-  try {
-    await getDoc(doc(firestore, "sop_pages", "_health"));
-    health.firebase = true;
-  } catch {
-    health.firebase = false;
-  }
-
-  return health;
 }

@@ -1302,10 +1302,10 @@ export const OwnerGuideScreen = () => {
                         const master = await readSopPage(GUIDE_CONTENT_SLUG);
                         apply(master?.data);
                     } catch (err2) {
-                        dbLogger.error(`Failed to load guide content from both DBs`, err2 as Error);
+                        dbLogger.error(`Failed to load guide content from Supabase`, err2 as Error);
                     }
                 } else {
-                    dbLogger.error(`Failed to load guide content from both DBs`, err as Error);
+                    dbLogger.error(`Failed to load guide content from Supabase`, err as Error);
                 }
             } finally {
                 if (!cancelled) contentHydrated.current = true;
