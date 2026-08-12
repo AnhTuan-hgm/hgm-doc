@@ -1,4 +1,4 @@
-import { type ChangeEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ChangeEvent, type FC, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 // Functional UI icons — Untitled UI PRO, line style (drop-in for the free set).
 import {
     ArrowDown,
@@ -8,6 +8,7 @@ import {
     Camera01,
     Check,
     CheckCircle,
+    ChevronDown,
     ClipboardCheck,
     Copy01,
     Download01,
@@ -42,6 +43,7 @@ import { WelcomeFlowSection } from "@/components/application/welcome-flow";
 import { BadgeWithDot, BadgeWithIcon } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
 import { ProgressBarCircle } from "@/components/base/progress-indicators/progress-circles";
+import { ProgressBar } from "@/components/base/progress-indicators/progress-indicators";
 import { FeaturedIcon } from "@/components/foundations/featured-icon/featured-icon";
 import { Instagram } from "@/components/foundations/social-icons";
 import { Reveal } from "@/components/shared-assets/reveal";
@@ -51,6 +53,9 @@ import { type DashboardContent, type HostOnboardingData, supabase } from "@/lib/
 import { useSuppressFloatingThemeToggle, useTheme } from "@/providers/theme-provider";
 import { compressImageFile } from "@/utils/compress-image";
 import { cx } from "@/utils/cx";
+// Type-only: the PDF builder itself is loaded on demand in downloadMasterDocPdf,
+// so jsPDF stays out of this page's chunk.
+import type { MasterDocSection } from "@/utils/master-document-pdf";
 import {
     type ClientOnboardingData,
     ClientOnboardingFormPage,
@@ -113,7 +118,7 @@ const compileMasterDocument = (
     clientName: string,
     clientWebsite: string,
     f: NonNullable<DashboardContent["foundation"]>,
-): { doc: string; missing: string[] } => {
+): { doc: string; missing: string[]; sections: MasterDocSection[]; faqs: FaqItem[]; generatedOn: string } => {
     const sections = [
         { label: "Property basics", value: f.propertyBasics },
         { label: "Ideal guest persona", value: f.persona },
@@ -125,23 +130,21 @@ const compileMasterDocument = (
     const faqs = f.faqs.filter((q) => q.question.trim());
     const missing = sections.filter((s) => !s.value.trim()).map((s) => s.label);
     if (!faqs.length) missing.push("FAQ bank");
+    const generatedOn = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
 
     const lines: string[] = [
         `# Master Document — ${clientName.trim() || "Client"}`,
         "",
-        [
-            clientWebsite.trim() && `Website: ${clientWebsite.trim()}`,
-            `Generated: ${new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}`,
-        ]
-            .filter(Boolean)
-            .join("  ·  "),
+        [clientWebsite.trim() && `Website: ${clientWebsite.trim()}`, `Generated: ${generatedOn}`].filter(Boolean).join("  ·  "),
         "",
     ];
     sections.forEach((s, i) => lines.push(`## ${i + 1}. ${s.label}`, "", s.value.trim() || "_Not provided yet._", ""));
     lines.push(`## ${sections.length + 1}. FAQ bank${faqs.length ? ` (${faqs.length})` : ""}`, "");
     if (!faqs.length) lines.push("_No FAQs yet._", "");
     faqs.forEach((q) => lines.push(`**Q: ${q.question.trim()}**`, `A: ${q.answer.trim() || "_No answer yet._"}`, ""));
-    return { doc: lines.join("\n"), missing };
+    // `sections`/`faqs`/`generatedOn` are returned alongside the markdown so the PDF
+    // export can lay the document out properly instead of re-parsing the markdown.
+    return { doc: lines.join("\n"), missing, sections, faqs, generatedOn };
 };
 
 const DEFAULT_GHL_ITEMS: GhlItem[] = [
@@ -221,11 +224,23 @@ const mergeContent = (partial?: Partial<DashboardContent> | null): DashboardCont
 /** Which stage of the HiddenGem funnel a section belongs to — every section shows its
  * stage badge so clients build the same Foundation → Top → Middle → Bottom mental model
  * Dustin walks them through on the onboarding call, every time they open the dashboard. */
+/**
+ * The client's journey, as the team runs it. `input` is not a phase — it's the one
+ * group where the client gives us input rather than reading ours, so it keeps its
+ * own hue and sits above the numbered phases.
+ */
+const PHASES = {
+    input: { num: null, label: "Client input", bg: "bg-utility-indigo-50", text: "text-utility-indigo-700" },
+    p1: { num: 1, label: "Marketing Strategy", bg: "bg-brand-secondary", text: "text-brand-secondary" },
+    p2: { num: 2, label: "Technical Setup", bg: "bg-secondary", text: "text-secondary" },
+    p3: { num: 3, label: "Content Creation", bg: "bg-warning-secondary", text: "text-warning-primary" },
+    p4: { num: 4, label: "Funnel Setup", bg: "bg-utility-purple-50", text: "text-utility-purple-700" },
+    p5: { num: 5, label: "Marketing Launch", bg: "bg-success-secondary", text: "text-success-primary" },
+} as const;
+type PhaseId = keyof typeof PHASES;
+
+/** Funnel model — still how the Overview explains the moving parts, independent of phases. */
 const FUNNEL_STAGES = {
-    /** Not a funnel stage — the one group where the client gives us input instead of
-     * reading ours, so it gets its own hue (utility-indigo, dark-mode aware) and sits
-     * above Foundation: their answers are what Foundation is built from. */
-    input: { label: "Client input", bg: "bg-utility-indigo-50", text: "text-utility-indigo-700" },
     foundation: { label: "Foundation", bg: "bg-secondary", text: "text-secondary" },
     top: { label: "Top of funnel", bg: "bg-brand-secondary", text: "text-brand-secondary" },
     middle: { label: "Middle of funnel", bg: "bg-warning-secondary", text: "text-warning-primary" },
@@ -233,12 +248,34 @@ const FUNNEL_STAGES = {
 } as const;
 type FunnelStageId = keyof typeof FUNNEL_STAGES;
 
-const SectionEyebrow = ({ stage }: { stage: FunnelStageId }) => {
-    const s = FUNNEL_STAGES[stage];
+/** Where each Overview funnel card jumps to. Explicit: the funnel and the phase
+    groups are different models, so the nav can no longer supply this. */
+const FUNNEL_CARD_TARGET: Record<FunnelStageId, SectionId> = {
+    foundation: "foundation",
+    top: "website",
+    middle: "flow",
+    bottom: "ghl",
+};
+
+/** The funnel explainer cards on Overview — module-level so the render stays readable. */
+const FUNNEL_CARDS: { stage: FunnelStageId; title: string; body: string; icon: FC<{ className?: string }> }[] = [
+    { stage: "foundation", title: "Your Master Document", body: "Persona, tone, FAQs, amenities — the source everything else reads from.", icon: FileCheck02 },
+    { stage: "top", title: "Get seen", body: "Your website and Instagram bring new guests in.", icon: Globe01 },
+    { stage: "middle", title: "Nurture", body: "Welcome emails and chat build trust and answer questions.", icon: Mail01 },
+    { stage: "bottom", title: "Convert", body: "GoHighLevel and your results — turning interest into direct bookings.", icon: TrendUp01 },
+];
+
+const SectionEyebrow = ({ section }: { section: SectionId }) => {
+    const phase = phaseOfSection(section);
+    if (!phase) return null;
+    const p = PHASES[phase];
     return (
         <div className="flex items-center gap-3">
-            <span className={cx("inline-flex shrink-0 items-center rounded-full px-3 py-1 text-[11px] font-bold tracking-wide uppercase", s.bg, s.text)}>
-                {s.label}
+            <span
+                className={cx("inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-bold tracking-wide uppercase", p.bg, p.text)}
+            >
+                {p.num !== null && <span className="tabular-nums opacity-70">Phase {p.num}</span>}
+                {p.label}
             </span>
             <span className="h-px flex-1 bg-border-secondary" />
         </div>
@@ -281,52 +318,70 @@ type SectionId =
 /** Sits above the funnel groups — not a funnel stage itself, just "home" (hero + the funnel explainer). */
 const OVERVIEW_ITEM = { id: "overview" as const, label: "Overview", icon: LayoutAlt01 };
 
-const NAV_GROUPS: { label: string; stage: FunnelStageId; items: { id: SectionId; label: string; icon: typeof LayoutAlt01; soon?: boolean }[] }[] = [
+/**
+ * Side-menu groups: Client Input first, then the five onboarding phases.
+ *
+ * The phases mirror the team's Asana onboarding project and ONBOARDING_PHASES in
+ * dashboard-screen.tsx (which /home tracks per client), so the client now sees the
+ * same journey the team runs. Client Input stays pinned above them: those two forms
+ * are what every phase is built from, and the client should never hunt for the one
+ * thing we need from them.
+ *
+ * "Signing On" (phase 0) is deliberately absent — by the time this dashboard exists,
+ * it's done.
+ */
+const NAV_GROUPS: { label: string; phase: PhaseId; items: { id: SectionId; label: string; icon: typeof LayoutAlt01; soon?: boolean }[] }[] = [
     {
-        label: "Client Input",
-        stage: "input",
+        label: "Client input",
+        phase: "input",
         items: [
-            // The client answers the Onboarding Form first, then the Brand Vision Form.
             { id: "intake", label: "Onboarding Form", icon: ClipboardCheck },
             { id: "onboarding", label: "Brand Vision Form", icon: FileCheck02 },
         ],
     },
     {
-        label: "Foundation",
-        stage: "foundation",
+        label: "Marketing Strategy",
+        phase: "p1",
+        items: [{ id: "foundation", label: "Master Document", icon: FileCheck02 }],
+    },
+    {
+        label: "Technical Setup",
+        phase: "p2",
         items: [
-            { id: "foundation", label: "Master Document", icon: FileCheck02 },
-            { id: "brand", label: "Brand Kit", icon: Image01 },
-            { id: "videos", label: "Video Guides", icon: PlayCircle },
-            { id: "comms", label: "Communication Log", icon: MessageChatCircle, soon: true },
+            { id: "website", label: "Website", icon: Globe01 },
+            { id: "ghl", label: "GoHighLevel Setup", icon: Target04 },
         ],
     },
     {
-        label: "Top of funnel",
-        stage: "top",
+        label: "Content Creation",
+        phase: "p3",
         items: [
-            { id: "website", label: "Website", icon: Globe01 },
+            { id: "brand", label: "Brand Kit", icon: Image01 },
+            { id: "videos", label: "Video Guides", icon: PlayCircle },
             { id: "instagram", label: "Instagram", icon: Camera01 },
         ],
     },
     {
-        label: "Middle of funnel",
-        stage: "middle",
+        label: "Funnel Setup",
+        phase: "p4",
         items: [
             { id: "flow", label: "Welcome Flow Email", icon: Mail01 },
             { id: "chatwidget", label: "Chat Widget", icon: MessageChatCircle },
         ],
     },
     {
-        label: "Bottom of funnel",
-        stage: "bottom",
+        label: "Marketing Launch",
+        phase: "p5",
         items: [
-            { id: "ghl", label: "GoHighLevel Setup", icon: Target04 },
             { id: "revenue", label: "Revenue & Results", icon: TrendUp01 },
+            { id: "comms", label: "Communication Log", icon: MessageChatCircle, soon: true },
         ],
     },
 ];
-/** Flattened for lookups (active-section checks, deep links) — order matches the sidebar. */
+
+/** Which group a section belongs to — drives the eyebrow above each section body. */
+const phaseOfSection = (id: SectionId): PhaseId | null => NAV_GROUPS.find((g) => g.items.some((i) => i.id === id))?.phase ?? null;
+
 const SECTIONS = [OVERVIEW_ITEM, ...NAV_GROUPS.flatMap((g) => g.items)];
 
 /** Read from the form itself so the copy never goes stale if a question is added. */
@@ -440,6 +495,62 @@ export interface ClientDashboardPageProps {
     /** Only the template page (/client-dashboard) shows the “+” create button. */
     isTemplate?: boolean;
 }
+
+/**
+ * Side-menu item. Matches the Untitled UI nav language from
+ * components/application/app-navigation (h-9 target, rounded-md, semibold label,
+ * focus-visible ring) but renders a real <button>: these switch an in-page
+ * section, not a route, and NavItemBase renders an <a role="link"> which would
+ * announce navigation that never happens.
+ */
+const SectionNavItem = ({
+    icon: Icon,
+    label,
+    current,
+    disabled,
+    badge,
+    indent,
+    onClick,
+}: {
+    icon: FC<{ className?: string }>;
+    label: string;
+    current: boolean;
+    disabled?: boolean;
+    /** Real state for this section — a count, "Done", etc. */
+    badge?: ReactNode;
+    indent?: boolean;
+    onClick: () => void;
+}) => (
+    <button
+        type="button"
+        onClick={disabled ? undefined : onClick}
+        disabled={disabled}
+        aria-current={current ? "page" : undefined}
+        className={cx(
+            "group/item relative flex min-h-9 w-full cursor-pointer items-center rounded-md p-2 text-left outline-focus-ring transition duration-100 ease-linear select-none focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-2",
+            indent && "pl-4",
+            current ? "bg-secondary hover:bg-secondary_hover" : "hover:bg-primary_hover",
+            disabled && "cursor-not-allowed opacity-60 hover:bg-transparent",
+        )}
+    >
+        <Icon
+            aria-hidden="true"
+            className={cx(
+                "mr-2 size-5 shrink-0 transition-inherit-all",
+                current ? "text-fg-brand-primary" : "text-fg-quaternary group-hover/item:text-fg-quaternary_hover",
+            )}
+        />
+        <span
+            className={cx(
+                "flex-1 truncate text-sm font-semibold transition-inherit-all",
+                current ? "text-primary" : "text-secondary group-hover/item:text-secondary_hover",
+            )}
+        >
+            {label}
+        </span>
+        {badge}
+    </button>
+);
 
 /** Signed-URL playback for a recorded answer shown on the dashboard. */
 const InlineRecording = ({ path, kind }: { path: string; kind: "audio" | "video" | "" }) => {
@@ -624,7 +735,8 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     //    page (a slug change remounts it — client-screen keys on slug), so letting a
     //    mid-flight response land is what stops the card stranding on "Checking…".
     useEffect(() => {
-        if (activeSection !== "onboarding" || isTemplate || !onboardingSlug) return;
+        // Overview's setup panel needs this count too, not just the section itself.
+        if ((activeSection !== "onboarding" && activeSection !== "overview") || isTemplate || !onboardingSlug) return;
         // "error" waits for the explicit Try again (which resets status to idle).
         if (onboardingFetchRef.current || onboardingStatus === "ready" || onboardingStatus === "error") return;
         onboardingFetchRef.current = true;
@@ -666,7 +778,8 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     const intakeStarted = intakeReady && intakeInfo.answered > 0;
 
     useEffect(() => {
-        if (activeSection !== "intake" || isTemplate || !intakeSlug) return;
+        // Overview's setup panel needs this count too, not just the section itself.
+        if ((activeSection !== "intake" && activeSection !== "overview") || isTemplate || !intakeSlug) return;
         if (intakeFetchRef.current || intakeStatus === "ready" || intakeStatus === "error") return;
         intakeFetchRef.current = true;
         setIntakeStatus("loading");
@@ -776,6 +889,11 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
 
     // Master Document "Generate for AM review" modal (team-only).
     const [showMasterDocModal, setShowMasterDocModal] = useState(false);
+    // PDF export state: `pdfBusy` covers the dynamic import of jsPDF (a visible
+    // pause on a cold cache), `pdfError` surfaces a failure the AM would otherwise
+    // read as "the button does nothing".
+    const [pdfBusy, setPdfBusy] = useState(false);
+    const [pdfError, setPdfError] = useState(false);
     const [masterDocCopied, setMasterDocCopied] = useState(false);
 
     // Auto-open the create wizard when arriving via "+ New Page" (?create=1).
@@ -902,6 +1020,35 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
         URL.revokeObjectURL(a.href);
     };
 
+    /**
+     * Download the Master Document as a PDF for the AM to share.
+     *
+     * Compiles on demand rather than reading `masterDoc` — that is only populated
+     * while the review modal is open, and this also runs from the section header.
+     * jsPDF arrives via dynamic import so it costs nothing until clicked.
+     */
+    const downloadMasterDocPdf = async () => {
+        if (pdfBusy) return;
+        setPdfBusy(true);
+        try {
+            const compiled = compileMasterDocument(clientName, clientWebsite, foundation);
+            const { buildMasterDocumentPdf, masterDocumentFileName } = await import("@/utils/master-document-pdf");
+            buildMasterDocumentPdf({
+                clientName,
+                clientWebsite,
+                generatedOn: compiled.generatedOn,
+                sections: compiled.sections,
+                faqs: compiled.faqs.map((q) => ({ question: q.question, answer: q.answer })),
+            }).save(masterDocumentFileName(clientName));
+        } catch (err) {
+            console.error("[master-document] PDF export failed", err);
+            setPdfError(true);
+            setTimeout(() => setPdfError(false), 3200);
+        } finally {
+            setPdfBusy(false);
+        }
+    };
+
     // Shift+E toggles edit mode, Shift+S saves immediately and locks — team-only
     // (gated by isTeam) since clients also reach this page. No password step here:
     // isTeam already means a signed-in @hiddengem.media session, same precedent as
@@ -963,6 +1110,167 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
             extra,
         );
 
+    /** The client's outstanding setup, derived from data already on the page. */
+    const setupSteps = useMemo(() => {
+        const f = content.foundation;
+        const docFilled = f
+            ? [f.propertyBasics, f.persona, f.toneOfVoice, f.amenities, f.localRecommendations, f.bookingLinks].filter((v) => (v ?? "").trim()).length
+            : 0;
+        const colors = content.brand?.colors?.length ?? 0;
+        return [
+            {
+                id: "intake" as SectionId,
+                label: "Onboarding Form",
+                icon: ClipboardCheck,
+                value: intakeInfo.answered,
+                total: intakeInfo.total,
+                done: intakeSubmitted,
+                detail: intakeSubmitted
+                    ? "Submitted — you can still update your answers."
+                    : intakeInfo.total
+                      ? `${intakeInfo.answered} of ${intakeInfo.total} questions answered.`
+                      : "Your business details and the logins we need.",
+            },
+            {
+                id: "onboarding" as SectionId,
+                label: "Brand Vision Form",
+                icon: FileCheck02,
+                value: onboardingInfo.answered,
+                total: onboardingInfo.total,
+                done: onboardingSubmitted,
+                detail: onboardingSubmitted
+                    ? "Submitted — thank you."
+                    : onboardingInfo.total
+                      ? `${onboardingInfo.answered} of ${onboardingInfo.total} questions answered.`
+                      : "Your brand's why, voice and look.",
+            },
+            {
+                id: "foundation" as SectionId,
+                label: "Master Document",
+                icon: FileCheck02,
+                value: docFilled,
+                total: 6,
+                done: docFilled === 6,
+                detail: docFilled === 6 ? "All sections filled in." : `${docFilled} of 6 sections filled in.`,
+            },
+            {
+                id: "brand" as SectionId,
+                label: "Brand Kit",
+                icon: Image01,
+                value: colors ? 1 : 0,
+                total: 1,
+                done: colors > 0,
+                detail: colors ? `${colors} brand ${colors === 1 ? "colour" : "colours"} saved.` : "Add your colours, fonts and logo.",
+            },
+        ];
+    }, [content.foundation, content.brand, intakeInfo, onboardingInfo, intakeSubmitted, onboardingSubmitted]);
+
+    const setupDone = setupSteps.filter((x) => x.done).length;
+
+    /* ── Collapsible phase groups ──
+       Phases 1–5 start folded and Client Input starts open: the forms are the only
+       thing we need from the client, so that group leads, and the five delivery
+       phases stay out of the way until they're wanted.
+
+       Two pieces of state on purpose. `collapsedGroups` is the client's explicit
+       choice and is what persists. `autoOpenPhase` is transient — opening a section
+       from outside the menu (Overview cards, the setup panel, search) unfolds its
+       group for that visit without rewriting the saved preference, so the menu
+       returns to its folded default next time rather than drifting fully open. */
+    const collapseKey = `hgm_dash_nav_collapsed_${slug || "template"}`;
+    const DEFAULT_COLLAPSED: Record<string, boolean> = { p1: true, p2: true, p3: true, p4: true, p5: true };
+    const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(() => {
+        try {
+            const saved = localStorage.getItem(collapseKey);
+            return saved ? JSON.parse(saved) : DEFAULT_COLLAPSED;
+        } catch {
+            return DEFAULT_COLLAPSED;
+        }
+    });
+    useEffect(() => {
+        try {
+            localStorage.setItem(collapseKey, JSON.stringify(collapsedGroups));
+        } catch {
+            /* private mode — collapsing still works, it just won't persist */
+        }
+    }, [collapseKey, collapsedGroups]);
+
+    const [autoOpenPhase, setAutoOpenPhase] = useState<PhaseId | null>(null);
+    useEffect(() => {
+        setAutoOpenPhase(phaseOfSection(activeSection));
+    }, [activeSection]);
+
+    /** Folded unless the client opened it, or it holds the section currently on screen. */
+    const isGroupCollapsed = (phase: PhaseId) => !!collapsedGroups[phase] && autoOpenPhase !== phase;
+
+    /** Toggle from the group header. Collapsing the group you're currently in has to
+        work, so this also clears the transient auto-open. */
+    const toggleGroup = (phase: PhaseId) => {
+        const collapsing = !isGroupCollapsed(phase);
+        if (collapsing && autoOpenPhase === phase) setAutoOpenPhase(null);
+        setCollapsedGroups((c) => ({ ...c, [phase]: collapsing }));
+    };
+
+    /** Does this group still need something from the client? Collapsing must not hide that. */
+    const groupHasTodo = (phase: PhaseId) => {
+        const g = NAV_GROUPS.find((x) => x.phase === phase);
+        if (!g) return false;
+        return g.items.some((i) => {
+            if (i.id === "intake") return intakeReady && !intakeSubmitted;
+            if (i.id === "onboarding") return onboardingReady && !onboardingSubmitted;
+            if (i.id === "foundation") {
+                const f = content.foundation;
+                if (!f) return false;
+                return [f.propertyBasics, f.persona, f.toneOfVoice, f.amenities, f.localRecommendations, f.bookingLinks].some((v) => !(v ?? "").trim());
+            }
+            return false;
+        });
+    };
+
+    /** Per-section badge for the side menu — real state, not decoration. Lets a client
+        see at a glance what still needs them without opening every section. */
+    const sectionBadge = (id: SectionId): ReactNode => {
+        const pill = (text: string, tone: "done" | "todo" | "muted") => (
+            <span
+                className={cx(
+                    "ml-2 shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums",
+                    tone === "done" && "bg-success-secondary text-success-primary",
+                    tone === "todo" && "bg-brand-secondary text-brand-secondary",
+                    tone === "muted" && "text-quaternary",
+                )}
+            >
+                {text}
+            </span>
+        );
+        if (id === "intake") {
+            if (!intakeReady) return null;
+            if (intakeSubmitted) return pill("Done", "done");
+            return intakeInfo.total ? pill(`${intakeInfo.answered}/${intakeInfo.total}`, "todo") : null;
+        }
+        if (id === "onboarding") {
+            if (!onboardingReady) return null;
+            if (onboardingSubmitted) return pill("Done", "done");
+            return onboardingInfo.total ? pill(`${onboardingInfo.answered}/${onboardingInfo.total}`, "todo") : null;
+        }
+        if (id === "foundation") {
+            const f = content.foundation;
+            if (!f) return null;
+            const filled = [f.propertyBasics, f.persona, f.toneOfVoice, f.amenities, f.localRecommendations, f.bookingLinks].filter((v) =>
+                (v ?? "").trim(),
+            ).length;
+            return filled ? pill(`${filled}/6`, filled === 6 ? "done" : "todo") : null;
+        }
+        if (id === "brand") {
+            const n = content.brand?.colors?.length ?? 0;
+            return n ? pill(String(n), "muted") : null;
+        }
+        if (id === "videos") {
+            const n = content.videos?.length ?? 0;
+            return n ? pill(String(n), "muted") : null;
+        }
+        return null;
+    };
+
     const removeButton =
         "flex size-8 shrink-0 items-center justify-center rounded-lg text-fg-quaternary transition duration-100 ease-linear hover:bg-error-primary hover:text-fg-error-primary";
 
@@ -977,7 +1285,12 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                 <div className="flex min-h-0 flex-1 overflow-hidden rounded-2xl shadow-xl ring-1 ring-secondary">
                     <div className="flex min-h-0 w-full flex-col gap-2 overflow-hidden bg-quaternary p-2 md:flex-row">
                         {/* ── Client side menu (no icon rail — client-facing) ── */}
-                        <aside className="flex w-full shrink-0 flex-col overflow-hidden rounded-lg bg-primary shadow-sm md:h-full md:w-64">
+                        <aside // 276px matches MAIN_SIDEBAR_WIDTH in the Untitled UI sidebar kit
+                            // (app-navigation/sidebar-navigation). Nothing truncated at 256px, but the
+                            // phase groups read better with the extra breathing room, and the body is
+                            // capped at 1240px so it gives up nothing on a large screen.
+                            className="flex w-full shrink-0 flex-col overflow-hidden rounded-lg bg-primary shadow-sm md:h-full md:w-[276px]"
+                        >
                             {/* Client identity */}
                             <div className="flex items-center gap-3 border-b border-secondary px-4 py-4 md:px-5">
                                 <button
@@ -1022,20 +1335,12 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
 
                             {/* Overview — sits above the funnel groups, not a funnel stage itself */}
                             <div className="p-3 pb-0 md:pb-0">
-                                <button
-                                    type="button"
+                                <SectionNavItem
+                                    icon={OVERVIEW_ITEM.icon}
+                                    label={OVERVIEW_ITEM.label}
+                                    current={activeSection === "overview"}
                                     onClick={() => setActiveSection("overview")}
-                                    aria-current={activeSection === "overview" ? "page" : undefined}
-                                    className={cx(
-                                        "flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition duration-100 ease-linear",
-                                        activeSection === "overview"
-                                            ? "bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300"
-                                            : "text-secondary hover:bg-secondary hover:text-primary",
-                                    )}
-                                >
-                                    <OVERVIEW_ITEM.icon className="size-4 shrink-0" aria-hidden="true" />
-                                    <span className="flex-1">{OVERVIEW_ITEM.label}</span>
-                                </button>
+                                />
                             </div>
 
                             {/* Funnel groups — Foundation → Top → Middle → Bottom, the same mental model
@@ -1047,39 +1352,66 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                 variants={{ show: { transition: { staggerChildren: 0.04 } } }}
                             >
                                 {NAV_GROUPS.map((group, gi) => (
-                                    <div key={group.label} role="group" aria-labelledby={`nav-group-${group.stage}`} className="mt-3 first:mt-1">
+                                    <div key={group.label} role="group" aria-labelledby={`nav-group-${group.phase}`} className="mt-2.5 first:mt-1">
                                         {/* Divider between funnel groups (approved template-lab layout) */}
-                                        {gi > 0 && <div className="mx-1 mb-3 h-px bg-border-secondary" />}
-                                        <p
-                                            id={`nav-group-${group.stage}`}
-                                            className={cx("mb-1 px-3 text-[11px] font-bold tracking-wide uppercase", FUNNEL_STAGES[group.stage].text)}
+                                        {gi > 0 && <div className="mx-1 mb-2.5 h-px bg-border-secondary" />}
+                                        <button
+                                            type="button"
+                                            id={`nav-group-${group.phase}`}
+                                            onClick={() => toggleGroup(group.phase)}
+                                            aria-expanded={!isGroupCollapsed(group.phase)}
+                                            className={cx(
+                                                "mb-1 flex w-full items-center gap-1.5 rounded-md px-3 py-1 text-left text-[11px] font-bold tracking-wide uppercase transition duration-100 ease-linear hover:bg-primary_hover",
+                                                PHASES[group.phase].text,
+                                            )}
                                         >
-                                            {group.label}
-                                        </p>
-                                        <div className="flex flex-col gap-1">
-                                            {group.items.map((s) => (
-                                                <motion.button
-                                                    key={s.id}
-                                                    type="button"
-                                                    onClick={() => !s.soon && setActiveSection(s.id)}
-                                                    aria-current={activeSection === s.id ? "page" : undefined}
-                                                    variants={{ hidden: { opacity: 0, x: -8 }, show: { opacity: 1, x: 0 } }}
+                                            {PHASES[group.phase].num !== null && (
+                                                <span
                                                     className={cx(
-                                                        // pl-5 indents items a step past the group label (px-3)
-                                                        "flex w-full items-center gap-2.5 rounded-lg py-2.5 pr-3 pl-5 text-left text-sm font-medium transition duration-100 ease-linear",
-                                                        activeSection === s.id
-                                                            ? "bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300"
-                                                            : s.soon
-                                                              ? "cursor-not-allowed text-quaternary opacity-60"
-                                                              : "text-secondary hover:bg-secondary hover:text-primary",
+                                                        "inline-flex size-4 shrink-0 items-center justify-center rounded-full text-[10px] tabular-nums",
+                                                        PHASES[group.phase].bg,
                                                     )}
                                                 >
-                                                    <s.icon className="size-4 shrink-0" aria-hidden="true" />
-                                                    <span className="flex-1">{s.label}</span>
-                                                    {s.soon && <span className="text-[10px] font-semibold text-quaternary uppercase">Soon</span>}
-                                                </motion.button>
-                                            ))}
-                                        </div>
+                                                    {PHASES[group.phase].num}
+                                                </span>
+                                            )}
+                                            <span className="flex-1 truncate">{group.label}</span>
+                                            {/* Folded groups still flag outstanding work — otherwise collapsing
+                                                could hide the one thing we need from the client. */}
+                                            {isGroupCollapsed(group.phase) && groupHasTodo(group.phase) && (
+                                                <span className="size-1.5 shrink-0 rounded-full bg-brand-solid" title="Still needs you" />
+                                            )}
+                                            <ChevronDown
+                                                aria-hidden="true"
+                                                className={cx(
+                                                    "size-3.5 shrink-0 text-fg-quaternary transition-transform duration-150",
+                                                    isGroupCollapsed(group.phase) && "-rotate-90",
+                                                )}
+                                            />
+                                        </button>
+                                        {!isGroupCollapsed(group.phase) && (
+                                            <div className="flex flex-col gap-1">
+                                                {group.items.map((s) => (
+                                                    <motion.div key={s.id} variants={{ hidden: { opacity: 0, x: -8 }, show: { opacity: 1, x: 0 } }}>
+                                                        <SectionNavItem
+                                                            icon={s.icon}
+                                                            label={s.label}
+                                                            current={activeSection === s.id}
+                                                            disabled={s.soon}
+                                                            indent
+                                                            badge={
+                                                                s.soon ? (
+                                                                    <span className="ml-2 shrink-0 text-[10px] font-bold text-quaternary uppercase">Soon</span>
+                                                                ) : (
+                                                                    sectionBadge(s.id)
+                                                                )
+                                                            }
+                                                            onClick={() => setActiveSection(s.id)}
+                                                        />
+                                                    </motion.div>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 ))}
                             </motion.nav>
@@ -1310,63 +1642,97 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                     </div>
                                                 )}
 
-                                                {/* How we grow your bookings — the same funnel Dustin walks every client
-                        through on the onboarding call. Foundation feeds Top → Middle → Bottom;
-                        clicking a card jumps straight to that stage's first section. */}
+                                                {/* ── Your setup ──
+                                                    Real state, not an explainer. Everything here comes from data the
+                                                    page already loads (form progress, Master Document fields, brand
+                                                    kit, videos), so it needs no extra fetch — and every row jumps to
+                                                    the section that clears it. */}
                                                 <div className="mt-10">
-                                                    {/* Left-aligned section heading + divider (approved template-lab layout) */}
-                                                    <h2 className="text-lg font-semibold tracking-wide text-brand-secondary uppercase">
-                                                        How we grow your bookings
-                                                    </h2>
-                                                    <p className="mt-2 text-md text-tertiary">
+                                                    <div className="flex flex-wrap items-end justify-between gap-3">
+                                                        <div>
+                                                            <h2 className="text-lg font-semibold text-primary">Your setup</h2>
+                                                            <p className="mt-1 text-sm text-tertiary">
+                                                                {setupDone === setupSteps.length
+                                                                    ? "Everything's in — your team has what they need."
+                                                                    : "What we still need from you, and what's already done."}
+                                                            </p>
+                                                        </div>
+                                                        <div className="flex items-center gap-3">
+                                                            <ProgressBarCircle value={Math.round((setupDone / setupSteps.length) * 100)} size="xxs" />
+                                                            <span className="text-sm font-semibold text-secondary tabular-nums">
+                                                                {setupDone} of {setupSteps.length}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                                                        {setupSteps.map((step) => (
+                                                            <button
+                                                                key={step.id}
+                                                                type="button"
+                                                                onClick={() => setActiveSection(step.id)}
+                                                                className="flex items-start gap-3.5 rounded-xl bg-primary p-4 text-left ring-1 ring-secondary transition duration-100 ease-linear hover:ring-brand"
+                                                            >
+                                                                <FeaturedIcon
+                                                                    icon={step.done ? CheckCircle : step.icon}
+                                                                    color={step.done ? "success" : "brand"}
+                                                                    theme="light"
+                                                                    size="md"
+                                                                />
+                                                                <span className="min-w-0 flex-1">
+                                                                    <span className="flex items-center gap-2">
+                                                                        <span className="text-sm font-semibold text-primary">{step.label}</span>
+                                                                        {step.done && (
+                                                                            <BadgeWithDot color="success" size="sm" type="pill-color">
+                                                                                Done
+                                                                            </BadgeWithDot>
+                                                                        )}
+                                                                    </span>
+                                                                    <span className="mt-1 block text-sm text-tertiary">{step.detail}</span>
+                                                                    {!step.done && step.total > 0 && (
+                                                                        <span className="mt-2.5 block">
+                                                                            <ProgressBar value={Math.round((step.value / step.total) * 100)} />
+                                                                        </span>
+                                                                    )}
+                                                                </span>
+                                                                <ArrowRight className="mt-1 size-4 shrink-0 text-fg-quaternary" aria-hidden="true" />
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                {/* How we grow your bookings — the same funnel Dustin walks every client
+                                                    through on the onboarding call. Foundation feeds Top → Middle → Bottom;
+                                                    clicking a card jumps to that stage's first section. */}
+                                                <div className="mt-12">
+                                                    <h2 className="text-lg font-semibold text-primary">How we grow your bookings</h2>
+                                                    <p className="mt-1 text-sm text-tertiary">
                                                         Everything below fits one funnel — start with your Foundation, then work top to bottom.
                                                     </p>
-                                                    <div className="mt-4 h-px bg-border-secondary" />
-                                                    <div className="mt-6 grid gap-4 sm:grid-cols-2">
-                                                        {[
-                                                            {
-                                                                stage: "foundation" as const,
-                                                                title: "Your Master Document",
-                                                                body: "Persona, tone, FAQs, amenities — the source everything else reads from.",
-                                                            },
-                                                            {
-                                                                stage: "top" as const,
-                                                                title: "Get seen",
-                                                                body: "Your website and Instagram bring new guests in.",
-                                                            },
-                                                            {
-                                                                stage: "middle" as const,
-                                                                title: "Nurture",
-                                                                body: "Welcome emails and chat build trust and answer questions.",
-                                                            },
-                                                            {
-                                                                stage: "bottom" as const,
-                                                                title: "Convert",
-                                                                body: "GoHighLevel and your results — turning interest into direct bookings.",
-                                                            },
-                                                        ].map((card) => {
-                                                            const targetId =
-                                                                card.stage === "foundation"
-                                                                    ? "foundation"
-                                                                    : NAV_GROUPS.find((g) => g.stage === card.stage)!.items[0].id;
+                                                    <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                                                        {FUNNEL_CARDS.map((card) => {
+                                                            const targetId = FUNNEL_CARD_TARGET[card.stage];
                                                             return (
                                                                 <button
                                                                     key={card.stage}
                                                                     type="button"
                                                                     onClick={() => setActiveSection(targetId)}
-                                                                    className="rounded-xl p-6 text-left ring-1 ring-secondary transition duration-100 ease-linear hover:ring-brand"
+                                                                    className="group/card flex flex-col rounded-xl bg-primary p-5 text-left ring-1 ring-secondary transition duration-100 ease-linear hover:ring-brand"
                                                                 >
-                                                                    <span
-                                                                        className={cx(
-                                                                            "inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold tracking-wide uppercase",
-                                                                            FUNNEL_STAGES[card.stage].bg,
-                                                                            FUNNEL_STAGES[card.stage].text,
-                                                                        )}
-                                                                    >
-                                                                        {FUNNEL_STAGES[card.stage].label}
+                                                                    <span className="flex items-center justify-between gap-3">
+                                                                        <FeaturedIcon icon={card.icon} color="gray" theme="modern" size="md" />
+                                                                        <span
+                                                                            className={cx(
+                                                                                "inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold tracking-wide uppercase",
+                                                                                FUNNEL_STAGES[card.stage].bg,
+                                                                                FUNNEL_STAGES[card.stage].text,
+                                                                            )}
+                                                                        >
+                                                                            {FUNNEL_STAGES[card.stage].label}
+                                                                        </span>
                                                                     </span>
-                                                                    <p className="mt-4 text-md font-semibold text-primary">{card.title}</p>
-                                                                    <p className="mt-1.5 text-sm text-tertiary">{card.body}</p>
+                                                                    <span className="mt-4 text-md font-semibold text-primary">{card.title}</span>
+                                                                    <span className="mt-1.5 text-sm text-tertiary">{card.body}</span>
                                                                 </button>
                                                             );
                                                         })}
@@ -1379,13 +1745,26 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                         <div className="mt-10">
                                             <div className="min-w-0">
                                                 {activeSection === "flow" && (
-                                                    <WelcomeFlowSection slug={slug} clientName={clientName} isLocked={isLocked} isTemplate={isTemplate} />
+                                                    <>
+                                                        {/* This section renders its own component, so it was the one
+                                                            section without an eyebrow — visible now that they name the
+                                                            phase, since its sibling Chat Widget shows "Phase 4". */}
+                                                        <SectionEyebrow section={activeSection} />
+                                                        <div className="mt-6">
+                                                            <WelcomeFlowSection
+                                                                slug={slug}
+                                                                clientName={clientName}
+                                                                isLocked={isLocked}
+                                                                isTemplate={isTemplate}
+                                                            />
+                                                        </div>
+                                                    </>
                                                 )}
 
                                                 {/* ── Client Input — the Onboarding Form (the client's FIRST form) ── */}
                                                 {activeSection === "intake" && (
                                                     <Reveal>
-                                                        <SectionEyebrow stage="input" />
+                                                        <SectionEyebrow section={activeSection} />
                                                         <SectionHeading>Onboarding Form</SectionHeading>
                                                         <p className="mt-3 text-md text-tertiary">
                                                             The first step — your business details, goals, and the account logins we need before your Kick-Off
@@ -1543,7 +1922,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                 {/* ── Client Input — the Brand Vision Form the client fills in themselves ── */}
                                                 {activeSection === "onboarding" && (
                                                     <Reveal>
-                                                        <SectionEyebrow stage="input" />
+                                                        <SectionEyebrow section={activeSection} />
                                                         <SectionHeading>Brand Vision Form</SectionHeading>
                                                         <p className="mt-3 text-md text-tertiary">
                                                             Your Brand Vision Form — {ONBOARDING_TOTAL_QUESTIONS} quick questions about why you built this
@@ -1692,7 +2071,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                 {/* ── Master Document — the Foundation everything downstream reads from ── */}
                                                 {activeSection === "foundation" && (
                                                     <Reveal>
-                                                        <SectionEyebrow stage="foundation" />
+                                                        <SectionEyebrow section={activeSection} />
                                                         <SectionHeading>Master Document</SectionHeading>
                                                         <p className="mt-3 text-md text-tertiary">
                                                             This is where it starts. Everyone — you, your team, and ours — keeps this updated. It's what your
@@ -1700,9 +2079,9 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                             smarter everything downstream gets.
                                                         </p>
 
-                                                        {/* Team-only: compile the answers into the AM-ready doc. */}
+                                                        {/* Team-only: compile the answers into the AM-ready doc, or export it. */}
                                                         {isTeam && (
-                                                            <div className="mt-4">
+                                                            <div className="mt-4 flex flex-wrap items-center gap-3">
                                                                 <Button
                                                                     size="sm"
                                                                     color="secondary"
@@ -1711,6 +2090,21 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                 >
                                                                     Generate for AM review
                                                                 </Button>
+                                                                <Button
+                                                                    size="sm"
+                                                                    color="secondary"
+                                                                    iconLeading={Download01}
+                                                                    isLoading={pdfBusy}
+                                                                    showTextWhileLoading
+                                                                    onClick={() => void downloadMasterDocPdf()}
+                                                                >
+                                                                    {pdfBusy ? "Preparing PDF…" : "Download PDF"}
+                                                                </Button>
+                                                                {pdfError && (
+                                                                    <span className="text-sm text-error-primary" role="alert">
+                                                                        Couldn't build the PDF. Please try again.
+                                                                    </span>
+                                                                )}
                                                             </div>
                                                         )}
 
@@ -1863,7 +2257,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                 {/* ── Brand Kit ── */}
                                                 {activeSection === "brand" && (
                                                     <Reveal>
-                                                        <SectionEyebrow stage="foundation" />
+                                                        <SectionEyebrow section={activeSection} />
                                                         <div className="flex flex-wrap items-end justify-between gap-3">
                                                             <SectionHeading>Brand Kit</SectionHeading>
                                                             {isLocked ? (
@@ -1972,7 +2366,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                 {/* ── Instagram Highlights ── */}
                                                 {activeSection === "instagram" && (
                                                     <Reveal>
-                                                        <SectionEyebrow stage="top" />
+                                                        <SectionEyebrow section={activeSection} />
                                                         <div className="flex flex-wrap items-end justify-between gap-3">
                                                             <SectionHeading>Instagram Highlights</SectionHeading>
                                                             {isLocked ? (
@@ -2083,7 +2477,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                 {/* ── GoHighLevel Setup ── */}
                                                 {activeSection === "ghl" && (
                                                     <Reveal>
-                                                        <SectionEyebrow stage="bottom" />
+                                                        <SectionEyebrow section={activeSection} />
                                                         <div className="flex flex-wrap items-end justify-between gap-3">
                                                             <SectionHeading>GoHighLevel Setup</SectionHeading>
                                                             {isLocked ? (
@@ -2195,7 +2589,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                 {/* ── Revenue & Results ── */}
                                                 {activeSection === "revenue" && (
                                                     <Reveal>
-                                                        <SectionEyebrow stage="bottom" />
+                                                        <SectionEyebrow section={activeSection} />
                                                         <div className="flex flex-wrap items-end justify-between gap-3">
                                                             <SectionHeading>Revenue &amp; Results</SectionHeading>
                                                             {!isLocked && (
@@ -2364,7 +2758,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                 {/* ── Website — top-of-funnel tools embedded on your own site ── */}
                                                 {activeSection === "website" && (
                                                     <Reveal>
-                                                        <SectionEyebrow stage="top" />
+                                                        <SectionEyebrow section={activeSection} />
                                                         <SectionHeading>Website</SectionHeading>
                                                         <p className="mt-3 text-md text-tertiary">
                                                             Your site is the first real impression — these are the tools we've set up on it to turn visitors
@@ -2449,7 +2843,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                 {/* ── Chat Widget — middle-of-funnel, answers guest questions from the Master Document ── */}
                                                 {activeSection === "chatwidget" && (
                                                     <Reveal>
-                                                        <SectionEyebrow stage="middle" />
+                                                        <SectionEyebrow section={activeSection} />
                                                         <SectionHeading>Chat Widget</SectionHeading>
                                                         <p className="mt-3 text-md text-tertiary">
                                                             An AI chat on your website that answers guest questions instantly, straight from your Master
@@ -2546,7 +2940,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                 {/* ── Video Guides ── */}
                                                 {activeSection === "videos" && (
                                                     <Reveal>
-                                                        <SectionEyebrow stage="foundation" />
+                                                        <SectionEyebrow section={activeSection} />
                                                         <SectionHeading>Video Guides</SectionHeading>
                                                         <p className="mt-3 text-md text-tertiary">
                                                             Short walkthrough videos recorded for you by the HiddenGem team.
@@ -2622,7 +3016,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                 {/* ── Communication Log — not built yet, nav item is disabled ── */}
                                                 {activeSection === "comms" && (
                                                     <Reveal>
-                                                        <SectionEyebrow stage="foundation" />
+                                                        <SectionEyebrow section={activeSection} />
                                                         <SectionHeading>Communication Log</SectionHeading>
                                                         <p className="mt-3 text-md text-tertiary">
                                                             Coming soon — a shared log of calls and updates between you and your Account Manager.
@@ -2696,9 +3090,19 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                             {masterDoc.doc}
                         </pre>
 
-                        <div className="flex items-center justify-end gap-3 border-t border-secondary px-6 py-4">
+                        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-secondary px-6 py-4">
                             <Button size="sm" color="secondary" iconLeading={Download01} onClick={downloadMasterDoc}>
                                 Download .md
+                            </Button>
+                            <Button
+                                size="sm"
+                                color="secondary"
+                                iconLeading={Download01}
+                                isLoading={pdfBusy}
+                                showTextWhileLoading
+                                onClick={() => void downloadMasterDocPdf()}
+                            >
+                                {pdfBusy ? "Preparing…" : "Download PDF"}
                             </Button>
                             <Button size="sm" color="primary" iconLeading={masterDocCopied ? Check : Copy01} onClick={copyMasterDoc}>
                                 {masterDocCopied ? "Copied!" : "Copy document"}

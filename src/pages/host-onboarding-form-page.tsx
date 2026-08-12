@@ -1008,14 +1008,15 @@ const ReviewScreen = ({
                                 </button>
                             </div>
                             <div className="mt-3">
-                                {data.video ? (
+                                {data.video && (
                                     <span className={cx(chipCls, "bg-brand-primary_alt text-brand-secondary ring-brand")}>
                                         <PlayCircle className="size-4" aria-hidden="true" />
                                         Video attached
                                     </span>
-                                ) : (
-                                    <p className="text-md text-quaternary italic">No video added</p>
                                 )}
+                                {/* A recorded intro plays back here too, not just a pasted link. */}
+                                {hasMediaAnswer(data, "video") && <ReviewRecording media={mediaFor(data, "video")!} />}
+                                {!data.video && !hasMediaAnswer(data, "video") && <p className="text-md text-quaternary italic">No video added</p>}
                             </div>
                         </div>
                     </section>
@@ -1654,9 +1655,33 @@ export const HostOnboardingFormPage = ({
                                             Want to add a personal touch? <span className="font-normal text-tertiary">(optional)</span>
                                         </h1>
                                         <p className="mt-2 text-sm text-tertiary">
-                                            Record a quick video intro of yourself and your property — a Loom/YouTube link works too.
+                                            Record right here, or paste a Loom/YouTube link — whichever is easier.
                                         </p>
-                                        <VideoAttach value={data.video} onChange={onVideo} className="mt-6" />
+
+                                        {/* Record in the browser, same control as the questions. Stored under the
+                                            "video" key in mediaAnswers, which keeps data.video free for the pasted
+                                            link / uploaded file it already holds — a host can do either. */}
+                                        <MediaAnswer
+                                            slug={slug}
+                                            field="video"
+                                            path={mediaFor(data, "video")?.path ?? ""}
+                                            kind={mediaFor(data, "video")?.kind ?? ""}
+                                            onChange={(path, kind) =>
+                                                setData((d) => {
+                                                    const next = { ...(d.mediaAnswers ?? {}) };
+                                                    if (path && kind) next.video = { path, kind };
+                                                    else delete next.video;
+                                                    return { ...d, mediaAnswers: next };
+                                                })
+                                            }
+                                        />
+
+                                        <div className="mt-6 flex items-center gap-3">
+                                            <span className="h-px flex-1 bg-border-secondary" />
+                                            <span className="text-xs font-medium text-quaternary">or share a link</span>
+                                            <span className="h-px flex-1 bg-border-secondary" />
+                                        </div>
+                                        <VideoAttach value={data.video} onChange={onVideo} className="mt-4" />
 
                                         {submitState === "error" && (
                                             <div role="alert" className="mt-6 flex items-center gap-2 text-sm font-medium text-error-primary">
