@@ -1,6 +1,6 @@
 import { StrictMode, useEffect } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Route, Routes, useLocation, useNavigate } from "react-router";
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate, useSearchParams } from "react-router";
 import { LandingScreen } from "@/pages/landing-screen";
 
 import { TemplateScreen } from "@/pages/template-screen";
@@ -118,6 +118,28 @@ const GlobalHotkeys = () => {
     return null;
 };
 
+// `/` — the public landing page for clients, the team dashboard for us.
+//
+// A signed-in @hiddengem.media member arriving at the root almost never wants the
+// marketing splash, so they go straight to the Client List — the same destination
+// as the Ctrl+B hotkey above, so the two can't disagree. `?public` opts out, so
+// the team can still see exactly what a client sees without signing out.
+//
+// Rendering waits for `loading` instead of showing the landing right away: that
+// keeps a team member from seeing the splash for a beat before being yanked off
+// it. The cost is a brief blank for everyone, which is the right trade here —
+// clients reach their material through private per-client URLs, so `/` is
+// overwhelmingly a team entry point.
+const RootScreen = () => {
+    const { user, loading } = useAuthUser();
+    const [params] = useSearchParams();
+    const isTeam = !!user?.email && user.email.toLowerCase().endsWith("@hiddengem.media");
+
+    if (loading) return null;
+    if (isTeam && !params.has("public")) return <Navigate to="/dashboard" replace />;
+    return <LandingScreen />;
+};
+
 createRoot(document.getElementById("root")!).render(
     <StrictMode>
         <ThemeProvider>
@@ -128,7 +150,7 @@ createRoot(document.getElementById("root")!).render(
                     <GlobalChatWidget />
                     <GlobalHotkeys />
                     <Routes>
-                        <Route path="/" element={<LandingScreen />} />
+                        <Route path="/" element={<RootScreen />} />
 
                         <Route path="/template" element={<TemplateScreen />} />
                         <Route path="/home" element={<HomeScreen />} />

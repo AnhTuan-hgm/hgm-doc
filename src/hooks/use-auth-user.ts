@@ -28,10 +28,20 @@ export const useAuthUser = () => {
             };
         };
 
-        supabase.auth.getSession().then(({ data }) => {
-            setUser(toAuthUser(data.session));
-            setLoading(false);
-        });
+        supabase.auth
+            .getSession()
+            .then(({ data }) => {
+                setUser(toAuthUser(data.session));
+                setLoading(false);
+            })
+            // Never leave `loading` stuck true: callers gate rendering on it (the `/`
+            // root gate in main.tsx renders nothing until it resolves), so a rejected
+            // lookup would strand them on a blank screen instead of falling back to
+            // the signed-out view.
+            .catch(() => {
+                setUser(null);
+                setLoading(false);
+            });
 
         const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
             setUser(toAuthUser(session));
