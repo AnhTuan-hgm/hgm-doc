@@ -170,6 +170,18 @@ export interface DashboardContent {
      *  can't be derived live here — the two form steps read their real answer counts
      *  instead, so a tick can never disagree with what the dashboard shows. */
     journey_done?: string[];
+    /**
+     * Emails allowed to open this client's dashboard, entered by the AM.
+     *
+     * Signing in proves identity; this list grants access. Anyone with a Google account
+     * can authenticate, so the check is always "is this address on THIS row's list", never
+     * merely "is this person signed in".
+     *
+     * Currently enforced in the UI only. Real enforcement needs the read-gating RLS policy
+     * that reads this same field — until that lands, the row is still fetchable with the
+     * public anon key.
+     */
+    allowed_emails?: string[];
 }
 
 export interface DashboardPageData {

@@ -34,7 +34,8 @@ export interface MasterDocPdfInput {
     faqs: MasterDocFaq[];
 }
 
-const BRAND = "#7F56D9";
+/** theme.css --color-brand-600 (rgb(0 102 222)) — the app's primary interactive blue. */
+const BRAND = "#0066DE";
 const INK = "#101828";
 const BODY = "#344054";
 const MUTED = "#667085";

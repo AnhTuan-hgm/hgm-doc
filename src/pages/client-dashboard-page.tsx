@@ -94,7 +94,88 @@ type FaqItem = NonNullable<DashboardContent["foundation"]>["faqs"][number];
 
 const STATUS_OPTIONS = ["Onboarding", "Active", "Paused"] as const;
 
-const statusColor = (status: string) => (status === "Active" ? "success" : status === "Paused" ? "warning" : "brand");
+/** Submission dates, formatted the same way the form cards already print them. */
+const fmtDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" });
+
+const normEmail = (e: string) => e.trim().toLowerCase();
+
+/**
+ * Sign-in / no-access screen for a client dashboard.
+ *
+ * Two states, because they need different words: nobody signed in yet, versus signed in as
+ * someone this dashboard isn't shared with. The second is the one people actually hit —
+ * Google silently reuses whichever account is already active — so it names the address and
+ * offers to switch rather than just refusing.
+ *
+ * The client's name is deliberately absent: a stranger who lands here learns nothing about
+ * whose dashboard it is.
+ */
+const DashboardAccessGate = ({ email }: { email?: string }) => {
+    const [busy, setBusy] = useState(false);
+
+    const signIn = async () => {
+        setBusy(true);
+        const { error } = await supabase.auth.signInWithOAuth({
+            provider: "google",
+            // select_account matters here: without it Google reuses the active account and
+            // the visitor is bounced straight back to this screen with no idea why.
+            options: { redirectTo: window.location.href, queryParams: { prompt: "select_account" } },
+        });
+        if (error) setBusy(false);
+    };
+
+    const switchAccount = async () => {
+        setBusy(true);
+        await supabase.auth.signOut();
+        await signIn();
+    };
+
+    return (
+        <main className="flex min-h-dvh items-center justify-center bg-tertiary p-6">
+            <div className="w-full max-w-md rounded-2xl bg-primary p-8 text-center shadow-xl ring-1 ring-secondary">
+                <img src="/hgm logo/Favicon ON LIGHT.svg" alt="HiddenGem Media" className="mx-auto size-11" draggable={false} />
+
+                {email ? (
+                    <>
+                        <h1 className="mt-5 text-lg font-semibold text-primary">You don't have access to this dashboard</h1>
+                        <p className="mt-2 text-sm text-tertiary text-pretty">
+                            You're signed in as <span className="font-medium text-secondary">{email}</span>. This dashboard hasn't been shared with
+                            that address.
+                        </p>
+                        <div className="mt-6 flex flex-col gap-2.5">
+                            <Button size="md" isLoading={busy} showTextWhileLoading onClick={() => void switchAccount()}>
+                                Sign in with a different account
+                            </Button>
+                            <p className="text-xs text-quaternary">
+                                If you think this is a mistake, reply to your HiddenGem email and we'll add you.
+                            </p>
+                        </div>
+                    </>
+                ) : (
+                    <>
+                        <h1 className="mt-5 text-lg font-semibold text-primary">This dashboard is private</h1>
+                        <p className="mt-2 text-sm text-tertiary text-pretty">Sign in with the email address your dashboard was shared with.</p>
+                        <div className="mt-6">
+                            <Button size="md" className="w-full" isLoading={busy} showTextWhileLoading onClick={() => void signIn()}>
+                                Sign in with Google
+                            </Button>
+                        </div>
+                    </>
+                )}
+            </div>
+        </main>
+    );
+};
+
+/**
+ * Status pill colour on the CLIENT dashboard. Local on purpose — the team's Client List
+ * keeps its own mapping, where telling Onboarding from Active still matters.
+ *
+ * Onboarding reads green rather than blue: a client opening their own dashboard shouldn't
+ * see a colour that says "not underway yet". Paused stays amber, because that genuinely is
+ * a stop and it would be dishonest to paint it as running.
+ */
+const statusColor = (status: string) => (status === "Paused" ? "warning" : "success");
 
 function slugify(name: string): string {
     return name
@@ -267,6 +348,9 @@ type PhaseId = keyof typeof PHASES;
  */
 type JourneyStepId = "form" | "kickoff" | "call" | "vision" | "masterdoc" | "brandkit" | "funnel" | "resources" | "website";
 
+/** Dustin's strategy-call booking page, linked from the Kick-off Call step. */
+const KICKOFF_CALENDLY = "https://calendly.com/dustin-d-baker/strategy";
+
 const JOURNEY_STEPS: {
     id: JourneyStepId;
     label: string;
@@ -276,9 +360,26 @@ const JOURNEY_STEPS: {
     to?: SectionId;
     /** Derived from real data instead of ticked. */
     auto?: boolean;
+    /** External link this step offers (booking pages and the like). */
+    href?: string;
+    hrefLabel?: string;
+    /** Step that must be done before `href` is offered. */
+    requires?: JourneyStepId;
 }[] = [
     { id: "form", label: "Fill in the Onboarding form", detail: "Your business details and the logins we need.", icon: ClipboardCheck, to: "intake", auto: true },
-    { id: "kickoff", label: "Book the Kick-off Call", detail: "Get the first call on the calendar.", icon: Calendar },
+    {
+        id: "kickoff",
+        label: "Book the Kick-off Call",
+        detail: "Pick a time that suits you and we'll take it from there.",
+        icon: Calendar,
+        // Booking opens only once the Onboarding form is in — the call is only useful if the
+        // team has had time to read the answers, which is why the form says to complete it
+        // at least 12 hours beforehand. Until then the step explains what's blocking it
+        // rather than offering a link that leads to a wasted call.
+        href: KICKOFF_CALENDLY,
+        hrefLabel: "Book your call",
+        requires: "form",
+    },
     { id: "call", label: "Onboarding Call", detail: "With Dustin and your Account Manager.", icon: Users01 },
     { id: "vision", label: "Fill in the Brand Vision Form", detail: "How your brand should look, sound and feel.", icon: FileCheck02, to: "onboarding", auto: true },
     { id: "masterdoc", label: "Review the Master Brand", detail: "Persona, tone, amenities and FAQs — what everything else reads from.", icon: FileCheck02, to: "foundation" },
@@ -675,15 +776,79 @@ const InlineRecording = ({ path, kind }: { path: string; kind: "audio" | "video"
  * weaker place to park a credential than a review screen someone had to deliberately open.
  * (Only the Onboarding Form carries any; Brand Vision has none.)
  */
-const OnboardingAnswers = ({ sections, onEdit }: { sections: OnboardingAnswerSection[]; onEdit: (field: string) => void }) => {
+const OnboardingAnswers = ({
+    sections,
+    onEdit,
+    canExport,
+    clientName,
+    formTitle,
+    submittedOn,
+}: {
+    sections: OnboardingAnswerSection[];
+    onEdit: (field: string) => void;
+    /** Team-only: the PDF export can carry a client's answers off-platform. */
+    canExport?: boolean;
+    clientName: string;
+    formTitle: string;
+    submittedOn?: string;
+}) => {
     const [shown, setShown] = useState<Record<string, boolean>>({});
+    const [pdfBusy, setPdfBusy] = useState(false);
+    const [pdfError, setPdfError] = useState(false);
     const answered = sections.flatMap((s) => s.rows).filter((r) => r.lines.length || r.mediaPath).length;
+
+    /** jsPDF arrives on click, so it costs nothing until someone exports. */
+    const exportPdf = async () => {
+        if (pdfBusy) return;
+        setPdfBusy(true);
+        setPdfError(false);
+        try {
+            const { buildFormAnswersPdf, formAnswersFileName } = await import("@/utils/form-answers-pdf");
+            buildFormAnswersPdf({
+                clientName,
+                formTitle,
+                submittedOn,
+                generatedOn: new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
+                sections,
+                // Credentials stay masked: a PDF gets emailed and filed, a much weaker
+                // place for a client's logins than the dashboard behind a session.
+                includeSecrets: false,
+            }).save(formAnswersFileName(clientName, formTitle));
+        } catch (err) {
+            console.error("[form answers] PDF export failed", err);
+            setPdfError(true);
+            setTimeout(() => setPdfError(false), 3200);
+        } finally {
+            setPdfBusy(false);
+        }
+    };
 
     return (
         <div className="mt-5 border-t border-secondary pt-5">
-            <p className="text-sm font-semibold text-primary">
-                Their answers <span className="font-normal text-tertiary tabular-nums">· {answered} answered</span>
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                <p className="text-sm font-semibold text-primary">
+                    Their answers <span className="font-normal text-tertiary tabular-nums">· {answered} answered</span>
+                </p>
+                {canExport && (
+                    <div className="flex flex-wrap items-center gap-3">
+                        {pdfError && (
+                            <span className="text-sm text-error-primary" role="alert">
+                                Couldn't build the PDF.
+                            </span>
+                        )}
+                        <Button
+                            size="sm"
+                            color="secondary"
+                            iconLeading={Download01}
+                            isLoading={pdfBusy}
+                            showTextWhileLoading
+                            onClick={() => void exportPdf()}
+                        >
+                            {pdfBusy ? "Preparing PDF…" : "Download PDF"}
+                        </Button>
+                    </div>
+                )}
+            </div>
             <div className="mt-4 flex flex-col gap-6">
                 {sections.map((s) => (
                     <section key={s.id}>
@@ -789,6 +954,32 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
      * can't fire twice; leaving is the banner's job.
      */
     const canEnterPreview = isTeam && isLocked;
+
+    /* ── Who may open this dashboard ──
+       Gated on `signedInAsTeam`, NOT `isTeam`: `isTeam` is forced false inside
+       ?preview=client, and gating on it would throw a team member out of their own preview.
+       Preview should change what you SEE, never whether you're allowed in.
+
+       The template page has no client and no allowlist, so it's team-only. */
+    const allowedEmails = content.allowed_emails ?? [];
+    const viewerEmail = user?.email ? normEmail(user.email) : "";
+    const isAllowedClient = !!viewerEmail && allowedEmails.some((e) => normEmail(e) === viewerEmail);
+
+    /**
+     * The gate is armed PER CLIENT, by the AM filling in the allowlist.
+     *
+     * An empty allowlist means this dashboard behaves exactly as it does today — open by
+     * URL. That is deliberate: all 49 existing dashboards start empty, and enforcing on an
+     * empty list would black out every live client the moment this deploys. Adding one
+     * address arms the gate for that client and nobody else.
+     *
+     * This is a staged rollout, not the finished state. Once every dashboard has a list,
+     * the check becomes unconditional and the read-gating RLS policy lands with it.
+     */
+    const gateArmed = allowedEmails.some((e) => e.trim());
+    const hasAccess = signedInAsTeam || isTemplate || !gateArmed || isAllowedClient;
+
+    const updateAllowedEmails = (next: string[]) => setContent((c) => ({ ...c, allowed_emails: next }));
 
     // Side-menu logo + background uploads — click-to-upload in edit mode, compressed to WebP.
     const logoFileRef = useRef<HTMLInputElement>(null);
@@ -930,7 +1121,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     /* ── Client-input forms open in a modal over the dashboard ──
        Keeps the AM/host in context instead of navigating away to the form page and
        back. The client's own shared link (/{client}-onboarding, -hostonboarding)
-       still renders full-page — that's what "Copy link for the client" sends.
+       still renders full-page — that's what the "Copy Link" button sends.
        The raw row data is kept so the embedded form hydrates from what we already
        fetched for the progress card, rather than re-querying on open. */
     const [formModal, setFormModal] = useState<null | "intake" | "brand">(null);
@@ -1503,6 +1694,18 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     const removeButton =
         "flex size-8 shrink-0 items-center justify-center rounded-lg text-fg-quaternary transition duration-100 ease-linear hover:bg-error-primary hover:text-fg-error-primary";
 
+    /* ── Access gate ──
+       After every hook, so the hook order never changes between renders. Waits for the auth
+       lookup rather than flashing a sign-in screen at somebody who turns out to be allowed. */
+    if (authLoading) {
+        return (
+            <main className="flex min-h-dvh items-center justify-center bg-tertiary">
+                <div className="size-8 animate-spin rounded-full border-2 border-brand border-t-transparent opacity-60" />
+            </main>
+        );
+    }
+    if (!hasAccess) return <DashboardAccessGate email={user?.email} />;
+
     return (
         <>
             {/* Nested containers, matching the Client List's AppShell chrome: a page
@@ -1754,8 +1957,9 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                 {/* Theme toggle — local to this side menu (the global floating toggle is
                         suppressed on client-dashboard pages since it overlapped the client badge). */}
                                 <div className="flex items-center gap-3 border-t border-secondary px-5 py-3">
-                                    {/* HGM logo — for signed-in team members it's a shortcut back to the
-                                internal /dashboard; for clients it's a plain, non-clickable logo. */}
+                                    {/* HGM logo — for signed-in team members a shortcut back to the internal
+                                /dashboard; for clients (and inside a client preview) a link out to
+                                hiddengem.media. New tab, so a client never loses their dashboard. */}
                                     {isTeam ? (
                                         <button
                                             type="button"
@@ -1766,9 +1970,20 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                             <img src="/hgm logo/Favicon ON LIGHT.svg" alt="HiddenGem — team dashboard" className="size-8" draggable={false} />
                                         </button>
                                     ) : (
-                                        <img src="/hgm logo/Favicon ON LIGHT.svg" alt="HiddenGem" className="size-8 shrink-0" draggable={false} />
+                                        <a
+                                            href="https://hiddengem.media"
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            title="Visit HiddenGem Media"
+                                            className="shrink-0 rounded-lg transition duration-100 ease-linear hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+                                        >
+                                            <img src="/hgm logo/Favicon ON LIGHT.svg" alt="HiddenGem Media" className="size-8" draggable={false} />
+                                        </a>
                                     )}
-                                    <span className="flex-1 text-xs text-quaternary">Appearance</span>
+                                    {/* Same treatment as the client's own name at the top of the sidebar
+                                (text-sm / font-semibold / text-primary) so the two lockups read as a
+                                matched pair rather than a heading and a footnote. */}
+                                    <span className="flex-1 truncate text-sm font-semibold text-primary">HiddenGem Media</span>
                                     <button
                                         type="button"
                                         onClick={() => setTheme(isDark ? "light" : "dark")}
@@ -1946,6 +2161,53 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                     </div>
                                                 )}
 
+                                                {/* ── Who can open this dashboard (team, edit mode) ──
+                                                    The access allowlist. Without a way to fill this in, turning on the
+                                                    sign-in gate would lock every client out, so it lives right at the top
+                                                    of Overview where an AM can't miss it. */}
+                                                {isTeam && !isLocked && !isTemplate && (
+                                                    <div className="mt-8 rounded-xl bg-secondary p-5 ring-1 ring-secondary">
+                                                        <p className="text-sm font-semibold text-primary">Who can open this dashboard</p>
+                                                        <p className="mt-1 text-sm text-tertiary text-pretty">
+                                                            Anyone at @hiddengem.media always has access. Add the client's email addresses here — they'll
+                                                            sign in with Google using one of them. An address that isn't listed can sign in but sees nothing.
+                                                        </p>
+                                                        <div className="mt-4 flex flex-col gap-2">
+                                                            {allowedEmails.map((addr, i) => (
+                                                                <div key={`${addr}-${i}`} className="flex items-center gap-2">
+                                                                    <input
+                                                                        type="email"
+                                                                        value={addr}
+                                                                        placeholder="client@example.com"
+                                                                        onChange={(e) =>
+                                                                            updateAllowedEmails(allowedEmails.map((x, j) => (j === i ? e.target.value : x)))
+                                                                        }
+                                                                        className="min-w-0 flex-1 rounded-lg bg-primary px-3 py-2 text-sm text-primary ring-1 ring-secondary outline-none focus:ring-brand"
+                                                                    />
+                                                                    <button
+                                                                        type="button"
+                                                                        aria-label={`Remove ${addr || "this address"}`}
+                                                                        onClick={() => updateAllowedEmails(allowedEmails.filter((_, j) => j !== i))}
+                                                                        className={removeButton}
+                                                                    >
+                                                                        <Trash01 className="size-4" aria-hidden="true" />
+                                                                    </button>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                        <div className="mt-3 flex flex-wrap items-center gap-3">
+                                                            <Button size="sm" color="secondary" iconLeading={Plus} onClick={() => updateAllowedEmails([...allowedEmails, ""])}>
+                                                                Add an email
+                                                            </Button>
+                                                            {!allowedEmails.some((e) => e.trim()) && (
+                                                                <span className="text-xs text-warning-primary">
+                                                                    No client can open this dashboard yet.
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )}
+
                                                 {/* ── Your journey ──
                                                     One ordered path from the first form to a finished website. Replaced a
                                                     "Your setup" tracker plus a funnel explainer: the tracker was a subset
@@ -2041,6 +2303,28 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                                     Open
                                                                                 </Button>
                                                                             )}
+                                                                            {/* External action (the Calendly booking link). Held back until
+                                                                                its prerequisite step is done, with the reason shown instead
+                                                                                of a link that would lead to an unprepared call. */}
+                                                                            {step.href &&
+                                                                                !step.done &&
+                                                                                (step.requires && !journeySteps.find((x) => x.id === step.requires)?.done ? (
+                                                                                    <span className="text-xs text-quaternary">
+                                                                                        Available once{" "}
+                                                                                        {journeySteps.find((x) => x.id === step.requires)?.label ?? "the previous step"} is
+                                                                                        done
+                                                                                    </span>
+                                                                                ) : (
+                                                                                    <Button
+                                                                                        size="sm"
+                                                                                        href={step.href}
+                                                                                        target="_blank"
+                                                                                        rel="noopener noreferrer"
+                                                                                        iconTrailing={LinkExternal01}
+                                                                                    >
+                                                                                        {step.hrefLabel ?? "Open link"}
+                                                                                    </Button>
+                                                                                ))}
                                                                             {/* AM tick, edit mode only. Auto steps get no tick:
                                                                                 a manual override could contradict the answer
                                                                                 count printed directly above it. */}
@@ -2189,13 +2473,17 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                             window.setTimeout(() => setCopiedIntakeLink(false), 2000);
                                                                         }}
                                                                     >
-                                                                        {copiedIntakeLink ? "Link copied" : "Copy link for the client"}
+                                                                        {copiedIntakeLink ? "Link copied" : "Copy Link"}
                                                                     </Button>
                                                                 )}
+                                                                {/* Reset only appears once there is something to erase. On an
+                                                                    untouched form it offered to wipe nothing, which is a
+                                                                    destructive-looking button with no purpose. */}
                                                                 {isTeam &&
                                                                     !isTemplate &&
                                                                     intakeSlug &&
                                                                     intakeReady &&
+                                                                    (intakeStarted || intakeSubmitted) &&
                                                                     (armedReset === "intake" ? (
                                                                         <>
                                                                             <Button
@@ -2236,6 +2524,10 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                             {intakeSubmitted && intakeData && (
                                                                 <OnboardingAnswers
                                                                     sections={clientOnboardingAnswers(intakeData)}
+                                                                    canExport={isTeam}
+                                                                    clientName={clientName}
+                                                                    formTitle="Onboarding Form"
+                                                                    submittedOn={intakeSubmittedAt ? fmtDate(intakeSubmittedAt) : undefined}
                                                                     onEdit={(field) => {
                                                                         setFormModalField(field);
                                                                         setFormModal("intake");
@@ -2348,13 +2640,16 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                             window.setTimeout(() => setCopiedOnboardingLink(false), 2000);
                                                                         }}
                                                                     >
-                                                                        {copiedOnboardingLink ? "Link copied" : "Copy link for the client"}
+                                                                        {copiedOnboardingLink ? "Link copied" : "Copy Link"}
                                                                     </Button>
                                                                 )}
+                                                                {/* Same rule as the Onboarding Form: nothing answered, nothing
+                                                                    to reset, so no button. */}
                                                                 {isTeam &&
                                                                     !isTemplate &&
                                                                     onboardingSlug &&
                                                                     onboardingReady &&
+                                                                    (onboardingStarted || onboardingSubmitted) &&
                                                                     (armedReset === "brand" ? (
                                                                         <>
                                                                             <Button
@@ -2390,6 +2685,10 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                             {onboardingSubmitted && brandData && (
                                                                 <OnboardingAnswers
                                                                     sections={hostOnboardingAnswers(brandData)}
+                                                                    canExport={isTeam}
+                                                                    clientName={clientName}
+                                                                    formTitle="Brand Vision Form"
+                                                                    submittedOn={onboardingSubmittedAt ? fmtDate(onboardingSubmittedAt) : undefined}
                                                                     onEdit={(field) => {
                                                                         setFormModalField(field);
                                                                         setFormModal("brand");
