@@ -110,14 +110,20 @@ const normEmail = (e: string) => e.trim().toLowerCase();
  * The client's name is deliberately absent: a stranger who lands here learns nothing about
  * whose dashboard it is.
  */
+/** Shared default behind the sign-in card — a subtle leaf-shadow loop, 534KB. */
+const LOGIN_BG_VIDEO = "/hgm%20video/Tree-Leaves-Shadow-Overlay-02-4k-Video-Loop.webm";
+
 const DashboardAccessGate = ({
     allowedEmails,
     sharePassword,
     onUnlock,
+    backgroundUrl,
 }: {
     allowedEmails: string[];
     sharePassword: string;
     onUnlock: () => void;
+    /** Per-client override (image or video). Falls back to the shared leaf loop. */
+    backgroundUrl?: string;
 }) => {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
@@ -138,9 +144,36 @@ const DashboardAccessGate = ({
         onUnlock();
     };
 
+    const bg = (backgroundUrl ?? "").trim() || LOGIN_BG_VIDEO;
+    const bgIsVideo = /\.(webm|mp4|mov)(\?|$)/i.test(bg);
+
     return (
-        <main className="flex min-h-dvh items-center justify-center bg-tertiary p-6">
-            <form onSubmit={submit} className="w-full max-w-sm rounded-2xl bg-primary p-8 shadow-xl ring-1 ring-secondary">
+        <main className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-tertiary p-6">
+            {/* Background. Sits behind everything, never interactive, and always has a solid
+                colour underneath so a slow or failed load leaves a clean page rather than a
+                flash of nothing. Motion is suppressed for anyone who asked for reduced
+                motion — an autoplaying loop is exactly what that setting is about. */}
+            <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 bg-tertiary">
+                {bgIsVideo ? (
+                    <video
+                        src={bg}
+                        autoPlay
+                        muted
+                        loop
+                        playsInline
+                        // A poster would need a still we don't have; the solid parent colour
+                        // covers the pre-play frame instead.
+                        className="size-full object-cover motion-reduce:hidden"
+                    />
+                ) : (
+                    <img src={bg} alt="" className="size-full object-cover" draggable={false} />
+                )}
+                {/* Scrim: the asset is a shadow OVERLAY, so it's low-contrast by design and
+                    the card needs its own separation from it. */}
+                <div className="absolute inset-0 bg-black/25" />
+            </div>
+
+            <form onSubmit={submit} className="relative w-full max-w-sm rounded-2xl bg-primary p-8 shadow-2xl ring-1 ring-secondary">
                 <img src="/hgm logo/Favicon ON LIGHT.svg" alt="HiddenGem Media" className="mx-auto size-11" draggable={false} />
                 <h1 className="mt-5 text-center text-lg font-semibold text-primary">This dashboard is private</h1>
                 <p className="mt-2 text-center text-sm text-tertiary text-pretty">
@@ -1759,7 +1792,15 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
             </main>
         );
     }
-    if (!hasAccess) return <DashboardAccessGate allowedEmails={allowedEmails} sharePassword={sharePassword} onUnlock={unlockDashboard} />;
+    if (!hasAccess)
+        return (
+            <DashboardAccessGate
+                allowedEmails={allowedEmails}
+                sharePassword={sharePassword}
+                onUnlock={unlockDashboard}
+                backgroundUrl={content.login_bg_url}
+            />
+        );
 
     return (
         <>
@@ -2294,6 +2335,21 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                     Locked. Only the emails above can open this dashboard, with this password.
                                                                 </p>
                                                             )}
+                                                        </div>
+
+                                                        <div className="mt-4 border-t border-secondary pt-4">
+                                                            <p className="text-sm font-medium text-secondary">Sign-in background</p>
+                                                            <p className="mt-1 text-xs text-tertiary text-pretty">
+                                                                Image or video URL shown behind this client's sign-in card, so each client can look
+                                                                different. Leave empty for the default leaf-shadow loop.
+                                                            </p>
+                                                            <input
+                                                                type="text"
+                                                                value={content.login_bg_url ?? ""}
+                                                                placeholder="https://… .jpg or .webm — empty for the default"
+                                                                onChange={(e) => setContent((c) => ({ ...c, login_bg_url: e.target.value }))}
+                                                                className="mt-2 w-full rounded-lg bg-primary px-3 py-2 text-sm text-primary ring-1 ring-secondary outline-none focus:ring-brand"
+                                                            />
                                                         </div>
                                                     </div>
                                                 )}

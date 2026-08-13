@@ -192,6 +192,11 @@ export interface DashboardContent {
      * the read-gating RLS policy.
      */
     share_password?: string;
+    /**
+     * Background behind this client's sign-in card — an image or video URL. Empty falls back
+     * to the shared leaf-shadow loop, so a client never lands on a bare page.
+     */
+    login_bg_url?: string;
 }
 
 export interface DashboardPageData {
