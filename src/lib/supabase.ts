@@ -166,6 +166,10 @@ export interface DashboardContent {
      *  DEFAULT_CLIENT_VISIBLE in client-dashboard-page.tsx. Typed as string[] rather
      *  than SectionId to keep this module free of page imports. */
     client_visible?: string[];
+    /** Journey steps an AM has ticked off (JourneyStepId values). Only the steps that
+     *  can't be derived live here — the two form steps read their real answer counts
+     *  instead, so a tick can never disagree with what the dashboard shows. */
+    journey_done?: string[];
 }
 
 export interface DashboardPageData {

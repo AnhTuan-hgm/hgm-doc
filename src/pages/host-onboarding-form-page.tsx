@@ -751,6 +751,46 @@ export const hostOnboardingProgress = (partial?: Partial<HostOnboardingData> | n
     };
 };
 
+export type HostAnswerLine = { text: string; secret?: boolean };
+export type HostAnswerRow = { field: string; label: string; lines: HostAnswerLine[]; mediaPath: string; mediaKind: "audio" | "video" | "" };
+export type HostAnswerSection = { id: string; title: string; rows: HostAnswerRow[] };
+
+/**
+ * Every answer, grouped by section — the counterpart to clientOnboardingAnswers(), so the
+ * dashboard can render this form inline exactly the way it renders the Onboarding Form
+ * instead of only offering a link to the review screen. Built from the same SECTIONS the
+ * form renders from, so a question added there can never go missing here.
+ *
+ * Checkbox answers flatten to their picked options plus the free-text "Other", matching
+ * how the review screen already presents them. Nothing is flagged `secret`: this form asks
+ * about brand, not logins, so it holds no credentials to mask.
+ *
+ * The shape is structurally identical to the Onboarding Form's answer types on purpose —
+ * that's what lets one presentational component render both without either form page
+ * importing from the other.
+ */
+export const hostOnboardingAnswers = (partial?: Partial<HostOnboardingData> | null): HostAnswerSection[] => {
+    const data = mergeData(partial);
+    return SECTIONS.map((s) => ({
+        id: s.id,
+        title: s.title,
+        rows: s.questions.map((q) => {
+            const lines: HostAnswerLine[] = [];
+            if (q.type === "checkbox") {
+                const a = data[q.field];
+                (a?.picked ?? []).forEach((p) => lines.push({ text: p }));
+                const other = (a?.other ?? "").trim();
+                if (other) lines.push({ text: other });
+            } else {
+                const v = (data[q.field] ?? "").trim();
+                if (v) v.split("\n").forEach((t) => lines.push({ text: t }));
+            }
+            const media = mediaFor(data, q.field);
+            return { field: q.field, label: q.label, lines, mediaPath: media?.path ?? "", mediaKind: media?.kind ?? ("" as const) };
+        }),
+    }));
+};
+
 /**
  * Every client automatically has their own onboarding form: read the row for
  * `slug`, creating an empty one if it doesn't exist yet. Idempotent — a

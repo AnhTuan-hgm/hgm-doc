@@ -5,6 +5,7 @@ import {
     ArrowRight,
     ArrowUp,
     ArrowUpRight,
+    Calendar,
     Camera01,
     Check,
     BookOpen01,
@@ -33,6 +34,7 @@ import {
     Target04,
     Trash01,
     TrendUp01,
+    Users01,
     UploadCloud02,
     XClose,
 } from "@untitledui-pro/icons/line";
@@ -62,11 +64,12 @@ import type { MasterDocSection } from "@/utils/master-document-pdf";
 import {
     type ClientOnboardingData,
     ClientOnboardingFormPage,
+    type OnboardingAnswerSection,
     clientOnboardingAnswers,
     clientOnboardingProgress,
     ensureClientOnboardingForm,
 } from "./client-onboarding-form-page";
-import { HostOnboardingFormPage, ensureHostOnboardingForm, hostOnboardingProgress } from "./host-onboarding-form-page";
+import { HostOnboardingFormPage, ensureHostOnboardingForm, hostOnboardingAnswers, hostOnboardingProgress } from "./host-onboarding-form-page";
 
 const PASSWORD = "ANHTUAN";
 const SUPPORT_EMAIL = "anhtuan@hiddengem.media";
@@ -251,29 +254,44 @@ const PHASES = {
 type PhaseId = keyof typeof PHASES;
 
 /** Funnel model — still how the Overview explains the moving parts, independent of phases. */
-const FUNNEL_STAGES = {
-    foundation: { label: "Foundation", bg: "bg-secondary", text: "text-secondary" },
-    top: { label: "Top of funnel", bg: "bg-brand-secondary", text: "text-brand-secondary" },
-    middle: { label: "Middle of funnel", bg: "bg-warning-secondary", text: "text-warning-primary" },
-    bottom: { label: "Bottom of funnel", bg: "bg-success-secondary", text: "text-success-primary" },
-} as const;
-type FunnelStageId = keyof typeof FUNNEL_STAGES;
+/**
+ * The client's journey, as Overview presents it — one ordered timeline from the first
+ * form to a finished website. Replaced a "Your setup" tracker plus a funnel explainer:
+ * the tracker was a subset of these steps, and two of the four funnel cards pointed at
+ * Website and GoHighLevel, sections that are no longer on the client's menu.
+ *
+ * `auto` steps read their real state (submitted forms) and are never ticked by hand, so a
+ * tick can't disagree with the answer count shown right next to it. Everything else is an
+ * AM tick stored in content.journey_done — calls and reviews happen off-platform and
+ * there is nothing to infer them from.
+ */
+type JourneyStepId = "form" | "kickoff" | "call" | "vision" | "masterdoc" | "brandkit" | "funnel" | "resources" | "website";
 
-/** Where each Overview funnel card jumps to. Explicit: the funnel and the phase
-    groups are different models, so the nav can no longer supply this. */
-const FUNNEL_CARD_TARGET: Record<FunnelStageId, SectionId> = {
-    foundation: "foundation",
-    top: "website",
-    middle: "flow",
-    bottom: "ghl",
-};
-
-/** The funnel explainer cards on Overview — module-level so the render stays readable. */
-const FUNNEL_CARDS: { stage: FunnelStageId; title: string; body: string; icon: FC<{ className?: string }> }[] = [
-    { stage: "foundation", title: "Your Master Document", body: "Persona, tone, FAQs, amenities — the source everything else reads from.", icon: FileCheck02 },
-    { stage: "top", title: "Get seen", body: "Your website and Instagram bring new guests in.", icon: Globe01 },
-    { stage: "middle", title: "Nurture", body: "Welcome emails and chat build trust and answer questions.", icon: Mail01 },
-    { stage: "bottom", title: "Convert", body: "GoHighLevel and your results — turning interest into direct bookings.", icon: TrendUp01 },
+const JOURNEY_STEPS: {
+    id: JourneyStepId;
+    label: string;
+    detail: string;
+    icon: FC<{ className?: string }>;
+    /** Section this step jumps to, when it has one. */
+    to?: SectionId;
+    /** Derived from real data instead of ticked. */
+    auto?: boolean;
+}[] = [
+    { id: "form", label: "Fill in the Onboarding form", detail: "Your business details and the logins we need.", icon: ClipboardCheck, to: "intake", auto: true },
+    { id: "kickoff", label: "Book the Kick-off Call", detail: "Get the first call on the calendar.", icon: Calendar },
+    { id: "call", label: "Onboarding Call", detail: "With Dustin and your Account Manager.", icon: Users01 },
+    { id: "vision", label: "Fill in the Brand Vision Form", detail: "How your brand should look, sound and feel.", icon: FileCheck02, to: "onboarding", auto: true },
+    { id: "masterdoc", label: "Review the Master Brand", detail: "Persona, tone, amenities and FAQs — what everything else reads from.", icon: FileCheck02, to: "foundation" },
+    { id: "brandkit", label: "Review the Brand Kit", detail: "Colours, fonts and logo.", icon: Image01, to: "brand" },
+    {
+        id: "funnel",
+        label: "Review the marketing funnel",
+        detail: "Landing page, Welcome Flow, Repeat Flow, Pinned Posts and example Reels.",
+        icon: Mail01,
+        to: "flow",
+    },
+    { id: "resources", label: "Add your resources", detail: "Folder of content, plus the Brand Kit document.", icon: Folder, to: "contentfolder" },
+    { id: "website", label: "Set up the website", detail: "If a website is in scope for you.", icon: Globe01, to: "ownerguide" },
 ];
 
 const SectionEyebrow = ({ section }: { section: SectionId }) => {
@@ -646,14 +664,18 @@ const InlineRecording = ({ path, kind }: { path: string; kind: "audio" | "video"
 };
 
 /**
- * The submitted Onboarding Form rendered inline, grouped by section. Reads from
- * clientOnboardingAnswers() so it always reflects the form's own question list.
- * Passwords stay masked behind a per-row reveal: this panel sits open on the
- * dashboard, a weaker place to park a credential than a review screen someone
- * had to deliberately open.
+ * A submitted form rendered inline, grouped by section.
+ *
+ * Takes pre-computed sections rather than raw form data so it serves BOTH client-input
+ * forms — clientOnboardingAnswers() for the Onboarding Form and hostOnboardingAnswers()
+ * for the Brand Vision Form. Their answer shapes are structurally identical, so neither
+ * form page has to import from the other.
+ *
+ * Passwords stay masked behind a per-row reveal: this panel sits open on the dashboard, a
+ * weaker place to park a credential than a review screen someone had to deliberately open.
+ * (Only the Onboarding Form carries any; Brand Vision has none.)
  */
-const OnboardingAnswers = ({ data, onEdit }: { data: Partial<ClientOnboardingData>; onEdit: (field: string) => void }) => {
-    const sections = clientOnboardingAnswers(data);
+const OnboardingAnswers = ({ sections, onEdit }: { sections: OnboardingAnswerSection[]; onEdit: (field: string) => void }) => {
     const [shown, setShown] = useState<Record<string, boolean>>({});
     const answered = sections.flatMap((s) => s.rows).filter((r) => r.lines.length || r.mediaPath).length;
 
@@ -745,6 +767,12 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
         next.delete("preview");
         setSearchParams(next, { replace: true });
     };
+    /** Not `replace`, so the browser back button also leaves the preview. */
+    const enterClientPreview = () => {
+        const next = new URLSearchParams(searchParams);
+        next.set("preview", "client");
+        setSearchParams(next);
+    };
 
     // Editable content
     const [clientName, setClientName] = useState(initialClientName);
@@ -753,6 +781,14 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
 
     // Lock state
     const [isLocked, setIsLocked] = useState(true);
+
+    /**
+     * Clicking the client's logo or name enters the client preview — but only while locked.
+     * In edit mode the logo is the upload target, so hijacking that click would steal one
+     * the AM meant for something else. `isTeam` is already false inside a preview, so this
+     * can't fire twice; leaving is the banner's job.
+     */
+    const canEnterPreview = isTeam && isLocked;
 
     // Side-menu logo + background uploads — click-to-upload in edit mode, compressed to WebP.
     const logoFileRef = useRef<HTMLInputElement>(null);
@@ -781,10 +817,9 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     };
 
     // Side-menu section — grouped by funnel stage (NAV_GROUPS, module scope above).
-    // Opens on the first menu row rather than Overview, which no longer has one — landing
-    // on a section the client can't navigate back to would be a dead end. "Onboarding form"
-    // is also genuinely the first thing a new client should do.
-    const [activeSection, setActiveSection] = useState<SectionId>("intake");
+    // Overview is the client's main dashboard and is pinned at the top of the menu, so it
+    // is where the page opens.
+    const [activeSection, setActiveSection] = useState<SectionId>("overview");
 
     // Deep-link support: /client-dashboard#flow (or #overview) opens that side-menu
     // section on load — used by the Welcome Email Flow overview page's "live builder" link.
@@ -1050,7 +1085,10 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
        The team always sees and can open everything that exists; the client sees "Soon"
        until an AM reveals the row with the eye toggle in edit mode. */
     const clientVisible = content.client_visible ?? DEFAULT_CLIENT_VISIBLE;
-    const revealedToClient = (id: SectionId) => clientVisible.includes(id);
+    // Overview is the main dashboard — always visible, never hideable, so a client can
+    // never end up with nowhere to land. Same reasoning as the owner guide, where the
+    // Welcome and Review steps can't be hidden either.
+    const revealedToClient = (id: SectionId) => id === "overview" || clientVisible.includes(id);
     const toggleClientVisible = (id: SectionId) =>
         setContent((c) => {
             const cur = c.client_visible ?? DEFAULT_CLIENT_VISIBLE;
@@ -1068,7 +1106,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
      */
     useEffect(() => {
         if (authLoading || isTeam || isTemplate) return;
-        if (!clientVisible.includes(activeSection)) setActiveSection(DEFAULT_CLIENT_VISIBLE[0]);
+        if (!revealedToClient(activeSection)) setActiveSection("overview");
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeSection, isTeam, authLoading, isTemplate, clientVisible]);
 
@@ -1311,62 +1349,52 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
             extra,
         );
 
-    /** The client's outstanding setup, derived from data already on the page. */
-    const setupSteps = useMemo(() => {
-        const f = content.foundation;
-        const docFilled = f
-            ? [f.propertyBasics, f.persona, f.toneOfVoice, f.amenities, f.localRecommendations, f.bookingLinks].filter((v) => (v ?? "").trim()).length
-            : 0;
-        const colors = content.brand?.colors?.length ?? 0;
-        return [
-            {
-                id: "intake" as SectionId,
-                label: "Onboarding Form",
-                icon: ClipboardCheck,
-                value: intakeInfo.answered,
-                total: intakeInfo.total,
-                done: intakeSubmitted,
-                detail: intakeSubmitted
-                    ? "Submitted — you can still update your answers."
-                    : intakeInfo.total
-                      ? `${intakeInfo.answered} of ${intakeInfo.total} questions answered.`
-                      : "Your business details and the logins we need.",
-            },
-            {
-                id: "onboarding" as SectionId,
-                label: "Brand Vision Form",
-                icon: FileCheck02,
-                value: onboardingInfo.answered,
-                total: onboardingInfo.total,
-                done: onboardingSubmitted,
-                detail: onboardingSubmitted
-                    ? "Submitted — thank you."
-                    : onboardingInfo.total
-                      ? `${onboardingInfo.answered} of ${onboardingInfo.total} questions answered.`
-                      : "Your brand's why, voice and look.",
-            },
-            {
-                id: "foundation" as SectionId,
-                label: "Master Document",
-                icon: FileCheck02,
-                value: docFilled,
-                total: 6,
-                done: docFilled === 6,
-                detail: docFilled === 6 ? "All sections filled in." : `${docFilled} of 6 sections filled in.`,
-            },
-            {
-                id: "brand" as SectionId,
-                label: "Brand Kit",
-                icon: Image01,
-                value: colors ? 1 : 0,
-                total: 1,
-                done: colors > 0,
-                detail: colors ? `${colors} brand ${colors === 1 ? "colour" : "colours"} saved.` : "Add your colours, fonts and logo.",
-            },
-        ];
-    }, [content.foundation, content.brand, intakeInfo, onboardingInfo, intakeSubmitted, onboardingSubmitted]);
+    /* ── The journey timeline on Overview ── */
+    const journeyDone = content.journey_done ?? [];
+    const toggleJourneyStep = (id: JourneyStepId) =>
+        setContent((c) => {
+            const cur = c.journey_done ?? [];
+            return { ...c, journey_done: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] };
+        });
 
-    const setupDone = setupSteps.filter((x) => x.done).length;
+    /**
+     * Each step with its resolved state. The two form steps read their live answer counts;
+     * everything else reflects an AM tick. `progress` is only shown where a real
+     * denominator exists — a made-up fraction on "Onboarding Call" would be noise.
+     */
+    const journeySteps = useMemo(() => {
+        return JOURNEY_STEPS.map((step) => {
+            if (step.id === "form") {
+                return {
+                    ...step,
+                    done: intakeSubmitted,
+                    progress: intakeInfo.total ? { value: intakeInfo.answered, total: intakeInfo.total } : null,
+                    detail: intakeSubmitted
+                        ? "Submitted — you can still update your answers."
+                        : intakeInfo.total
+                          ? `${intakeInfo.answered} of ${intakeInfo.total} questions answered.`
+                          : step.detail,
+                };
+            }
+            if (step.id === "vision") {
+                return {
+                    ...step,
+                    done: onboardingSubmitted,
+                    progress: onboardingInfo.total ? { value: onboardingInfo.answered, total: onboardingInfo.total } : null,
+                    detail: onboardingSubmitted
+                        ? "Submitted — thank you."
+                        : onboardingInfo.total
+                          ? `${onboardingInfo.answered} of ${onboardingInfo.total} questions answered.`
+                          : step.detail,
+                };
+            }
+            return { ...step, done: journeyDone.includes(step.id), progress: null };
+        });
+    }, [intakeSubmitted, onboardingSubmitted, intakeInfo, onboardingInfo, journeyDone]);
+
+    const journeyDoneCount = journeySteps.filter((s) => s.done).length;
+    /** First unfinished step — highlighted so a client can see what's next at a glance. */
+    const journeyCurrentId = journeySteps.find((s) => !s.done)?.id ?? null;
 
     /* ── Collapsible phase groups ──
        Phases 1–5 start folded and Client Input starts open: the forms are the only
@@ -1518,12 +1546,21 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                             <div className="flex items-center gap-3 border-b border-secondary px-4 py-4 md:px-5">
                                 <button
                                     type="button"
-                                    onClick={() => logoFileRef.current?.click()}
-                                    disabled={isLocked}
-                                    title={isLocked ? undefined : content.logo_url ? "Replace logo" : "Upload logo"}
+                                    onClick={() => (canEnterPreview ? enterClientPreview() : logoFileRef.current?.click())}
+                                    disabled={isLocked && !canEnterPreview}
+                                    title={
+                                        canEnterPreview
+                                            ? "View this dashboard as the client sees it"
+                                            : isLocked
+                                              ? undefined
+                                              : content.logo_url
+                                                ? "Replace logo"
+                                                : "Upload logo"
+                                    }
                                     className={cx(
                                         "group relative flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-secondary ring-1 ring-secondary",
-                                        !isLocked && "cursor-pointer",
+                                        (!isLocked || canEnterPreview) && "cursor-pointer",
+                                        canEnterPreview && "transition duration-100 ease-linear hover:ring-brand",
                                     )}
                                 >
                                     {content.logo_url ? (
@@ -1544,7 +1581,26 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                 </button>
                                 {!isLocked && <input ref={logoFileRef} type="file" accept="image/*" className="hidden" onChange={onPickLogo} />}
                                 <div className="min-w-0">
-                                    <p className="truncate text-sm font-semibold text-primary">{clientName || "Client Name"}</p>
+                                    {canEnterPreview ? (
+                                        <button
+                                            type="button"
+                                            onClick={enterClientPreview}
+                                            title="View this dashboard as the client sees it"
+                                            className="group/name flex max-w-full items-center gap-1.5 text-left"
+                                        >
+                                            <span className="truncate text-sm font-semibold text-primary transition duration-100 ease-linear group-hover/name:text-brand-secondary">
+                                                {clientName || "Client Name"}
+                                            </span>
+                                            <span
+                                                aria-hidden="true"
+                                                className="shrink-0 text-fg-quaternary opacity-0 transition duration-100 ease-linear group-hover/name:opacity-100"
+                                            >
+                                                <EyeGlyph />
+                                            </span>
+                                        </button>
+                                    ) : (
+                                        <p className="truncate text-sm font-semibold text-primary">{clientName || "Client Name"}</p>
+                                    )}
                                     <BadgeWithDot color={statusColor(content.status)} size="sm" type="pill-color">
                                         {content.status}
                                     </BadgeWithDot>
@@ -1556,9 +1612,17 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                 <ClientSearchBar hits={searchHits} onSelect={setActiveSection} />
                             </div>
 
-                            {/* Overview has no menu row — the client-facing menu is exactly the list on
-                                the whiteboard. The section itself still renders and is reachable via
-                                #overview and the search bar; put the row back here if it's wanted. */}
+                            {/* Overview — pinned above the groups as the client's main dashboard. Never
+                                hideable and never "Soon": it's the landing view, so a client always has
+                                somewhere to arrive and somewhere to get back to. */}
+                            <div className="p-3 pb-0 md:pb-0">
+                                <SectionNavItem
+                                    icon={OVERVIEW_ITEM.icon}
+                                    label={OVERVIEW_ITEM.label}
+                                    current={activeSection === "overview"}
+                                    onClick={() => setActiveSection("overview")}
+                                />
+                            </div>
 
                             {/* Funnel groups — Foundation → Top → Middle → Bottom, the same mental model
                     Dustin walks every client through on the onboarding call. */}
@@ -1610,16 +1674,23 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                             indent
                                                             badge={navBadge(s)}
                                                             action={
-                                                                // Eye toggle only while editing, and only for rows
-                                                                // that actually have something behind them — there's
-                                                                // nothing to reveal on a not-built section.
-                                                                !isLocked && isTeam && !navNotBuilt(s) ? (
+                                                                // Every row gets the eye while editing, so the whole
+                                                                // menu can be set up in one pass. On a row with
+                                                                // nothing behind it yet the toggle is an APPROVAL
+                                                                // rather than an immediate reveal — the client keeps
+                                                                // seeing "Soon" either way — so the tooltip says so
+                                                                // instead of implying a change they'd look for.
+                                                                !isLocked && isTeam ? (
                                                                     <button
                                                                         type="button"
                                                                         title={
-                                                                            revealedToClient(s.id)
-                                                                                ? "Hide from this client"
-                                                                                : "Show to this client"
+                                                                            navNotBuilt(s)
+                                                                                ? revealedToClient(s.id)
+                                                                                    ? "Approved for this client — appears as soon as it's ready"
+                                                                                    : "Approve for this client — will appear once it's ready"
+                                                                                : revealedToClient(s.id)
+                                                                                  ? "Hide from this client"
+                                                                                  : "Show to this client"
                                                                         }
                                                                         aria-label={
                                                                             revealedToClient(s.id)
@@ -1875,101 +1946,124 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                     </div>
                                                 )}
 
-                                                {/* ── Your setup ──
-                                                    Real state, not an explainer. Everything here comes from data the
-                                                    page already loads (form progress, Master Document fields, brand
-                                                    kit, videos), so it needs no extra fetch — and every row jumps to
-                                                    the section that clears it. */}
+                                                {/* ── Your journey ──
+                                                    One ordered path from the first form to a finished website. Replaced a
+                                                    "Your setup" tracker plus a funnel explainer: the tracker was a subset
+                                                    of these steps, and two of the funnel cards jumped to Website and
+                                                    GoHighLevel, which are no longer on the client's menu.
+
+                                                    Steps 1 and 4 read live form state. The rest are AM ticks — calls and
+                                                    reviews happen off-platform, so there is nothing to infer them from. */}
                                                 <div className="mt-10">
                                                     <div className="flex flex-wrap items-end justify-between gap-3">
                                                         <div>
-                                                            <h2 className="text-lg font-semibold text-primary">Your setup</h2>
+                                                            <h2 className="text-lg font-semibold text-primary">Your journey</h2>
                                                             <p className="mt-1 text-sm text-tertiary">
-                                                                {setupDone === setupSteps.length
-                                                                    ? "Everything's in — your team has what they need."
-                                                                    : "What we still need from you, and what's already done."}
+                                                                {journeyDoneCount === journeySteps.length
+                                                                    ? "Every step is done — you're fully set up."
+                                                                    : "Where you are, and what happens next."}
                                                             </p>
                                                         </div>
                                                         <div className="flex items-center gap-3">
-                                                            <ProgressBarCircle value={Math.round((setupDone / setupSteps.length) * 100)} size="xxs" />
+                                                            <ProgressBarCircle value={Math.round((journeyDoneCount / journeySteps.length) * 100)} size="xxs" />
                                                             <span className="text-sm font-semibold text-secondary tabular-nums">
-                                                                {setupDone} of {setupSteps.length}
+                                                                {journeyDoneCount} of {journeySteps.length}
                                                             </span>
                                                         </div>
                                                     </div>
 
-                                                    <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                                                        {setupSteps.map((step) => (
-                                                            <button
-                                                                key={step.id}
-                                                                type="button"
-                                                                onClick={() => setActiveSection(step.id)}
-                                                                className="flex items-start gap-3.5 rounded-xl bg-primary p-4 text-left ring-1 ring-secondary transition duration-100 ease-linear hover:ring-brand"
-                                                            >
-                                                                <FeaturedIcon
-                                                                    icon={step.done ? CheckCircle : step.icon}
-                                                                    color={step.done ? "success" : "brand"}
-                                                                    theme="light"
-                                                                    size="md"
-                                                                />
-                                                                <span className="min-w-0 flex-1">
-                                                                    <span className="flex items-center gap-2">
-                                                                        <span className="text-sm font-semibold text-primary">{step.label}</span>
-                                                                        {step.done && (
-                                                                            <BadgeWithDot color="success" size="sm" type="pill-color">
-                                                                                Done
-                                                                            </BadgeWithDot>
-                                                                        )}
-                                                                    </span>
-                                                                    <span className="mt-1 block text-sm text-tertiary">{step.detail}</span>
-                                                                    {!step.done && step.total > 0 && (
-                                                                        <span className="mt-2.5 block">
-                                                                            <ProgressBar value={Math.round((step.value / step.total) * 100)} />
-                                                                        </span>
-                                                                    )}
-                                                                </span>
-                                                                <ArrowRight className="mt-1 size-4 shrink-0 text-fg-quaternary" aria-hidden="true" />
-                                                            </button>
-                                                        ))}
-                                                    </div>
-                                                </div>
-
-                                                {/* How we grow your bookings — the same funnel Dustin walks every client
-                                                    through on the onboarding call. Foundation feeds Top → Middle → Bottom;
-                                                    clicking a card jumps to that stage's first section. */}
-                                                <div className="mt-12">
-                                                    <h2 className="text-lg font-semibold text-primary">How we grow your bookings</h2>
-                                                    <p className="mt-1 text-sm text-tertiary">
-                                                        Everything below fits one funnel — start with your Foundation, then work top to bottom.
-                                                    </p>
-                                                    <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                                                        {FUNNEL_CARDS.map((card) => {
-                                                            const targetId = FUNNEL_CARD_TARGET[card.stage];
+                                                    <ol className="mt-6 grid list-none gap-0 p-0">
+                                                        {journeySteps.map((step, i) => {
+                                                            const isCurrent = step.id === journeyCurrentId;
+                                                            const isLast = i === journeySteps.length - 1;
+                                                            // A client must not be offered a jump into a section they
+                                                            // can't open — same rule the side menu uses.
+                                                            const target = step.to;
+                                                            const canJump = !!target && (isTeam || revealedToClient(target));
                                                             return (
-                                                                <button
-                                                                    key={card.stage}
-                                                                    type="button"
-                                                                    onClick={() => setActiveSection(targetId)}
-                                                                    className="group/card flex flex-col rounded-xl bg-primary p-5 text-left ring-1 ring-secondary transition duration-100 ease-linear hover:ring-brand"
-                                                                >
-                                                                    <span className="flex items-center justify-between gap-3">
-                                                                        <FeaturedIcon icon={card.icon} color="gray" theme="modern" size="md" />
+                                                                <li key={step.id} className="relative flex gap-4 pb-5 last:pb-0">
+                                                                    {/* Rail between nodes. Filled up to the last completed
+                                                                        step so progress reads at a glance. */}
+                                                                    {!isLast && (
                                                                         <span
+                                                                            aria-hidden="true"
                                                                             className={cx(
-                                                                                "inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold tracking-wide uppercase",
-                                                                                FUNNEL_STAGES[card.stage].bg,
-                                                                                FUNNEL_STAGES[card.stage].text,
+                                                                                "absolute top-10 left-[17px] h-[calc(100%-2.5rem)] w-0.5 rounded-full",
+                                                                                step.done ? "bg-brand-solid" : "bg-border-secondary",
                                                                             )}
-                                                                        >
-                                                                            {FUNNEL_STAGES[card.stage].label}
-                                                                        </span>
+                                                                        />
+                                                                    )}
+                                                                    <span
+                                                                        className={cx(
+                                                                            "relative z-10 grid size-9 shrink-0 place-items-center rounded-full text-[12px] font-bold tabular-nums transition duration-100 ease-linear",
+                                                                            step.done
+                                                                                ? "bg-brand-solid text-white"
+                                                                                : isCurrent
+                                                                                  ? "bg-brand-secondary text-brand-secondary ring-2 ring-brand"
+                                                                                  : "bg-secondary text-quaternary",
+                                                                        )}
+                                                                    >
+                                                                        {step.done ? <Check className="size-4" aria-hidden="true" /> : i + 1}
                                                                     </span>
-                                                                    <span className="mt-4 text-md font-semibold text-primary">{card.title}</span>
-                                                                    <span className="mt-1.5 text-sm text-tertiary">{card.body}</span>
-                                                                </button>
+
+                                                                    <div
+                                                                        className={cx(
+                                                                            "min-w-0 flex-1 rounded-xl bg-primary p-4 shadow-xs ring-1 transition duration-100 ease-linear",
+                                                                            isCurrent ? "ring-brand" : "ring-secondary",
+                                                                        )}
+                                                                    >
+                                                                        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                                                                            <span className="font-mono text-[11px] text-quaternary">Step {i + 1}</span>
+                                                                            <h3 className="text-md font-semibold text-primary">{step.label}</h3>
+                                                                            {step.done ? (
+                                                                                <BadgeWithDot color="success" size="sm" type="pill-color">
+                                                                                    Done
+                                                                                </BadgeWithDot>
+                                                                            ) : (
+                                                                                isCurrent && (
+                                                                                    <BadgeWithDot color="brand" size="sm" type="pill-color">
+                                                                                        Up next
+                                                                                    </BadgeWithDot>
+                                                                                )
+                                                                            )}
+                                                                        </div>
+                                                                        <p className="mt-1.5 text-sm text-tertiary text-pretty">{step.detail}</p>
+
+                                                                        {!step.done && step.progress && step.progress.total > 0 && (
+                                                                            <div className="mt-3">
+                                                                                <ProgressBar value={Math.round((step.progress.value / step.progress.total) * 100)} />
+                                                                            </div>
+                                                                        )}
+
+                                                                        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                                                                            {canJump && target && (
+                                                                                <Button size="sm" color="link-color" iconTrailing={ArrowRight} onClick={() => openNavItem(target)}>
+                                                                                    Open
+                                                                                </Button>
+                                                                            )}
+                                                                            {/* AM tick, edit mode only. Auto steps get no tick:
+                                                                                a manual override could contradict the answer
+                                                                                count printed directly above it. */}
+                                                                            {!isLocked &&
+                                                                                isTeam &&
+                                                                                (step.auto ? (
+                                                                                    <span className="text-xs text-quaternary">Tracked from the form itself</span>
+                                                                                ) : (
+                                                                                    <Button
+                                                                                        size="sm"
+                                                                                        color="secondary"
+                                                                                        iconLeading={step.done ? RefreshCw01 : CheckCircle}
+                                                                                        onClick={() => toggleJourneyStep(step.id)}
+                                                                                    >
+                                                                                        {step.done ? "Mark not done" : "Mark done"}
+                                                                                    </Button>
+                                                                                ))}
+                                                                        </div>
+                                                                    </div>
+                                                                </li>
                                                             );
                                                         })}
-                                                    </div>
+                                                    </ol>
                                                 </div>
                                             </>
                                         )}
@@ -2141,7 +2235,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                         here saves a trip through the review screen. */}
                                                             {intakeSubmitted && intakeData && (
                                                                 <OnboardingAnswers
-                                                                    data={intakeData}
+                                                                    sections={clientOnboardingAnswers(intakeData)}
                                                                     onEdit={(field) => {
                                                                         setFormModalField(field);
                                                                         setFormModal("intake");
@@ -2289,6 +2383,19 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                         </Button>
                                                                     ))}
                                                             </div>
+
+                                                            {/* Same inline review the Onboarding Form gets: once it's in, the
+                                                        answers ARE the useful content, so don't make anyone open the
+                                                        review screen to read them. */}
+                                                            {onboardingSubmitted && brandData && (
+                                                                <OnboardingAnswers
+                                                                    sections={hostOnboardingAnswers(brandData)}
+                                                                    onEdit={(field) => {
+                                                                        setFormModalField(field);
+                                                                        setFormModal("brand");
+                                                                    }}
+                                                                />
+                                                            )}
 
                                                             {/* Team-only: the exact form this dashboard is wired to, so a mismatched
                                                         copy created from the form's own wizard is visible instead of silent. */}
