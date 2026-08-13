@@ -110,59 +110,84 @@ const normEmail = (e: string) => e.trim().toLowerCase();
  * The client's name is deliberately absent: a stranger who lands here learns nothing about
  * whose dashboard it is.
  */
-const DashboardAccessGate = ({ email }: { email?: string }) => {
-    const [busy, setBusy] = useState(false);
+const DashboardAccessGate = ({
+    allowedEmails,
+    sharePassword,
+    onUnlock,
+}: {
+    allowedEmails: string[];
+    sharePassword: string;
+    onUnlock: () => void;
+}) => {
+    const [email, setEmail] = useState("");
+    const [password, setPassword] = useState("");
+    const [showPw, setShowPw] = useState(false);
+    const [error, setError] = useState("");
 
-    const signIn = async () => {
-        setBusy(true);
-        const { error } = await supabase.auth.signInWithOAuth({
-            provider: "google",
-            // select_account matters here: without it Google reuses the active account and
-            // the visitor is bounced straight back to this screen with no idea why.
-            options: { redirectTo: window.location.href, queryParams: { prompt: "select_account" } },
-        });
-        if (error) setBusy(false);
-    };
-
-    const switchAccount = async () => {
-        setBusy(true);
-        await supabase.auth.signOut();
-        await signIn();
+    const submit = (e: React.FormEvent) => {
+        e.preventDefault();
+        const emailOk = allowedEmails.some((a) => normEmail(a) === normEmail(email));
+        const pwOk = password === sharePassword;
+        // One message for either failure. Saying "that email isn't on the list" would let
+        // someone probe which addresses a dashboard is shared with.
+        if (!emailOk || !pwOk) {
+            setError("That email and password don't match this dashboard.");
+            return;
+        }
+        setError("");
+        onUnlock();
     };
 
     return (
         <main className="flex min-h-dvh items-center justify-center bg-tertiary p-6">
-            <div className="w-full max-w-md rounded-2xl bg-primary p-8 text-center shadow-xl ring-1 ring-secondary">
+            <form onSubmit={submit} className="w-full max-w-sm rounded-2xl bg-primary p-8 shadow-xl ring-1 ring-secondary">
                 <img src="/hgm logo/Favicon ON LIGHT.svg" alt="HiddenGem Media" className="mx-auto size-11" draggable={false} />
+                <h1 className="mt-5 text-center text-lg font-semibold text-primary">This dashboard is private</h1>
+                <p className="mt-2 text-center text-sm text-tertiary text-pretty">
+                    Enter the email and password your HiddenGem team shared with you.
+                </p>
 
-                {email ? (
-                    <>
-                        <h1 className="mt-5 text-lg font-semibold text-primary">You don't have access to this dashboard</h1>
-                        <p className="mt-2 text-sm text-tertiary text-pretty">
-                            You're signed in as <span className="font-medium text-secondary">{email}</span>. This dashboard hasn't been shared with
-                            that address.
-                        </p>
-                        <div className="mt-6 flex flex-col gap-2.5">
-                            <Button size="md" isLoading={busy} showTextWhileLoading onClick={() => void switchAccount()}>
-                                Sign in with a different account
-                            </Button>
-                            <p className="text-xs text-quaternary">
-                                If you think this is a mistake, reply to your HiddenGem email and we'll add you.
-                            </p>
-                        </div>
-                    </>
-                ) : (
-                    <>
-                        <h1 className="mt-5 text-lg font-semibold text-primary">This dashboard is private</h1>
-                        <p className="mt-2 text-sm text-tertiary text-pretty">Sign in with the email address your dashboard was shared with.</p>
-                        <div className="mt-6">
-                            <Button size="md" className="w-full" isLoading={busy} showTextWhileLoading onClick={() => void signIn()}>
-                                Sign in with Google
-                            </Button>
-                        </div>
-                    </>
+                <div className="mt-6 flex flex-col gap-3">
+                    <input
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="you@yourbusiness.com"
+                        autoComplete="username"
+                        autoFocus
+                        className="w-full rounded-lg bg-primary px-3 py-2.5 text-sm text-primary ring-1 ring-secondary outline-none focus:ring-brand"
+                    />
+                    <div className="flex items-center gap-2">
+                        <input
+                            type={showPw ? "text" : "password"}
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            placeholder="Password"
+                            autoComplete="current-password"
+                            className="min-w-0 flex-1 rounded-lg bg-primary px-3 py-2.5 text-sm text-primary ring-1 ring-secondary outline-none focus:ring-brand"
+                        />
+                        <button
+                            type="button"
+                            onClick={() => setShowPw((v) => !v)}
+                            aria-label={showPw ? "Hide password" : "Show password"}
+                            className="shrink-0 rounded-lg px-2 py-2 text-xs font-semibold text-brand-secondary transition duration-100 ease-linear hover:bg-secondary"
+                        >
+                            {showPw ? "Hide" : "Show"}
+                        </button>
+                    </div>
+                </div>
+
+                {error && (
+                    <p className="mt-3 text-sm text-error-primary" role="alert">
+                        {error}
+                    </p>
                 )}
-            </div>
+
+                <Button size="md" type="submit" className="mt-5 w-full" isDisabled={!email.trim() || !password}>
+                    Open my dashboard
+                </Button>
+                <p className="mt-4 text-center text-xs text-quaternary">Lost your details? Reply to your HiddenGem email and we'll resend them.</p>
+            </form>
         </main>
     );
 };
@@ -976,10 +1001,36 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
      * This is a staged rollout, not the finished state. Once every dashboard has a list,
      * the check becomes unconditional and the read-gating RLS policy lands with it.
      */
-    const gateArmed = allowedEmails.some((e) => e.trim());
-    const hasAccess = signedInAsTeam || isTemplate || !gateArmed || isAllowedClient;
+    const sharePassword = (content.share_password ?? "").trim();
+    /**
+     * Armed only when BOTH an allowlist and a password exist. Requiring one without the
+     * other would lock the client out of their own dashboard with no way in.
+     */
+    const gateArmed = allowedEmails.some((e) => e.trim()) && !!sharePassword;
+
+    // Unlock survives navigation within the tab, not a new one — same lifetime as the
+    // owner-guide share gate (sessionStorage, keyed per slug).
+    const unlockKey = `cd_unlock_${slug ?? ""}`;
+    const [clientUnlocked, setClientUnlocked] = useState(() => {
+        try {
+            return sessionStorage.getItem(unlockKey) === "1";
+        } catch {
+            return false;
+        }
+    });
+    const unlockDashboard = () => {
+        try {
+            sessionStorage.setItem(unlockKey, "1");
+        } catch {
+            /* private browsing — the unlock just won't persist past this render */
+        }
+        setClientUnlocked(true);
+    };
+
+    const hasAccess = signedInAsTeam || isTemplate || !gateArmed || clientUnlocked || isAllowedClient;
 
     const updateAllowedEmails = (next: string[]) => setContent((c) => ({ ...c, allowed_emails: next }));
+    const updateSharePassword = (next: string) => setContent((c) => ({ ...c, share_password: next }));
 
     // Side-menu logo + background uploads — click-to-upload in edit mode, compressed to WebP.
     const logoFileRef = useRef<HTMLInputElement>(null);
@@ -1405,7 +1456,11 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
         // rows use — a client can only reach a section revealed to them. Filtering on
         // "not built" alone would let a client search "Brand" (or one of their own FAQs,
         // which resolve to the Master Brand section) straight into a hidden section.
-        const canOpen = (id: SectionId) => isTeam || clientVisible.includes(id);
+        // Exactly the rule the side menu uses, so search results and the menu can never
+        // disagree — a client should be able to find everything they can see and nothing
+        // they can't. Using the raw list here left Overview unsearchable despite being
+        // pinned in their menu.
+        const canOpen = (id: SectionId) => isTeam || id === "overview" || clientVisible.includes(id);
         const navHits = SECTIONS.filter((s) => !("soon" in s && s.soon) && canOpen(s.id)).map((s) => ({ id: s.id, label: s.label }));
         const linkHits = content.links
             .map((l) => ({
@@ -1704,7 +1759,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
             </main>
         );
     }
-    if (!hasAccess) return <DashboardAccessGate email={user?.email} />;
+    if (!hasAccess) return <DashboardAccessGate allowedEmails={allowedEmails} sharePassword={sharePassword} onUnlock={unlockDashboard} />;
 
     return (
         <>
@@ -2195,14 +2250,49 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                 </div>
                                                             ))}
                                                         </div>
-                                                        <div className="mt-3 flex flex-wrap items-center gap-3">
+                                                        <div className="mt-3">
                                                             <Button size="sm" color="secondary" iconLeading={Plus} onClick={() => updateAllowedEmails([...allowedEmails, ""])}>
                                                                 Add an email
                                                             </Button>
-                                                            {!allowedEmails.some((e) => e.trim()) && (
-                                                                <span className="text-xs text-warning-primary">
-                                                                    No client can open this dashboard yet.
-                                                                </span>
+                                                        </div>
+
+                                                        <div className="mt-4 border-t border-secondary pt-4">
+                                                            <p className="text-sm font-medium text-secondary">Shared password</p>
+                                                            <p className="mt-1 text-xs text-tertiary text-pretty">
+                                                                The client types this alongside their email. Send it to them separately from the link.
+                                                            </p>
+                                                            <div className="mt-2 flex items-center gap-2">
+                                                                <input
+                                                                    type="text"
+                                                                    value={content.share_password ?? ""}
+                                                                    placeholder="Set a password"
+                                                                    onChange={(e) => updateSharePassword(e.target.value)}
+                                                                    className="min-w-0 flex-1 rounded-lg bg-primary px-3 py-2 font-mono text-sm text-primary ring-1 ring-secondary outline-none focus:ring-brand"
+                                                                />
+                                                                <Button
+                                                                    size="sm"
+                                                                    color="secondary"
+                                                                    iconLeading={Copy01}
+                                                                    onClick={() => void navigator.clipboard.writeText(content.share_password ?? "")}
+                                                                >
+                                                                    Copy
+                                                                </Button>
+                                                            </div>
+                                                            {/* The gate needs BOTH halves — say which one is missing rather than
+                                                                leaving an AM wondering why nothing is locked. */}
+                                                            {!gateArmed && (
+                                                                <p className="mt-2 text-xs text-warning-primary">
+                                                                    {!allowedEmails.some((e) => e.trim()) && !sharePassword
+                                                                        ? "Not locked yet — add an email and a password."
+                                                                        : !sharePassword
+                                                                          ? "Not locked yet — set a password."
+                                                                          : "Not locked yet — add at least one email."}
+                                                                </p>
+                                                            )}
+                                                            {gateArmed && (
+                                                                <p className="mt-2 text-xs text-success-primary">
+                                                                    Locked. Only the emails above can open this dashboard, with this password.
+                                                                </p>
                                                             )}
                                                         </div>
                                                     </div>

@@ -182,6 +182,16 @@ export interface DashboardContent {
      * public anon key.
      */
     allowed_emails?: string[];
+    /**
+     * Shared password the client types alongside their email to open this dashboard.
+     *
+     * Same mechanism as owner_guides.share_password, which is already in production: the
+     * value is compared in the browser, so it gates the UI rather than the data. Anyone who
+     * can reach the row with the public anon key can also read this password. It stops a
+     * shared link being forwarded around; it does not make the row private. That still needs
+     * the read-gating RLS policy.
+     */
+    share_password?: string;
 }
 
 export interface DashboardPageData {
