@@ -1,6 +1,6 @@
 import { type ChangeEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { AlertCircle, ArrowLeft, ArrowRight, Check, Home02, InfoCircle, Mail01, Microphone01, Plus, Settings01, Star01, Users01, VideoRecorder, XClose } from "@untitledui/icons";
+import { AlertCircle, ArrowLeft, ArrowRight, Check, Home02, InfoCircle, Mail01, Microphone01, Plus, Receipt, Settings01, Star01, Users01, VideoRecorder, XClose } from "@untitledui/icons";
 import { MediaAnswer, type MediaKind, RecordingPlayer } from "@/components/application/media-answer";
 import { supabase } from "@/lib/supabase";
 import { cx } from "@/utils/cx";
@@ -251,6 +251,47 @@ const SECTIONS: SectionDef[] = [
                 long: true,
             },
             { field: "notes", label: "Additional Notes (optional)", hint: "Anything else we should know before we begin?", long: true },
+        ],
+    },
+    {
+        // Last section on purpose: this is invoicing admin, not something that blocks the
+        // Kick-Off Call, and the team's own ask for it says "no rush".
+        id: "billing",
+        title: "Billing & Legal",
+        subtitle: "What we need to invoice you",
+        icon: Receipt,
+        intro: "The last bit of admin — the details we need to invoice you correctly. Nothing here blocks your Kick-Off Call.",
+        questions: [
+            {
+                field: "legalBusinessName",
+                label: "Legal Business Name",
+                hint: "The registered entity name, exactly as it appears on your incorporation or tax documents. This is often different from the trading name you gave in The Basics.",
+                required: true,
+            },
+            {
+                field: "billingPhone",
+                label: "Phone Number",
+                hint: "The best number for billing and account questions.",
+                required: true,
+                placeholder: "+1 555 123 4567",
+            },
+            {
+                field: "billingAddress",
+                label: "Full Billing Address",
+                // Deliberately separate from `businessAddress` in Account Setup: that one
+                // exists for platform/account integrations and doesn't ask for country.
+                // Cross-referenced so nobody has to retype the same address.
+                hint: "Street, city, state, ZIP and country. If it's the same address you gave under Account Setup, just write “Same as business address”.",
+                required: true,
+                long: true,
+            },
+            {
+                // Not required — "if applicable" in the team's ask, and plenty of hosts
+                // operate without one.
+                field: "taxId",
+                label: "Tax ID (if applicable)",
+                hint: "EIN, VAT number or local equivalent. Leave blank if you don't have one.",
+            },
         ],
     },
 ];
