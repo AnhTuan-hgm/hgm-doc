@@ -159,6 +159,13 @@ export interface DashboardContent {
         bookingLinks: string;
         faqs: { id: string; question: string; answer: string }[];
     };
+    /** Side-menu sections this client is allowed to see (an allowlist of SectionId).
+     *  The team always sees every section; a client only sees what an AM has revealed
+     *  with the eye toggle in edit mode, so nothing half-built is presented as finished.
+     *  Absent (older rows) falls back to the intake forms only — see
+     *  DEFAULT_CLIENT_VISIBLE in client-dashboard-page.tsx. Typed as string[] rather
+     *  than SectionId to keep this module free of page imports. */
+    client_visible?: string[];
 }
 
 export interface DashboardPageData {

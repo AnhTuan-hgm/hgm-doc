@@ -7,6 +7,7 @@ import {
     ArrowUpRight,
     Camera01,
     Check,
+    BookOpen01,
     CheckCircle,
     ChevronDown,
     ClipboardCheck,
@@ -14,6 +15,7 @@ import {
     Download01,
     Edit01,
     FileCheck02,
+    Folder,
     Globe01,
     HelpCircle,
     Image01,
@@ -25,6 +27,7 @@ import {
     PlayCircle,
     Plus,
     RefreshCw01,
+    Repeat01,
     SearchLg,
     Sun,
     Target04,
@@ -206,6 +209,7 @@ const createDefaultContent = (base: string): DashboardContent => ({
     links: defaultLinks(base),
     foundation: { ...DEFAULT_FOUNDATION, faqs: [] },
     videos: [],
+    client_visible: [...DEFAULT_CLIENT_VISIBLE],
 });
 
 /** Merge a partial jsonb blob from the DB over the defaults so old rows never crash new sections. */
@@ -219,23 +223,30 @@ const mergeContent = (partial?: Partial<DashboardContent> | null): DashboardCont
     links: partial?.links ?? TEMPLATE_CONTENT.links,
     videos: partial?.videos ?? [],
     foundation: { ...DEFAULT_FOUNDATION, ...partial?.foundation, faqs: partial?.foundation?.faqs ?? [] },
+    // Absent ⇒ the intake-forms-only default. An AM who hides everything stores an empty
+    // array, which is meaningfully different from "never set" and must survive as [].
+    client_visible: partial?.client_visible ?? [...DEFAULT_CLIENT_VISIBLE],
 });
 
-/** Which stage of the HiddenGem funnel a section belongs to — every section shows its
- * stage badge so clients build the same Foundation → Top → Middle → Bottom mental model
- * Dustin walks them through on the onboarding call, every time they open the dashboard. */
 /**
- * The client's journey, as the team runs it. `input` is not a phase — it's the one
- * group where the client gives us input rather than reading ours, so it keeps its
- * own hue and sits above the numbered phases.
+ * Side-menu groups — what the client actually needs to see, in the order they meet it:
+ * the two forms we need from them, the brand work those produce, the marketing built on
+ * top, then the reference material they keep coming back to.
+ *
+ * `num` is null throughout on purpose. This replaced a numbered Phase 1–5 taxonomy that
+ * mirrored the team's Asana project: useful to us, but it asked the client to learn our
+ * internal process to find a page. Grouping is now by what a thing IS. The team's phase
+ * tracking still lives on /home and the Client List, driven by clients.onboarding_phase —
+ * this only changes what the client is shown.
+ *
+ * `bg`/`text` are kept because SectionEyebrow still renders a group pill above each
+ * section body.
  */
 const PHASES = {
     input: { num: null, label: "Client input", bg: "bg-utility-indigo-50", text: "text-utility-indigo-700" },
-    p1: { num: 1, label: "Marketing Strategy", bg: "bg-brand-secondary", text: "text-brand-secondary" },
-    p2: { num: 2, label: "Technical Setup", bg: "bg-secondary", text: "text-secondary" },
-    p3: { num: 3, label: "Content Creation", bg: "bg-warning-secondary", text: "text-warning-primary" },
-    p4: { num: 4, label: "Funnel Setup", bg: "bg-utility-purple-50", text: "text-utility-purple-700" },
-    p5: { num: 5, label: "Marketing Launch", bg: "bg-success-secondary", text: "text-success-primary" },
+    brandwork: { num: null, label: "Brand foundation", bg: "bg-brand-secondary", text: "text-brand-secondary" },
+    marketing: { num: null, label: "Marketing", bg: "bg-utility-purple-50", text: "text-utility-purple-700" },
+    resources: { num: null, label: "Resources", bg: "bg-success-secondary", text: "text-success-primary" },
 } as const;
 type PhaseId = keyof typeof PHASES;
 
@@ -313,10 +324,47 @@ type SectionId =
     | "flow"
     | "chatwidget"
     | "ghl"
-    | "revenue";
+    | "revenue"
+    // Menu entries added with the client-facing side-menu rework. The first four have
+    // no section body yet and render with the existing "Soon" treatment; the last two
+    // are links out rather than sections.
+    | "landing"
+    | "repeatflow"
+    | "pinnedposts"
+    | "reels"
+    | "contentfolder"
+    | "ownerguide";
 
 /** Sits above the funnel groups — not a funnel stage itself, just "home" (hero + the funnel explainer). */
 const OVERVIEW_ITEM = { id: "overview" as const, label: "Overview", icon: LayoutAlt01 };
+
+/**
+ * What a client can see before an AM reveals anything.
+ *
+ * The two intake forms only. They're what we need FROM the client on day one, so a
+ * brand-new dashboard is still actionable — everything else would otherwise present
+ * unfinished work as though it were delivered. An AM reveals each remaining section per
+ * client with the eye toggle in edit mode, as it actually ships.
+ *
+ * Stored as an ALLOWLIST rather than a hidden-list on purpose: a section added later
+ * defaults to invisible to clients instead of leaking the moment it lands.
+ */
+const DEFAULT_CLIENT_VISIBLE: SectionId[] = ["intake", "onboarding"];
+
+/* Eye / eye-off, matching the owner guide's per-client step toggle so the gesture reads
+   the same in both places. Inline SVG for the same reason it is there: these are 13px
+   controls inside a dense row, not icon-set sizes. */
+const EyeGlyph = () => (
+    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+        <circle cx="12" cy="12" r="3" />
+    </svg>
+);
+const EyeOffGlyph = () => (
+    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19M1 1l22 22" />
+    </svg>
+);
 
 /**
  * Side-menu groups: Client Input first, then the five onboarding phases.
@@ -330,59 +378,71 @@ const OVERVIEW_ITEM = { id: "overview" as const, label: "Overview", icon: Layout
  * "Signing On" (phase 0) is deliberately absent — by the time this dashboard exists,
  * it's done.
  */
-const NAV_GROUPS: { label: string; phase: PhaseId; items: { id: SectionId; label: string; icon: typeof LayoutAlt01; soon?: boolean }[] }[] = [
+const NAV_GROUPS: { label: string; phase: PhaseId; items: { id: SectionId; label: string; icon: typeof LayoutAlt01; soon?: boolean; to?: string }[] }[] = [
     {
         label: "Client input",
         phase: "input",
         items: [
-            { id: "intake", label: "Onboarding Form", icon: ClipboardCheck },
+            { id: "intake", label: "Onboarding form", icon: ClipboardCheck },
             { id: "onboarding", label: "Brand Vision Form", icon: FileCheck02 },
         ],
     },
     {
-        label: "Marketing Strategy",
-        phase: "p1",
-        items: [{ id: "foundation", label: "Master Document", icon: FileCheck02 }],
-    },
-    {
-        label: "Technical Setup",
-        phase: "p2",
+        label: "Brand foundation",
+        phase: "brandwork",
         items: [
-            { id: "website", label: "Website", icon: Globe01 },
-            { id: "ghl", label: "GoHighLevel Setup", icon: Target04 },
-        ],
-    },
-    {
-        label: "Content Creation",
-        phase: "p3",
-        items: [
+            { id: "foundation", label: "Master Brand", icon: FileCheck02 },
             { id: "brand", label: "Brand Kit", icon: Image01 },
-            { id: "videos", label: "Video Guides", icon: PlayCircle },
-            { id: "instagram", label: "Instagram", icon: Camera01 },
         ],
     },
     {
-        label: "Funnel Setup",
-        phase: "p4",
+        label: "Marketing",
+        phase: "marketing",
         items: [
-            { id: "flow", label: "Welcome Flow Email", icon: Mail01 },
-            { id: "chatwidget", label: "Chat Widget", icon: MessageChatCircle },
+            { id: "landing", label: "Landing page", icon: Globe01, soon: true },
+            { id: "flow", label: "Welcome Flow", icon: Mail01 },
+            { id: "repeatflow", label: "Repeat Flow", icon: Repeat01, soon: true },
+            { id: "pinnedposts", label: "Pinned Posts / Story", icon: Camera01, soon: true },
+            { id: "reels", label: "Example Reels", icon: PlayCircle, soon: true },
         ],
     },
     {
-        label: "Marketing Launch",
-        phase: "p5",
+        label: "Resources",
+        phase: "resources",
         items: [
-            { id: "revenue", label: "Revenue & Results", icon: TrendUp01 },
-            { id: "comms", label: "Communication Log", icon: MessageChatCircle, soon: true },
+            // Both are links, not sections: the folder opens the client's own content
+            // drive, the owner guide opens THAT client's guide (never the shared
+            // template). Each falls back to "Soon" until its target exists.
+            { id: "contentfolder", label: "Folder of Content", icon: Folder },
+            // Shortened from "Website Setup — Owner guide": that truncated to
+            // "Website Setup — Ow…" at the 276px sidebar width.
+            { id: "ownerguide", label: "Website Setup Guide", icon: BookOpen01 },
         ],
     },
+];
+
+/**
+ * Sections that still exist and render, but are deliberately off the side menu.
+ *
+ * Their data is untouched in Supabase and they stay in SECTIONS, so `#hash` deep links
+ * and the sidebar search still reach them, and Overview's funnel cards still jump to
+ * them. Moving one back onto the menu is a single line in NAV_GROUPS — nothing here is
+ * a one-way door.
+ */
+const HIDDEN_ITEMS: { id: SectionId; label: string; icon: typeof LayoutAlt01 }[] = [
+    { id: "website", label: "Website", icon: Globe01 },
+    { id: "instagram", label: "Instagram", icon: Camera01 },
+    { id: "chatwidget", label: "Chat Widget", icon: MessageChatCircle },
+    { id: "ghl", label: "GoHighLevel Setup", icon: Target04 },
+    { id: "videos", label: "Video Guides", icon: PlayCircle },
+    { id: "revenue", label: "Revenue & Results", icon: TrendUp01 },
+    { id: "comms", label: "Communication Log", icon: MessageChatCircle },
 ];
 
 /** Which group a section belongs to — drives the eyebrow above each section body. */
 const phaseOfSection = (id: SectionId): PhaseId | null => NAV_GROUPS.find((g) => g.items.some((i) => i.id === id))?.phase ?? null;
 
-const SECTIONS = [OVERVIEW_ITEM, ...NAV_GROUPS.flatMap((g) => g.items)];
+const SECTIONS = [OVERVIEW_ITEM, ...NAV_GROUPS.flatMap((g) => g.items), ...HIDDEN_ITEMS];
 
 /** Read from the form itself so the copy never goes stale if a question is added. */
 const ONBOARDING_TOTAL_QUESTIONS = hostOnboardingProgress().total;
@@ -511,6 +571,7 @@ const SectionNavItem = ({
     badge,
     indent,
     onClick,
+    action,
 }: {
     icon: FC<{ className?: string }>;
     label: string;
@@ -520,36 +581,44 @@ const SectionNavItem = ({
     badge?: ReactNode;
     indent?: boolean;
     onClick: () => void;
+    /** Edit-mode control (the per-client eye toggle), rendered OUTSIDE the row button:
+     *  a <button> nested in a <button> is invalid HTML and its click would bubble into
+     *  the row's own handler, switching section on every toggle. */
+    action?: ReactNode;
 }) => (
-    <button
-        type="button"
-        onClick={disabled ? undefined : onClick}
-        disabled={disabled}
-        aria-current={current ? "page" : undefined}
-        className={cx(
-            "group/item relative flex min-h-9 w-full cursor-pointer items-center rounded-md p-2 text-left outline-focus-ring transition duration-100 ease-linear select-none focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-2",
-            indent && "pl-4",
-            current ? "bg-secondary hover:bg-secondary_hover" : "hover:bg-primary_hover",
-            disabled && "cursor-not-allowed opacity-60 hover:bg-transparent",
-        )}
-    >
-        <Icon
-            aria-hidden="true"
+    <div className="relative flex items-center">
+        <button
+            type="button"
+            onClick={disabled ? undefined : onClick}
+            disabled={disabled}
+            aria-current={current ? "page" : undefined}
             className={cx(
-                "mr-2 size-5 shrink-0 transition-inherit-all",
-                current ? "text-fg-brand-primary" : "text-fg-quaternary group-hover/item:text-fg-quaternary_hover",
-            )}
-        />
-        <span
-            className={cx(
-                "flex-1 truncate text-sm font-semibold transition-inherit-all",
-                current ? "text-primary" : "text-secondary group-hover/item:text-secondary_hover",
+                "group/item relative flex min-h-9 w-full cursor-pointer items-center rounded-md p-2 text-left outline-focus-ring transition duration-100 ease-linear select-none focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-2",
+                indent && "pl-4",
+                action && "pr-8",
+                current ? "bg-secondary hover:bg-secondary_hover" : "hover:bg-primary_hover",
+                disabled && "cursor-not-allowed opacity-60 hover:bg-transparent",
             )}
         >
-            {label}
-        </span>
-        {badge}
-    </button>
+            <Icon
+                aria-hidden="true"
+                className={cx(
+                    "mr-2 size-5 shrink-0 transition-inherit-all",
+                    current ? "text-fg-brand-primary" : "text-fg-quaternary group-hover/item:text-fg-quaternary_hover",
+                )}
+            />
+            <span
+                className={cx(
+                    "flex-1 truncate text-sm font-semibold transition-inherit-all",
+                    current ? "text-primary" : "text-secondary group-hover/item:text-secondary_hover",
+                )}
+            >
+                {label}
+            </span>
+            {badge}
+        </button>
+        {action && <div className="absolute right-1 flex shrink-0 items-center">{action}</div>}
+    </div>
 );
 
 /** Signed-URL playback for a recorded answer shown on the dashboard. */
@@ -652,7 +721,7 @@ const OnboardingAnswers = ({ data, onEdit }: { data: Partial<ClientOnboardingDat
 
 export const ClientDashboardPage = ({ slug, initialClientName = "", initialClientWebsite = "", initialData, isTemplate = false }: ClientDashboardPageProps) => {
     const navigate = useNavigate();
-    const [searchParams] = useSearchParams();
+    const [searchParams, setSearchParams] = useSearchParams();
     const { theme, setTheme } = useTheme();
     const isDark = theme === "dark" || (theme === "system" && typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches);
     // This page has its own theme toggle in the side menu (below) — the global
@@ -661,8 +730,21 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
 
     // Team detection — the lock/create controls are only visible to signed-in
     // @hiddengem.media members; clients see a clean read-only dashboard.
-    const { user } = useAuthUser();
-    const isTeam = !!user?.email && user.email.toLowerCase().endsWith("@hiddengem.media");
+    const { user, loading: authLoading } = useAuthUser();
+
+    /* ── "View as client" preview ──
+       ?preview=client makes a signed-in team member see exactly what the client sees:
+       the same menu, the same SOON rows, no edit mode, none of the team-only controls.
+       Every one of those behaviours already reads `isTeam`, so forcing that single value
+       false IS the whole feature — nothing downstream needs to know a preview exists. */
+    const signedInAsTeam = !!user?.email && user.email.toLowerCase().endsWith("@hiddengem.media");
+    const previewAsClient = signedInAsTeam && searchParams.get("preview") === "client";
+    const isTeam = signedInAsTeam && !previewAsClient;
+    const exitClientPreview = () => {
+        const next = new URLSearchParams(searchParams);
+        next.delete("preview");
+        setSearchParams(next, { replace: true });
+    };
 
     // Editable content
     const [clientName, setClientName] = useState(initialClientName);
@@ -699,13 +781,18 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     };
 
     // Side-menu section — grouped by funnel stage (NAV_GROUPS, module scope above).
-    const [activeSection, setActiveSection] = useState<SectionId>("overview");
+    // Opens on the first menu row rather than Overview, which no longer has one — landing
+    // on a section the client can't navigate back to would be a dead end. "Onboarding form"
+    // is also genuinely the first thing a new client should do.
+    const [activeSection, setActiveSection] = useState<SectionId>("intake");
 
     // Deep-link support: /client-dashboard#flow (or #overview) opens that side-menu
     // section on load — used by the Welcome Email Flow overview page's "live builder" link.
     useEffect(() => {
         const h = window.location.hash.replace("#", "");
-        if (h && SECTIONS.some((s) => s.id === h)) setActiveSection(h as SectionId);
+        // "Soon" ids are in SECTIONS but have no section body yet, so honouring a hash
+        // for one would render an empty page. Same exclusion the search index uses.
+        if (h && SECTIONS.some((s) => s.id === h && !("soon" in s && s.soon))) setActiveSection(h as SectionId);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -736,7 +823,9 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     //    mid-flight response land is what stops the card stranding on "Checking…".
     useEffect(() => {
         // Overview's setup panel needs this count too, not just the section itself.
-        if ((activeSection !== "onboarding" && activeSection !== "overview") || isTemplate || !onboardingSlug) return;
+        // Also refreshes while on "intake": that is now the landing section, and the Brand
+        // Vision badge has to be right on first paint, not only after a visit to Overview.
+        if (!["onboarding", "overview", "intake"].includes(activeSection) || isTemplate || !onboardingSlug) return;
         // "error" waits for the explicit Try again (which resets status to idle).
         if (onboardingFetchRef.current || onboardingStatus === "ready" || onboardingStatus === "error") return;
         onboardingFetchRef.current = true;
@@ -924,6 +1013,109 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     const foundation = content.foundation ?? DEFAULT_FOUNDATION;
     const updateFaq = (i: number, patch: Partial<FaqItem>) => patchFoundation({ faqs: foundation.faqs.map((f, j) => (j === i ? { ...f, ...patch } : f)) });
 
+    /* ── Resources group: this client's own owner guide ──
+       Resolved by name from owner_guides rather than linked to the bare /owner-guide
+       route, which is the SHARED MASTER TEMPLATE — sending a client there is how the
+       2026-07-09 content incident happened. No match ⇒ the nav row stays "Soon". */
+    const [ownerGuideSlug, setOwnerGuideSlug] = useState("");
+    useEffect(() => {
+        const name = clientName.trim();
+        if (!name) {
+            setOwnerGuideSlug("");
+            return;
+        }
+        let cancelled = false;
+        supabase
+            .from("owner_guides")
+            .select("slug,client_name")
+            .then(({ data, error }) => {
+                if (cancelled || error || !data) return;
+                const want = slugify(name);
+                const hit = data.find((r) => slugify(String(r.client_name ?? "")) === want);
+                setOwnerGuideSlug(hit?.slug ?? "");
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [clientName]);
+
+    /** True when a link-type nav row has nowhere to go yet — shown as "Soon". */
+    const navTargetMissing = (id: SectionId) =>
+        (id === "contentfolder" && !content.brand.folder_link.trim()) || (id === "ownerguide" && !ownerGuideSlug);
+
+    /* ── Per-client section visibility ──
+       Two separate ideas, deliberately not conflated:
+         • notBuilt      — no section body exists yet. Nobody can open it, team included.
+         • hiddenFromClient — the section works, but this client hasn't been shown it.
+       The team always sees and can open everything that exists; the client sees "Soon"
+       until an AM reveals the row with the eye toggle in edit mode. */
+    const clientVisible = content.client_visible ?? DEFAULT_CLIENT_VISIBLE;
+    const revealedToClient = (id: SectionId) => clientVisible.includes(id);
+    const toggleClientVisible = (id: SectionId) =>
+        setContent((c) => {
+            const cur = c.client_visible ?? DEFAULT_CLIENT_VISIBLE;
+            return { ...c, client_visible: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] };
+        });
+
+    /**
+     * Single choke point: whatever route put a client on a section they can't see —
+     * a hand-typed `#brand` hash, an Overview funnel card, state left over from before an
+     * AM re-hid a row — bounce them to the landing row.
+     *
+     * The nav and search already filter, so this is the backstop rather than the primary
+     * guard. It waits for `authLoading` because `isTeam` is false until the session
+     * resolves, and firing early would bounce a team member off their own deep link.
+     */
+    useEffect(() => {
+        if (authLoading || isTeam || isTemplate) return;
+        if (!clientVisible.includes(activeSection)) setActiveSection(DEFAULT_CLIENT_VISIBLE[0]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeSection, isTeam, authLoading, isTemplate, clientVisible]);
+
+    type NavItem = (typeof NAV_GROUPS)[number]["items"][number];
+    /** Nothing behind this row yet — unopenable for everyone, team included. */
+    const navNotBuilt = (s: NavItem) => !!s.soon || navTargetMissing(s.id);
+    /** Can this viewer open the row? */
+    const navBlocked = (s: NavItem) => navNotBuilt(s) || (!isTeam && !revealedToClient(s.id));
+    /**
+     * Right-hand state on a nav row.
+     *
+     * The word depends on WHO is looking, never on why the row is unavailable — the two are
+     * never mixed in one menu. "Soon" is the client's word for anything they can't open;
+     * "Hidden" is ours for anything the client can't see. A team member therefore never
+     * sees "Soon", and a client never sees "Hidden".
+     *
+     * Whether a row is merely unrevealed or has no section built yet still reads clearly to
+     * the team without a second label: unbuilt rows stay dimmed and unopenable and carry no
+     * eye, revealed-able ones are full-contrast with an eye in edit mode.
+     */
+    const navBadge = (s: NavItem) => {
+        const clientCanSee = !navNotBuilt(s) && revealedToClient(s.id);
+        if (clientCanSee) return sectionBadge(s.id);
+        return (
+            <span
+                className="ml-2 shrink-0 text-[10px] font-bold text-quaternary uppercase"
+                title={isTeam ? "Not shown to this client" : undefined}
+            >
+                {isTeam ? "Hidden" : "Soon"}
+            </span>
+        );
+    };
+
+    /** Nav rows are mostly section switches; the two Resources rows are links out. */
+    const openNavItem = (id: SectionId) => {
+        if (id === "contentfolder") {
+            const url = content.brand.folder_link.trim();
+            if (url) window.open(url, "_blank", "noopener,noreferrer");
+            return;
+        }
+        if (id === "ownerguide") {
+            if (ownerGuideSlug) navigate(`/owner-guide/${ownerGuideSlug}`);
+            return;
+        }
+        setActiveSection(id);
+    };
+
     const updateColor = (i: number, patch: Partial<BrandColor>) =>
         patchBrand({ colors: content.brand.colors.map((col, j) => (j === i ? { ...col, ...patch } : col)) });
     const updateHighlight = (i: number, patch: Partial<Highlight>) =>
@@ -980,15 +1172,24 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     // Client-scoped search index — sidebar sections, this client's own links, and their
     // FAQ questions. Nothing here reaches outside this one client's own content.
     const searchHits = useMemo<SearchHit[]>(() => {
-        const navHits = SECTIONS.filter((s) => !("soon" in s && s.soon)).map((s) => ({ id: s.id, label: s.label }));
-        const linkHits = content.links.map((l) => ({
-            id: (l.url.includes("-chatwidget") ? "chatwidget" : "website") as SectionId,
-            label: l.title || "Untitled link",
-            sub: "Link",
-        }));
-        const faqHits = foundation.faqs.filter((f) => f.question.trim()).map((f) => ({ id: "foundation" as SectionId, label: f.question, sub: "FAQ" }));
+        // Search must not be a back door. Every hit is filtered by the same rule the nav
+        // rows use — a client can only reach a section revealed to them. Filtering on
+        // "not built" alone would let a client search "Brand" (or one of their own FAQs,
+        // which resolve to the Master Brand section) straight into a hidden section.
+        const canOpen = (id: SectionId) => isTeam || clientVisible.includes(id);
+        const navHits = SECTIONS.filter((s) => !("soon" in s && s.soon) && canOpen(s.id)).map((s) => ({ id: s.id, label: s.label }));
+        const linkHits = content.links
+            .map((l) => ({
+                id: (l.url.includes("-chatwidget") ? "chatwidget" : "website") as SectionId,
+                label: l.title || "Untitled link",
+                sub: "Link",
+            }))
+            .filter((h) => canOpen(h.id));
+        const faqHits = canOpen("foundation")
+            ? foundation.faqs.filter((f) => f.question.trim()).map((f) => ({ id: "foundation" as SectionId, label: f.question, sub: "FAQ" }))
+            : [];
         return [...navHits, ...linkHits, ...faqHits];
-    }, [content.links, foundation.faqs]);
+    }, [content.links, foundation.faqs, isTeam, clientVisible]);
 
     /* ── Lock / save ── */
     /** Persist edits to the shared dashboard_pages row, then lock. */
@@ -1282,6 +1483,28 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                 bg-quaternary (not the barely-off-white bg-secondary) so those white
                 cards clearly pop — this is the client's own dashboard. */}
             <div className="flex h-dvh flex-col overflow-hidden bg-tertiary p-2.5 sm:p-3">
+                {/* Preview banner — only ever rendered for a signed-in team member, so the
+                    client can never see it. Without it the preview is a trap: Shift+E just
+                    stops working and every team-only control disappears, which reads as
+                    broken permissions rather than a deliberate mode. */}
+                {previewAsClient && (
+                    <div className="mb-2 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg bg-brand-solid px-3.5 py-2 text-sm text-white shadow-sm">
+                        <span className="flex items-center gap-2 font-semibold">
+                            <EyeGlyph />
+                            Viewing as client
+                        </span>
+                        <span className="flex-1 text-white/80">
+                            This is exactly what {clientName.trim() || "the client"} sees. Editing and team-only controls are off.
+                        </span>
+                        <button
+                            type="button"
+                            onClick={exitClientPreview}
+                            className="shrink-0 rounded-md bg-white/15 px-2.5 py-1 text-xs font-semibold text-white transition duration-100 ease-linear hover:bg-white/25"
+                        >
+                            Exit preview
+                        </button>
+                    </div>
+                )}
                 <div className="flex min-h-0 flex-1 overflow-hidden rounded-2xl shadow-xl ring-1 ring-secondary">
                     <div className="flex min-h-0 w-full flex-col gap-2 overflow-hidden bg-quaternary p-2 md:flex-row">
                         {/* ── Client side menu (no icon rail — client-facing) ── */}
@@ -1333,15 +1556,9 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                 <ClientSearchBar hits={searchHits} onSelect={setActiveSection} />
                             </div>
 
-                            {/* Overview — sits above the funnel groups, not a funnel stage itself */}
-                            <div className="p-3 pb-0 md:pb-0">
-                                <SectionNavItem
-                                    icon={OVERVIEW_ITEM.icon}
-                                    label={OVERVIEW_ITEM.label}
-                                    current={activeSection === "overview"}
-                                    onClick={() => setActiveSection("overview")}
-                                />
-                            </div>
+                            {/* Overview has no menu row — the client-facing menu is exactly the list on
+                                the whiteboard. The section itself still renders and is reachable via
+                                #overview and the search bar; put the row back here if it's wanted. */}
 
                             {/* Funnel groups — Foundation → Top → Middle → Bottom, the same mental model
                     Dustin walks every client through on the onboarding call. */}
@@ -1353,28 +1570,18 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                             >
                                 {NAV_GROUPS.map((group, gi) => (
                                     <div key={group.label} role="group" aria-labelledby={`nav-group-${group.phase}`} className="mt-2.5 first:mt-1">
-                                        {/* Divider between funnel groups (approved template-lab layout) */}
+                                        {/* Divider between groups (approved template-lab layout) */}
                                         {gi > 0 && <div className="mx-1 mb-2.5 h-px bg-border-secondary" />}
+                                        {/* Finder-sidebar heading: small, semibold, secondary gray, sentence
+                                            case. No uppercase and no colored number pill — the heading is a
+                                            quiet label for the rows under it, not a badge competing with them. */}
                                         <button
                                             type="button"
                                             id={`nav-group-${group.phase}`}
                                             onClick={() => toggleGroup(group.phase)}
                                             aria-expanded={!isGroupCollapsed(group.phase)}
-                                            className={cx(
-                                                "mb-1 flex w-full items-center gap-1.5 rounded-md px-3 py-1 text-left text-[11px] font-bold tracking-wide uppercase transition duration-100 ease-linear hover:bg-primary_hover",
-                                                PHASES[group.phase].text,
-                                            )}
+                                            className="mb-0.5 flex w-full items-center gap-1.5 rounded-md px-3 py-1 text-left text-[11.5px] font-semibold text-tertiary transition duration-100 ease-linear hover:bg-primary_hover"
                                         >
-                                            {PHASES[group.phase].num !== null && (
-                                                <span
-                                                    className={cx(
-                                                        "inline-flex size-4 shrink-0 items-center justify-center rounded-full text-[10px] tabular-nums",
-                                                        PHASES[group.phase].bg,
-                                                    )}
-                                                >
-                                                    {PHASES[group.phase].num}
-                                                </span>
-                                            )}
                                             <span className="flex-1 truncate">{group.label}</span>
                                             {/* Folded groups still flag outstanding work — otherwise collapsing
                                                 could hide the one thing we need from the client. */}
@@ -1397,16 +1604,42 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                             icon={s.icon}
                                                             label={s.label}
                                                             current={activeSection === s.id}
-                                                            disabled={s.soon}
+                                                            // Team can open anything that exists; a client can only
+                                                            // open what's been revealed to them.
+                                                            disabled={navBlocked(s)}
                                                             indent
-                                                            badge={
-                                                                s.soon ? (
-                                                                    <span className="ml-2 shrink-0 text-[10px] font-bold text-quaternary uppercase">Soon</span>
-                                                                ) : (
-                                                                    sectionBadge(s.id)
-                                                                )
+                                                            badge={navBadge(s)}
+                                                            action={
+                                                                // Eye toggle only while editing, and only for rows
+                                                                // that actually have something behind them — there's
+                                                                // nothing to reveal on a not-built section.
+                                                                !isLocked && isTeam && !navNotBuilt(s) ? (
+                                                                    <button
+                                                                        type="button"
+                                                                        title={
+                                                                            revealedToClient(s.id)
+                                                                                ? "Hide from this client"
+                                                                                : "Show to this client"
+                                                                        }
+                                                                        aria-label={
+                                                                            revealedToClient(s.id)
+                                                                                ? `Hide ${s.label} from this client`
+                                                                                : `Show ${s.label} to this client`
+                                                                        }
+                                                                        aria-pressed={revealedToClient(s.id)}
+                                                                        onClick={() => toggleClientVisible(s.id)}
+                                                                        className={cx(
+                                                                            "flex size-6 items-center justify-center rounded-md transition duration-100 ease-linear hover:bg-secondary",
+                                                                            revealedToClient(s.id)
+                                                                                ? "text-brand-secondary hover:text-brand-secondary_hover"
+                                                                                : "text-quaternary hover:text-primary",
+                                                                        )}
+                                                                    >
+                                                                        {revealedToClient(s.id) ? <EyeGlyph /> : <EyeOffGlyph />}
+                                                                    </button>
+                                                                ) : undefined
                                                             }
-                                                            onClick={() => setActiveSection(s.id)}
+                                                            onClick={() => openNavItem(s.id)}
                                                         />
                                                     </motion.div>
                                                 ))}
