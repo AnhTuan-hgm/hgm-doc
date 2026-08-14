@@ -753,7 +753,9 @@ export const hostOnboardingProgress = (partial?: Partial<HostOnboardingData> | n
 
 export type HostAnswerLine = { text: string; secret?: boolean };
 export type HostAnswerRow = { field: string; label: string; lines: HostAnswerLine[]; mediaPath: string; mediaKind: "audio" | "video" | "" };
-export type HostAnswerSection = { id: string; title: string; rows: HostAnswerRow[] };
+/** Structurally identical to the Onboarding Form's section, `icon` included — the dashboard renders
+    both through the same panel. */
+export type HostAnswerSection = { id: string; title: string; icon: typeof Mail01; rows: HostAnswerRow[] };
 
 /**
  * Every answer, grouped by section — the counterpart to clientOnboardingAnswers(), so the
@@ -774,6 +776,7 @@ export const hostOnboardingAnswers = (partial?: Partial<HostOnboardingData> | nu
     return SECTIONS.map((s) => ({
         id: s.id,
         title: s.title,
+        icon: s.icon,
         rows: s.questions.map((q) => {
             const lines: HostAnswerLine[] = [];
             if (q.type === "checkbox") {

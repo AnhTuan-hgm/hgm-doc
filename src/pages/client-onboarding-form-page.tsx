@@ -371,7 +371,9 @@ export const clientOnboardingProgress = (partial?: Partial<ClientOnboardingData>
 
 export type OnboardingAnswerLine = { text: string; secret?: boolean };
 export type OnboardingAnswerRow = { field: string; label: string; lines: OnboardingAnswerLine[]; mediaPath: string; mediaKind: MediaKind | "" };
-export type OnboardingAnswerSection = { id: string; title: string; rows: OnboardingAnswerRow[] };
+/** `icon` is the same one the form itself shows for the section, so the answers read back with the
+    landmarks the client filled them in under. */
+export type OnboardingAnswerSection = { id: string; title: string; icon: typeof Mail01; rows: OnboardingAnswerRow[] };
 
 /**
  * Every answer, grouped by section — so the dashboard can show the filled-in form
@@ -384,6 +386,7 @@ export const clientOnboardingAnswers = (partial?: Partial<ClientOnboardingData> 
     return SECTIONS.map((s) => ({
         id: s.id,
         title: s.title,
+        icon: s.icon,
         rows: s.questions.map((q) => {
             const lines: OnboardingAnswerLine[] = [];
             if (q.credentials) {

@@ -809,6 +809,7 @@ const OnboardingAnswers = ({
     sections,
     onEdit,
     canExport,
+    isTeamView,
     clientName,
     formTitle,
     submittedOn,
@@ -817,6 +818,12 @@ const OnboardingAnswers = ({
     onEdit: (field: string) => void;
     /** Team-only: the PDF export can carry a client's answers off-platform. */
     canExport?: boolean;
+    /**
+     * Whose voice to write in. The client reading this panel is looking at their OWN submission,
+     * so "Their answers" tells them the site is talking about them to somebody else. False while
+     * a team member previews as the client, so the preview shows what the client actually gets.
+     */
+    isTeamView?: boolean;
     clientName: string;
     formTitle: string;
     submittedOn?: string;
@@ -856,7 +863,8 @@ const OnboardingAnswers = ({
         <div className="mt-5 border-t border-secondary pt-5">
             <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
                 <p className="text-sm font-semibold text-primary">
-                    Their answers <span className="font-normal text-tertiary tabular-nums">· {answered} answered</span>
+                    {isTeamView ? "Their answers" : "Your answers"}{" "}
+                    <span className="font-normal text-tertiary tabular-nums">· {answered} answered</span>
                 </p>
                 {canExport && (
                     <div className="flex flex-wrap items-center gap-3">
@@ -881,32 +889,41 @@ const OnboardingAnswers = ({
             <div className="mt-4 flex flex-col gap-6">
                 {sections.map((s) => (
                     <section key={s.id}>
-                        <p className="text-xs font-semibold tracking-wide text-brand-secondary uppercase">{s.title}</p>
-                        <dl className="mt-2.5 flex flex-col gap-2.5">
+                        {/* Same icon the form showed for this section, so reading the answers back
+                            uses the landmarks the client filled them in under. */}
+                        <p className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-brand-secondary uppercase">
+                            <s.icon className="size-4 shrink-0" aria-hidden="true" />
+                            {s.title}
+                        </p>
+                        {/* One card per section rather than one per question. A client reading
+                            their own answers back is scanning a section as a whole, and a stack of
+                            separate cards chops that into unrelated-looking fragments. Dividers
+                            keep the rows distinct without breaking the group apart. */}
+                        <dl className="mt-2.5 divide-y divide-secondary overflow-hidden rounded-2xl bg-primary ring-1 ring-secondary">
                             {s.rows.map((row) => {
                                 const empty = !row.lines.length && !row.mediaPath;
                                 return (
                                     <div
                                         key={row.field}
-                                        className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-1 rounded-xl bg-secondary p-3.5"
+                                        className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-1 p-4 transition duration-100 ease-linear hover:bg-secondary"
                                     >
-                                        <dt className="col-start-1 row-start-1 text-sm font-medium text-secondary">{row.label}</dt>
+                                        <dt className="col-start-1 row-start-1 text-md font-medium text-secondary">{row.label}</dt>
                                         <dd className="col-span-2 col-start-1 row-start-2 min-w-0">
-                                            {empty && <span className="text-sm text-quaternary italic">Not answered</span>}
+                                            {empty && <span className="text-md text-quaternary italic">Not answered</span>}
                                             {row.lines.map((line, i) =>
                                                 line.secret && !shown[row.field] ? (
-                                                    <p key={i} className="flex items-center gap-2 text-sm text-tertiary">
+                                                    <p key={i} className="flex items-center gap-2 text-md text-tertiary">
                                                         <span className="tracking-[0.2em]">••••••••</span>
                                                         <button
                                                             type="button"
                                                             onClick={() => setShown((v) => ({ ...v, [row.field]: true }))}
-                                                            className="text-xs font-semibold text-brand-secondary transition duration-100 ease-linear hover:underline"
+                                                            className="text-sm font-semibold text-brand-secondary transition duration-100 ease-linear hover:underline"
                                                         >
                                                             Show
                                                         </button>
                                                     </p>
                                                 ) : (
-                                                    <p key={i} className="text-sm break-words whitespace-pre-wrap text-tertiary">
+                                                    <p key={i} className="text-md break-words whitespace-pre-wrap text-tertiary">
                                                         {line.text}
                                                     </p>
                                                 ),
@@ -920,7 +937,7 @@ const OnboardingAnswers = ({
                                             aria-label={`Edit ${row.label}`}
                                             // Always visible, not hover-revealed: this panel is read on phones and tablets
                                             // too, where there is no hover and an opacity-0 control is simply invisible.
-                                            className="col-start-2 row-start-1 -mt-0.5 flex size-7 shrink-0 items-center justify-center justify-self-end rounded-lg text-fg-quaternary transition duration-100 ease-linear hover:bg-primary hover:text-brand-secondary"
+                                            className="col-start-2 row-start-1 -mt-0.5 flex size-7 shrink-0 items-center justify-center justify-self-end rounded-lg text-fg-quaternary transition duration-100 ease-linear hover:bg-primary hover:text-brand-secondary hover:ring-1 hover:ring-secondary"
                                         >
                                             <Edit01 className="size-3.5" aria-hidden="true" />
                                         </button>
@@ -2387,8 +2404,18 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
 
                                                                     <div
                                                                         className={cx(
-                                                                            "min-w-0 flex-1 rounded-xl bg-primary p-4 shadow-xs ring-1 transition duration-100 ease-linear",
-                                                                            isCurrent ? "ring-brand" : "ring-secondary",
+                                                                            "relative min-w-0 flex-1 rounded-xl bg-primary p-4 shadow-xs ring-1 transition duration-100 ease-linear",
+                                                                            // The travelling beam marks where to start. It follows the
+                                                                            // first unfinished step rather than being pinned to step 1,
+                                                                            // so it's on step 1 for a new client and moves on with them
+                                                                            // — a pulsing halo on a step they've already done would be
+                                                                            // pointing at nothing.
+                                                                            //
+                                                                            // The ring stays neutral even here: a brand-coloured beam
+                                                                            // travelling over a brand-coloured ring is invisible. The
+                                                                            // beam is what carries the colour, and the numbered node and
+                                                                            // "Up next" badge still mark the step while it passes.
+                                                                            isCurrent ? "step-beam ring-secondary" : "ring-secondary",
                                                                         )}
                                                                     >
                                                                         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
@@ -2642,6 +2669,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                 <OnboardingAnswers
                                                                     sections={clientOnboardingAnswers(intakeData)}
                                                                     canExport={isTeam}
+                                                                    isTeamView={isTeam}
                                                                     clientName={clientName}
                                                                     formTitle="Onboarding Form"
                                                                     submittedOn={intakeSubmittedAt ? fmtDate(intakeSubmittedAt) : undefined}
@@ -2803,6 +2831,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                 <OnboardingAnswers
                                                                     sections={hostOnboardingAnswers(brandData)}
                                                                     canExport={isTeam}
+                                                                    isTeamView={isTeam}
                                                                     clientName={clientName}
                                                                     formTitle="Brand Vision Form"
                                                                     submittedOn={onboardingSubmittedAt ? fmtDate(onboardingSubmittedAt) : undefined}

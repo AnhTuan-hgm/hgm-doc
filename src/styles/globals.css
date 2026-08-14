@@ -53,6 +53,69 @@ body {
     to { transform: translateX(-50%); }
 }
 
+/*
+ * Travelling highlight for the step a client should start on. A signed-in client lands on the
+ * Overview looking at nine steps that all carry equal weight; this is the one thing on the page
+ * that moves, so the eye goes to it first.
+ *
+ * Drawn as a conic gradient masked down to the border, so it traces the card's own rounded edge
+ * instead of sitting inside it as a second box. The element underneath keeps its normal ring —
+ * if a browser can't animate `--beam-angle` (it needs @property), the step still reads as
+ * highlighted, it just doesn't travel.
+ */
+@property --beam-angle {
+    syntax: "<angle>";
+    initial-value: 0deg;
+    inherits: false;
+}
+
+@keyframes beam-travel {
+    to { --beam-angle: 360deg; }
+}
+
+.step-beam::after {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 2px;
+    /* A comet, not an even glow: a long faint tail running into a bright head, so the movement
+       is legible on a 2px band rather than reading as a border that just sits there. */
+    background: conic-gradient(
+        from var(--beam-angle),
+        transparent 0deg,
+        transparent 200deg,
+        color-mix(in oklch, var(--color-bg-brand-solid) 35%, transparent) 280deg,
+        var(--color-bg-brand-solid) 335deg,
+        transparent 350deg,
+        transparent 360deg
+    );
+    /* Punch the middle out so only the 2px band paints. */
+    mask:
+        linear-gradient(#000 0 0) content-box,
+        linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    -webkit-mask:
+        linear-gradient(#000 0 0) content-box,
+        linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    /* The card underneath already carries a flat brand ring, so a brand-coloured band alone is
+       invisible against it. The glow is what separates the moving part from the static one. */
+    filter: drop-shadow(0 0 5px var(--color-bg-brand-solid));
+    animation: beam-travel 4s linear infinite;
+    pointer-events: none;
+}
+
+/* An indicator that never stops moving is exactly what this setting is asking to be spared. The
+   band stays, parked at full strength, so the step is still marked out. */
+@media (prefers-reduced-motion: reduce) {
+    .step-beam::after {
+        animation: none;
+        background: var(--color-bg-brand-solid);
+        opacity: 0.55;
+    }
+}
+
 /* Hide the default expand arrow on Safari.  */
 details summary::-webkit-details-marker {
     display: none;
