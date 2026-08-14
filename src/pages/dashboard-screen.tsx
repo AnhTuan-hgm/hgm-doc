@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { AppShell, CollapsedTopBar, HeaderAvatar, IconRail, NavCollapseButton, useNavCollapsed } from "@/components/application/icon-rail";
 import { HelpMenu } from "@/components/application/help-menu";
+import { SignInBackdrop } from "@/components/application/sign-in-backdrop";
 import { Select } from "@/components/base/select/select";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowUpRight, Award01, BookOpen01, Briefcase01, Camera01, Check, ChevronDown, ClipboardCheck, Code02, Edit01, FilePlus02, FolderClosed, Grid01, Home02, Image01, LayoutAlt01, List, Lock01, LockUnlocked01, Mail01, MarkerPin01, MessageChatCircle, Plus, SearchSm, Share07, Star01, Trash01, Trophy01, Users01, XClose } from "@untitledui/icons";
@@ -55,10 +56,10 @@ const PasswordGate = ({ onUnlock, onGoogle, googleError, googleLoading }: Passwo
     };
 
     return (
-        <main className="flex min-h-dvh flex-col items-center justify-center bg-secondary px-4">
+        <SignInBackdrop>
             <div
                 className={cx(
-                    "w-full max-w-sm rounded-2xl bg-primary p-8 shadow-xl ring-1 ring-secondary transition-all duration-500",
+                    "w-full max-w-sm rounded-2xl bg-primary p-8 shadow-2xl ring-1 ring-secondary transition-all duration-500",
                     success && "scale-95 opacity-0",
                 )}
             >
@@ -127,7 +128,7 @@ const PasswordGate = ({ onUnlock, onGoogle, googleError, googleLoading }: Passwo
                     {success ? "Unlocking…" : "Unlock with password"}
                 </button>
             </div>
-        </main>
+        </SignInBackdrop>
     );
 };
 
