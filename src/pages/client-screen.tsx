@@ -248,6 +248,8 @@ const PixelScreen = ({ clientSlug }: { clientSlug?: string }) => {
     const [notFound, setNotFound] = useState(false);
     // Set when the slug isn't a pixel page but IS a template-1 document.
     const [isTemplateDoc, setIsTemplateDoc] = useState(false);
+    // Set when the slug is the short form of a dashboard URL — see the lookup below.
+    const [dashboardSlug, setDashboardSlug] = useState<string | null>(null);
 
     // "metapixel" is the template/create route and is always valid even without a saved row.
     const isTemplate = clientSlug === "metapixel";
@@ -266,6 +268,7 @@ const PixelScreen = ({ clientSlug }: { clientSlug?: string }) => {
         setData(null);
         setNotFound(false);
         setIsTemplateDoc(false);
+        setDashboardSlug(null);
         supabase
             .from("client_pages")
             .select("*")
@@ -284,15 +287,34 @@ const PixelScreen = ({ clientSlug }: { clientSlug?: string }) => {
                     .eq("slug", clientSlug)
                     .maybeSingle()
                     .then(({ data: doc }) => {
-                        if (doc) setIsTemplateDoc(true);
-                        else setNotFound(true);
-                        setLoading(false);
+                        if (doc) {
+                            setIsTemplateDoc(true);
+                            setLoading(false);
+                            return;
+                        }
+                        /* Last chance before 404: treat the slug as the short form of a dashboard
+                           URL, so /north-star-resort-lodge serves /north-star-resort-lodge-dashboard.
+                           Clients get a clean link with no per-client setup. Runs last so it can only
+                           ever turn a 404 into a page — a real pixel page or template doc still wins. */
+                        supabase
+                            .from("dashboard_pages")
+                            .select("slug")
+                            .eq("slug", `${clientSlug}-dashboard`)
+                            .maybeSingle()
+                            .then(({ data: dash }) => {
+                                if (dash) setDashboardSlug(`${clientSlug}-dashboard`);
+                                else setNotFound(true);
+                                setLoading(false);
+                            });
                     });
             });
     }, [clientSlug, isTemplate]);
 
     if (loading) return <Spinner />;
     if (isTemplateDoc && clientSlug) return <TemplateOneScreen key={clientSlug} slug={clientSlug} isTemplate={false} />;
+    /* The full "-dashboard" slug is passed through, not the short one the visitor typed, so edits
+       still save back to the row they came from. */
+    if (dashboardSlug) return <ClientDashboardScreen key={dashboardSlug} slug={dashboardSlug} />;
     if (notFound) return <NotFound />;
 
     return (
