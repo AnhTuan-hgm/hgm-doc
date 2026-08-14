@@ -112,6 +112,12 @@ const normEmail = (e: string) => e.trim().toLowerCase();
  */
 /** Shared default behind the sign-in card — a subtle leaf-shadow loop, 534KB. */
 const LOGIN_BG_VIDEO = "/hgm%20video/Tree-Leaves-Shadow-Overlay-02-4k-Video-Loop.webm";
+/**
+ * A still frame of that loop, 17KB. Carries the design on its own whenever the video can't:
+ * as the video's poster while it buffers or if decoding fails, and as the whole background for
+ * anyone browsing with reduced motion. Without it those cases fall back to flat grey.
+ */
+const LOGIN_BG_POSTER = "/hgm%20video/leaf-shadow-poster.webp";
 
 const DashboardAccessGate = ({
     allowedEmails,
@@ -147,24 +153,53 @@ const DashboardAccessGate = ({
     const bg = (backgroundUrl ?? "").trim() || LOGIN_BG_VIDEO;
     const bgIsVideo = /\.(webm|mp4|mov)(\?|$)/i.test(bg);
 
+    /* The `autoplay` attribute alone isn't reliable: Chrome refuses it in a tab that loads in the
+       background, and some setups block it outright, which leaves the video parked on its poster.
+       Ask again once the tab is actually visible and once on the first interaction — both count as
+       a fresh chance to start. Nothing here can un-hide the video for a reduced-motion visitor;
+       that's the poster's job. */
+    const videoRef = useRef<HTMLVideoElement>(null);
+    useEffect(() => {
+        if (!bgIsVideo) return;
+        const tryPlay = () => void videoRef.current?.play().catch(() => {});
+        tryPlay();
+        document.addEventListener("visibilitychange", tryPlay);
+        document.addEventListener("pointerdown", tryPlay);
+        return () => {
+            document.removeEventListener("visibilitychange", tryPlay);
+            document.removeEventListener("pointerdown", tryPlay);
+        };
+    }, [bgIsVideo, bg]);
+
     return (
-        <main className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-tertiary p-6">
+        // Layering is explicit and load-bearing: <main> is `isolate` (its own stacking context),
+        // the background is z-0 and the card z-10. An earlier version put the background at -z-10,
+        // which escaped <main> entirely and let <main>'s opaque bg-tertiary paint over the video —
+        // a flat grey page. Don't reintroduce a negative z-index here.
+        <main className="relative isolate flex min-h-dvh items-center justify-center overflow-hidden bg-tertiary p-6">
             {/* Background. Sits behind everything, never interactive, and always has a solid
                 colour underneath so a slow or failed load leaves a clean page rather than a
                 flash of nothing. Motion is suppressed for anyone who asked for reduced
                 motion — an autoplaying loop is exactly what that setting is about. */}
-            <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 bg-tertiary">
+            <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 bg-tertiary">
                 {bgIsVideo ? (
-                    <video
-                        src={bg}
-                        autoPlay
-                        muted
-                        loop
-                        playsInline
-                        // A poster would need a still we don't have; the solid parent colour
-                        // covers the pre-play frame instead.
-                        className="size-full object-cover motion-reduce:hidden"
-                    />
+                    <>
+                        <video
+                            ref={videoRef}
+                            src={bg}
+                            poster={bg === LOGIN_BG_VIDEO ? LOGIN_BG_POSTER : undefined}
+                            autoPlay
+                            muted
+                            loop
+                            playsInline
+                            preload="auto"
+                            className="size-full object-cover motion-reduce:hidden"
+                        />
+                        {/* Reduced motion gets the still instead of nothing — same look, no movement. */}
+                        {bg === LOGIN_BG_VIDEO && (
+                            <img src={LOGIN_BG_POSTER} alt="" className="absolute inset-0 hidden size-full object-cover motion-reduce:block" draggable={false} />
+                        )}
+                    </>
                 ) : (
                     <img src={bg} alt="" className="size-full object-cover" draggable={false} />
                 )}
@@ -173,7 +208,7 @@ const DashboardAccessGate = ({
                 <div className="absolute inset-0 bg-black/25" />
             </div>
 
-            <form onSubmit={submit} className="relative w-full max-w-sm rounded-2xl bg-primary p-8 shadow-2xl ring-1 ring-secondary">
+            <form onSubmit={submit} className="relative z-10 w-full max-w-sm rounded-2xl bg-primary p-8 shadow-2xl ring-1 ring-secondary">
                 <img src="/hgm logo/Favicon ON LIGHT.svg" alt="HiddenGem Media" className="mx-auto size-11" draggable={false} />
                 <h1 className="mt-5 text-center text-lg font-semibold text-primary">This dashboard is private</h1>
                 <p className="mt-2 text-center text-sm text-tertiary text-pretty">
