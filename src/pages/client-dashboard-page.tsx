@@ -886,7 +886,10 @@ const OnboardingAnswers = ({
                     </div>
                 )}
             </div>
-            <div className="mt-4 flex flex-col gap-6">
+            {/* Double the gap between sections. Now that each section is one card rather than a
+                stack of small ones, the run between "Account Setup" and "Billing & Legal" is the
+                only thing separating two dense blocks — at gap-6 they read as one continuous wall. */}
+            <div className="mt-4 flex flex-col gap-12">
                 {sections.map((s) => (
                     <section key={s.id}>
                         {/* Same icon the form showed for this section, so reading the answers back
@@ -899,7 +902,7 @@ const OnboardingAnswers = ({
                             their own answers back is scanning a section as a whole, and a stack of
                             separate cards chops that into unrelated-looking fragments. Dividers
                             keep the rows distinct without breaking the group apart. */}
-                        <dl className="mt-2.5 divide-y divide-secondary overflow-hidden rounded-2xl bg-primary ring-1 ring-secondary">
+                        <dl className="mt-3 divide-y divide-secondary overflow-hidden rounded-2xl bg-primary ring-1 ring-secondary">
                             {s.rows.map((row) => {
                                 const empty = !row.lines.length && !row.mediaPath;
                                 return (
@@ -1276,6 +1279,8 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
 
     // Master Document "Generate for AM review" modal (team-only).
     const [showMasterDocModal, setShowMasterDocModal] = useState(false);
+    const [bookingOpen, setBookingOpen] = useState(false);
+    const [justBooked, setJustBooked] = useState(false);
     // PDF export state: `pdfBusy` covers the dynamic import of jsPDF (a visible
     // pause on a cold cache), `pdfError` surfaces a failure the AM would otherwise
     // read as "the button does nothing".
@@ -1617,6 +1622,41 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
         );
 
     /* ── The journey timeline on Overview ── */
+    /**
+     * Calendly posts a message to the parent window as the booking completes. Listening for it is
+     * what lets the dashboard react in the moment instead of waiting for an AM to notice.
+     *
+     * Only bookings made in this modal are seen — book from the confirmation email or another
+     * device and nothing arrives here, which is why the AM tick stays available as a backstop.
+     *
+     * The origin check is not optional: `message` fires for anything any frame posts, so without it
+     * any embedded or opener page could mark a client's step done by posting the right string.
+     */
+    useEffect(() => {
+        if (!bookingOpen) return;
+        const onMessage = (e: MessageEvent) => {
+            if (e.origin !== "https://calendly.com") return;
+            if (e.data?.event !== "calendly.event_scheduled") return;
+            setJustBooked(true);
+            setContent((c) => {
+                const done = c.journey_done ?? [];
+                return done.includes("kickoff") ? c : { ...c, journey_done: [...done, "kickoff"] };
+            });
+            // The browser can't write to Supabase itself (anon has no UPDATE grant), so the save
+            // goes through the function. A failure here only costs the persisted tick — the client
+            // still sees the confirmation, and their booking is real regardless.
+            if (slug && !isTemplate) {
+                void fetch("/.netlify/functions/mark-booked", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ slug }),
+                }).catch((err) => console.error("[mark-booked] request failed", err));
+            }
+        };
+        window.addEventListener("message", onMessage);
+        return () => window.removeEventListener("message", onMessage);
+    }, [bookingOpen, slug, isTemplate]);
+
     const journeyDone = content.journey_done ?? [];
     const toggleJourneyStep = (id: JourneyStepId) =>
         setContent((c) => {
@@ -2458,6 +2498,14 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                                         {journeySteps.find((x) => x.id === step.requires)?.label ?? "the previous step"} is
                                                                                         done
                                                                                     </span>
+                                                                                ) : step.href === KICKOFF_CALENDLY ? (
+                                                                                    // Booking opens over the dashboard instead of in a new
+                                                                                    // tab. Sending a client to calendly.com mid-journey costs
+                                                                                    // them their place in the list and lands them on a page
+                                                                                    // with no way back here.
+                                                                                    <Button size="sm" iconTrailing={Calendar} onClick={() => setBookingOpen(true)}>
+                                                                                        {step.hrefLabel ?? "Book your call"}
+                                                                                    </Button>
                                                                                 ) : (
                                                                                     <Button
                                                                                         size="sm"
@@ -3930,6 +3978,75 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                 onClose={closeFormModal}
                             />
                         )}
+                    </div>
+                </div>
+            )}
+
+            {/* Kick-off booking, embedded rather than linked out. Calendly serves this URL with
+                x-frame-options: ALLOWALL, so a plain iframe works and no third-party script has to
+                run on the dashboard. The escape hatch below covers the case where an extension or
+                a locked-down network blocks the frame — without it, a blocked iframe would leave
+                the client staring at an empty box with no way to book at all. */}
+            {bookingOpen && (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/70 p-4 backdrop-blur-[6px] duration-300 ease-out animate-in fade-in sm:p-8"
+                    onClick={(e) => e.target === e.currentTarget && setBookingOpen(false)}
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label="Book your Kick-off Call"
+                >
+                    <div className="flex h-full max-h-[880px] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-primary shadow-2xl ring-1 ring-secondary">
+                        <div className="flex shrink-0 items-center justify-between gap-4 border-b border-secondary px-5 py-4">
+                            <div className="min-w-0">
+                                <h2 className="text-md font-semibold text-primary">Book your Kick-off Call</h2>
+                                <p className="mt-0.5 text-sm text-tertiary">With Dustin and your Account Manager.</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setBookingOpen(false)}
+                                aria-label="Close"
+                                className="flex size-9 shrink-0 items-center justify-center rounded-lg text-fg-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-fg-secondary"
+                            >
+                                <XClose className="size-5" aria-hidden="true" />
+                            </button>
+                        </div>
+                        <iframe
+                            src={`${KICKOFF_CALENDLY}?embed_domain=${encodeURIComponent(window.location.hostname)}&embed_type=Inline&hide_gdpr_banner=1`}
+                            title="Calendly booking"
+                            className="min-h-0 w-full flex-1 border-0"
+                        />
+                        {/* Confirmation in our own voice. Calendly shows its own success screen inside
+                            the frame, but that screen knows nothing about the journey — this is what
+                            tells the client the step is ticked and where they go next. */}
+                        {justBooked && (
+                            <div className="flex shrink-0 items-start gap-3 border-t border-secondary bg-success-secondary px-5 py-4">
+                                <CheckCircle className="mt-0.5 size-5 shrink-0 text-fg-success-secondary" aria-hidden="true" />
+                                <div className="min-w-0">
+                                    <p className="text-sm font-semibold text-primary">Booked — that's step 2 done.</p>
+                                    <p className="mt-0.5 text-sm text-tertiary text-pretty">
+                                        Next up is step 3, the Onboarding Call itself, with Dustin and your Account Manager. Check your email for
+                                        the invite.
+                                    </p>
+                                </div>
+                                <Button size="sm" color="secondary" className="ml-auto shrink-0" onClick={() => setBookingOpen(false)}>
+                                    Close
+                                </Button>
+                            </div>
+                        )}
+                        <div className="shrink-0 border-t border-secondary px-5 py-3">
+                            <p className="text-xs text-quaternary">
+                                Calendar not loading?{" "}
+                                <a
+                                    href={KICKOFF_CALENDLY}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="font-semibold text-brand-secondary transition duration-100 ease-linear hover:underline"
+                                >
+                                    Open it in a new tab
+                                </a>
+                                .
+                            </p>
+                        </div>
                     </div>
                 </div>
             )}
