@@ -27,6 +27,7 @@ import { HomepageOverviewScreen } from "@/pages/homepage-overview-screen";
 import { HomeScreen } from "@/pages/home-screen";
 import { QuestionsScreen } from "@/pages/questions-screen";
 import { SettingsScreen } from "@/pages/settings-screen";
+import { DeploymentScreen } from "@/pages/deployment-screen";
 import { RoadmapScreen } from "@/pages/roadmap-screen";
 import { ThemeToggle } from "@/components/base/theme-toggle/theme-toggle";
 import { HelpMenu } from "@/components/application/help-menu";
@@ -41,7 +42,7 @@ import "@/styles/globals.css";
 // floating toggle is hidden there to avoid duplicates. The account avatar is NOT
 // shown globally — it's a team-only settings shortcut that lives in the dashboard
 // rail, and it must never appear on client-facing pages (owner guides, popups, etc.).
-const PAGES_WITHOUT_FLOATING_CHROME = ["/designsystem", "/home", "/home2", "/dashboard", "/webteam/ai-website-setup", "/webteam/component-library-architecture", "/clients/reading-your-clients", "/template-1", "/welcome-email-flow-overview", "/prompt-library", "/settings", "/roadmap", "/chat-widget-overview", "/client-dashboard-overview", "/homepage-overview", "/questions"];
+const PAGES_WITHOUT_FLOATING_CHROME = ["/designsystem", "/home", "/home2", "/dashboard", "/webteam/ai-website-setup", "/webteam/component-library-architecture", "/clients/reading-your-clients", "/template-1", "/welcome-email-flow-overview", "/prompt-library", "/settings", "/roadmap", "/chat-widget-overview", "/client-dashboard-overview", "/homepage-overview", "/questions", "/deployment"];
 
 // The floating "?" help menu is a team tool. It renders ONLY on internal team
 // pages and is hidden on every client-facing page — all client slugs
@@ -171,6 +172,7 @@ createRoot(document.getElementById("root")!).render(
                         <Route path="/home2" element={<HomeTwoScreen />} />
                         <Route path="/settings" element={<SettingsScreen />} />
                         <Route path="/roadmap" element={<RoadmapScreen />} />
+                        <Route path="/deployment" element={<DeploymentScreen />} />
                         <Route path="/chat-widget" element={<ChatWidgetScreen isTemplate />} />
                         <Route path="/chat-widget-overview" element={<ChatWidgetOverviewScreen />} />
                         <Route path="/client-dashboard-overview" element={<ClientDashboardOverviewScreen />} />
