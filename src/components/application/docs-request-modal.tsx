@@ -15,7 +15,7 @@ const buildMailto = (r: DocsRequest) => {
         "Details:",
         r.details?.trim() || "—",
         "",
-        "— Sent from HGM Docs",
+        "— Sent from HGM Portal",
     ].join("\n");
     return `mailto:${REQUEST_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 };

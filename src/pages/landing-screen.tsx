@@ -157,7 +157,7 @@ export const LandingScreen = () => {
                     }}
                 >
                     HiddenGem&nbsp;
-                    <span style={{ color: "rgba(148,163,255,0.9)" }}>Docs</span>
+                    <span style={{ color: "rgba(148,163,255,0.9)" }}>Portal</span>
                 </motion.h1>
 
                 {/* Back button */}
