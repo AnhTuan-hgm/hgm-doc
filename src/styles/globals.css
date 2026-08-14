@@ -90,14 +90,20 @@ body {
         transparent 350deg,
         transparent 360deg
     );
-    /* Punch the middle out so only the 2px band paints. */
-    mask:
-        linear-gradient(#000 0 0) content-box,
+    /* Punch the middle out so only the 2px band paints.
+       Longhands only — do NOT collapse these into the `mask` / `-webkit-mask` shorthand. The
+       shorthand resets mask-composite, and the production minifier reorders declarations: it
+       hoisted the composite above the shorthand, which reset it to `add`, and the gradient flooded
+       the whole card instead of tracing its border. It only broke in the built CSS, never in dev. */
+    mask-image:
+        linear-gradient(#000 0 0),
         linear-gradient(#000 0 0);
+    mask-clip: content-box, border-box;
     mask-composite: exclude;
-    -webkit-mask:
-        linear-gradient(#000 0 0) content-box,
+    -webkit-mask-image:
+        linear-gradient(#000 0 0),
         linear-gradient(#000 0 0);
+    -webkit-mask-clip: content-box, border-box;
     -webkit-mask-composite: xor;
     /* The card underneath already carries a flat brand ring, so a brand-coloured band alone is
        invisible against it. The glow is what separates the moving part from the static one. */
