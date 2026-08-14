@@ -7,6 +7,12 @@
   NODE_VERSION = "22"
   # Supabase custom domain. The project's own iymhjrmmgwrxdggcvmjn.supabase.co host still works
   # and still backs this one, so previously stored absolute Storage URLs keep resolving.
+  #
+  # Note: switching this back to the project host does NOT move the OAuth callback. The custom
+  # domain is set at the Supabase project level, so auth sends
+  # redirect_uri=https://api.hgmportal.com/auth/v1/callback whichever hostname the browser used.
+  # Google sign-in therefore depends on that URI being on OAuth client
+  # 896355080340-v9r42l0qg6585fkg3lpl7a2hkvh846cq, not on this value.
   VITE_SUPABASE_URL = "https://api.hgmportal.com"
   VITE_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5bWhqcm1tZ3dyeGRnZ2N2bWpuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4ODczMjMsImV4cCI6MjA5NzQ2MzMyM30.chkToSYCr6jRk6dCIwF1mqygIt1jiRTnoEUa_d-sJ-Y"
 
@@ -21,6 +27,20 @@
   command = "npm run dev -- --port 5180 --strictPort"
   targetPort = 5180
   port = 8888
+
+# Send the old Netlify hostname to the real domain. Both used to serve a full live copy of the
+# site, so anyone on an old bookmark kept starting sessions on docs-hgm.netlify.app — and Supabase
+# sends them back to whichever host they signed in from, which is how sign-in kept landing there.
+# Old links keep working; they just arrive at hgmportal.com. :splat carries the rest of the path.
+#
+# Must stay ABOVE the SPA fallback below: Netlify applies redirects in file order, and the /*
+# catch-all would swallow every request before this one is ever considered. Host-scoped, so branch
+# and deploy-preview URLs (deploy-preview-N--docs-hgm.netlify.app) are untouched.
+[[redirects]]
+  from = "https://docs-hgm.netlify.app/*"
+  to = "https://hgmportal.com/:splat"
+  status = 301
+  force = true
 
 # SPA fallback: let React Router handle client-side routes
 [[redirects]]
