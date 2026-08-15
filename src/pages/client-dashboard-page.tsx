@@ -1302,6 +1302,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
 
     // Lock state
     const [isLocked, setIsLocked] = useState(true);
+    const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
     /**
      * Clicking the client's logo or name enters the client preview — but only while locked.
@@ -1886,12 +1887,31 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
 
     /* ── Lock / save ── */
     /** Persist edits to the shared dashboard_pages row, then lock. */
+    /**
+     * Save, then lock.
+     *
+     * Reports what happened via `saveState`, which the Save button reads. This used to log a
+     * failed write to the console and lock anyway — survivable while the only way to trigger
+     * it was a keyboard shortcut you had to know about, but not once there's a button marked
+     * "Save": pressing it and getting a locked, apparently-finished dashboard is how an AM
+     * loses an afternoon of notes without ever being told.
+     *
+     * On failure it stays UNLOCKED. The edits are still in state, so the AM can try again;
+     * locking would hide the very fields that haven't been written yet.
+     */
     const persistAndLock = async () => {
         if (slug && !isTemplate) {
+            setSaveState("saving");
             const { error } = await supabase
                 .from("dashboard_pages")
                 .upsert({ slug, client_name: clientName.trim(), client_website: clientWebsite.trim(), data: content }, { onConflict: "slug" });
-            if (error) console.error("[client dashboard save] Supabase error:", error);
+            if (error) {
+                console.error("[client dashboard save] Supabase error:", error);
+                setSaveState("error");
+                return;
+            }
+            setSaveState("saved");
+            window.setTimeout(() => setSaveState((s) => (s === "saved" ? "idle" : s)), 2500);
         }
         setIsLocked(true);
     };
@@ -2461,6 +2481,50 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                     </div>
                                 )}
 
+                                {/* Edit / Save — the visible counterpart to Shift+E and Shift+S.
+                                    The shortcuts still work and still do exactly this; they were simply
+                                    invisible, so an AM who had never been told about them had no way in.
+                                    Full width with a label rather than an icon beside the theme toggle:
+                                    a third circle down there truncated "HiddenGem Media", and the words
+                                    are the part that makes it findable at all.
+
+                                    Team only, and hidden on the template, which has no row to save to. */}
+                                {isTeam && !isTemplate && (
+                                    <div className="border-t border-secondary px-5 py-3">
+                                        <button
+                                            type="button"
+                                            onClick={() => (isLocked ? setIsLocked(false) : void persistAndLock())}
+                                            disabled={saveState === "saving"}
+                                            title={isLocked ? "Shift+E" : "Shift+S"}
+                                            className={cx(
+                                                "flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition duration-100 ease-linear disabled:cursor-not-allowed disabled:opacity-50",
+                                                saveState === "error"
+                                                    ? "border-error bg-error-primary text-error-primary hover:bg-error-secondary"
+                                                    : isLocked
+                                                      ? "border-secondary bg-primary text-secondary hover:bg-tertiary hover:text-primary"
+                                                      : "border-brand bg-brand-solid text-white hover:opacity-90",
+                                            )}
+                                        >
+                                            {saveState === "saving" ? (
+                                                <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" />
+                                            ) : saveState === "error" ? (
+                                                <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
+                                            ) : isLocked ? (
+                                                <Edit01 className="size-4 shrink-0" aria-hidden="true" />
+                                            ) : (
+                                                <Check className="size-4 shrink-0" aria-hidden="true" />
+                                            )}
+                                            {saveState === "saving"
+                                                ? "Saving…"
+                                                : saveState === "error"
+                                                  ? "Try saving again"
+                                                  : isLocked
+                                                    ? "Edit dashboard"
+                                                    : "Save changes"}
+                                        </button>
+                                    </div>
+                                )}
+
                                 {/* Theme toggle — local to this side menu (the global floating toggle is
                         suppressed on client-dashboard pages since it overlapped the client badge). */}
                                 <div className="flex items-center gap-3 border-t border-secondary px-5 py-3">
@@ -2495,11 +2559,31 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                         type="button"
                                         onClick={() => setTheme(isDark ? "light" : "dark")}
                                         title={isDark ? "Switch to light mode" : "Switch to dark mode"}
-                                        className="flex size-9 items-center justify-center rounded-full border border-secondary bg-primary text-secondary transition duration-100 ease-linear hover:bg-tertiary hover:text-primary"
+                                        className="flex size-9 shrink-0 items-center justify-center rounded-full border border-secondary bg-primary text-secondary transition duration-100 ease-linear hover:bg-tertiary hover:text-primary"
                                     >
                                         {isDark ? <Sun className="size-[18px]" /> : <Moon01 className="size-[18px]" />}
                                     </button>
                                 </div>
+
+                                {/* Save outcome in words. The button's own colour change is not enough on
+                                    its own — a failed write is the one state an AM must not misread as done. */}
+                                {isTeam && !isTemplate && saveState !== "idle" && (
+                                    <div className="border-t border-secondary px-5 py-2">
+                                        <p
+                                            className={cx(
+                                                "text-xs",
+                                                saveState === "error" ? "text-error-primary" : saveState === "saved" ? "text-success-primary" : "text-quaternary",
+                                            )}
+                                            role={saveState === "error" ? "alert" : undefined}
+                                        >
+                                            {saveState === "saving"
+                                                ? "Saving…"
+                                                : saveState === "saved"
+                                                  ? "Saved"
+                                                  : "Couldn't save — your changes are still here. Press save to try again."}
+                                        </p>
+                                    </div>
+                                )}
 
                                 {/* Sidebar background upload — edit mode only. The solid color above stays
                         the default until the team sets one; clients see whatever is set. */}
