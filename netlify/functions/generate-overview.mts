@@ -66,7 +66,9 @@ The single rule that matters: every field must come from what the client actuall
 
 Write in plain, specific prose, not marketing language — this is read by a colleague, not the client. Prefer the client's own words for anything about their voice or positioning. Keep each field to a few sentences; the brief is scanned, not studied.
 
-Handles keep their @. URLs stay as the client gave them.`;
+Handles keep their @. URLs stay as the client gave them.
+
+A key ending in "__user" is the account NAME the client uses on that platform — "instagramLogin__user" is their Instagram account name, "tiktokLogin__user" their TikTok one. Use those to fill the matching platform fields. Passwords are deliberately not given to you; never ask for one, never guess one, and never put one in a field.`;
 
 /**
  * Turn a stand-in for "I don't know" into an actual empty field.
@@ -129,18 +131,23 @@ export default async (req: Request) => {
     /**
      * Which answers get sent to the model.
      *
-     * CREDENTIALS ARE EXCLUDED, and this is the important part. The Onboarding Form's Account
-     * Setup section collects real logins — Instagram, TikTok, PriceLabs, StayFi, the client's
-     * PMS and their domain host — storing them as `<field>__user` and `<field>__pass`. Those
-     * are a client's actual passwords. Nothing here needs them: the Overview Document is a
-     * marketing brief, and no field in it is improved by knowing a password. Sending them to
-     * any third party, for any reason, is not a trade worth making.
+     * PASSWORDS ARE EXCLUDED. The Onboarding Form's Account Setup section collects real
+     * logins — Instagram, TikTok, PriceLabs, StayFi, the client's PMS and their domain host —
+     * as `<field>__user` and `<field>__pass`. The team keeps the secrets in their password
+     * manager; this app only takes them in. No field in the Overview Document or the Master
+     * Brand Document is improved by knowing a password, which is what makes sending one a
+     * pure loss: third-party exposure that buys nothing.
+     *
+     * ACCOUNT NAMES ARE KEPT. `<field>__user` is what the client is called on that platform,
+     * and for the social accounts it IS the public handle the brief is asking for. A name
+     * without its password isn't a credential, and excluding it blocked the one thing the
+     * Platforms section exists to record.
      *
      * Media POINTERS are excluded too — "targetGuest__media": "acme/targetGuest-123.webm"
      * tells the model nothing and invites it to treat a filename as content. The transcripts
      * below are the readable form of those, and go in separately with their question label.
      */
-    const isCredential = (k: string) => /__(pass|user)$/.test(k) || /pass(word)?|secret|credential/i.test(k);
+    const isCredential = (k: string) => /__pass$/.test(k) || /pass(word)?|secret|credential/i.test(k);
     const readable = (o: Record<string, unknown>) =>
         Object.entries(o)
             .filter(
