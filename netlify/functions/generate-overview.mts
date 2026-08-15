@@ -126,12 +126,27 @@ export default async (req: Request) => {
     const visionAnswers = (brandVision.data?.data as Record<string, unknown> | undefined) ?? {};
     const spoken = (transcripts.data ?? []).filter((t) => (t.transcript ?? "").trim());
 
-    // Media POINTERS are not answers — "targetGuest__media": "acme/targetGuest-123.webm" tells
-    // the model nothing and invites it to treat a filename as content. The transcripts below
-    // are the readable form of those, and they go in separately with their question label.
+    /**
+     * Which answers get sent to the model.
+     *
+     * CREDENTIALS ARE EXCLUDED, and this is the important part. The Onboarding Form's Account
+     * Setup section collects real logins — Instagram, TikTok, PriceLabs, StayFi, the client's
+     * PMS and their domain host — storing them as `<field>__user` and `<field>__pass`. Those
+     * are a client's actual passwords. Nothing here needs them: the Overview Document is a
+     * marketing brief, and no field in it is improved by knowing a password. Sending them to
+     * any third party, for any reason, is not a trade worth making.
+     *
+     * Media POINTERS are excluded too — "targetGuest__media": "acme/targetGuest-123.webm"
+     * tells the model nothing and invites it to treat a filename as content. The transcripts
+     * below are the readable form of those, and go in separately with their question label.
+     */
+    const isCredential = (k: string) => /__(pass|user)$/.test(k) || /pass(word)?|secret|credential/i.test(k);
     const readable = (o: Record<string, unknown>) =>
         Object.entries(o)
-            .filter(([k, v]) => !k.endsWith("__media") && !k.endsWith("__mediaKind") && typeof v !== "object" && String(v ?? "").trim())
+            .filter(
+                ([k, v]) =>
+                    !k.endsWith("__media") && !k.endsWith("__mediaKind") && !isCredential(k) && typeof v !== "object" && String(v ?? "").trim(),
+            )
             .map(([k, v]) => `${k}: ${String(v).trim()}`)
             .join("\n");
 
