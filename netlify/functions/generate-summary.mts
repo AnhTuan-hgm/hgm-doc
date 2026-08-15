@@ -64,8 +64,11 @@ export default async (req: Request) => {
 
     const supabaseUrl = process.env.VITE_SUPABASE_URL;
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const deepgramKey = process.env.DEEPGRAM_API_KEY;
-    const anthropicKey = process.env.ANTHROPIC_API_KEY;
+    // Trimmed because these are pasted into a web form by hand, and a trailing newline is
+    // invisible in the Netlify UI but produces a header Deepgram rejects as INVALID_AUTH —
+    // indistinguishable, from the outside, from simply having the wrong key.
+    const deepgramKey = process.env.DEEPGRAM_API_KEY?.trim();
+    const anthropicKey = process.env.ANTHROPIC_API_KEY?.trim();
 
     if (!supabaseUrl || !serviceKey) {
         console.error("[generate-summary] Supabase env missing — cannot even record the failure.");
@@ -85,19 +88,38 @@ export default async (req: Request) => {
 
     const { data: row, error: readErr } = await supabaseAdmin
         .from("script_logs")
-        .select("id,status,source_path,source_label,client_name,media_kind")
+        .select("id,status,updated_at,source_path,source_label,client_name,media_kind")
         .eq("id", id)
         .single();
     if (readErr || !row) return Response.json({ error: "Not found." }, { status: 404 });
 
     /**
-     * Idempotency guard. Netlify retries a failed background function after 1 minute and
-     * again after 2, and this endpoint is publicly reachable. Without this, one hiccup
+     * Which rows may (re)start.
+     *
+     * This guard exists because Netlify retries a failed background function after 1 minute
+     * and again after 2, and the endpoint is publicly reachable — without it, one hiccup
      * transcribes and bills the same recording three times and overwrites a good result.
-     * Anything past `queued` has already been claimed.
+     *
+     * It originally shipped as `status !== "queued"`, which was too strict: it silently
+     * killed the Retry button, because a failed row is `error`, not `queued`. The button
+     * called this, this skipped, and the page showed no change at all. Found on the first
+     * real failure in production.
+     *
+     * So: `error` restarts (a person clicked Retry, and the auto-retry path can't reach
+     * here because every failure returns 200). `done` never restarts. A row mid-flight
+     * restarts only once it's stale enough that the run that claimed it is clearly gone —
+     * the same 5-minute threshold the page uses to label it "Stalled", so the button and
+     * the function can't disagree about what is retryable.
      */
-    if (row.status !== "queued") {
-        console.log(`[generate-summary] ${id} already ${row.status} — skipping.`);
+    const STALE_MS = 5 * 60 * 1000;
+    const ageMs = Date.now() - new Date(row.updated_at as string).getTime();
+    const restartable =
+        row.status === "queued" ||
+        row.status === "error" ||
+        ((row.status === "transcribing" || row.status === "summarising") && ageMs > STALE_MS);
+
+    if (!restartable) {
+        console.log(`[generate-summary] ${id} is ${row.status} (${Math.round(ageMs / 1000)}s old) — skipping.`);
         return Response.json({ ok: true, skipped: true });
     }
 
@@ -115,7 +137,9 @@ export default async (req: Request) => {
     if (!anthropicKey) return fail("ANTHROPIC_API_KEY isn't set in Netlify.");
 
     try {
-        await advance({ status: "transcribing" });
+        // Clear the previous error: a Retry that leaves the old message on the row reads as
+        // "failed again" for the whole minute it's actually working.
+        await advance({ status: "transcribing", error: null });
 
         // An hour is far longer than the job needs, but Deepgram fetches the URL itself
         // and a queue on their side must not expire the link mid-download.
@@ -135,6 +159,14 @@ export default async (req: Request) => {
         if (!dgRes.ok) {
             const detail = await dgRes.text().catch(() => "");
             console.error("[generate-summary] Deepgram rejected the request", dgRes.status, detail.slice(0, 500));
+            // 401 is the one failure a non-technical reader can act on, so it gets plain
+            // words instead of Deepgram's JSON. The key length is a safe hint: a truncated
+            // paste is the usual cause and the number gives it away without exposing the key.
+            if (dgRes.status === 401) {
+                return fail(
+                    `Deepgram rejected the API key (${deepgramKey.length} characters). Check DEEPGRAM_API_KEY in Netlify → Site settings → Environment variables — a Deepgram key is normally 40 characters. Regenerating it in the Deepgram console and pasting it again fixes a truncated or revoked key.`,
+                );
+            }
             return fail(`Transcription failed (Deepgram ${dgRes.status}). ${detail.slice(0, 200)}`);
         }
 
