@@ -68,6 +68,24 @@ Write in plain, specific prose, not marketing language — this is read by a col
 
 Handles keep their @. URLs stay as the client gave them.`;
 
+/**
+ * Turn a stand-in for "I don't know" into an actual empty field.
+ *
+ * The prompt asks for an empty string when the source material doesn't cover a field, and
+ * mostly that is what comes back — but the first real run returned the literal `<UNKNOWN>`
+ * for client_name, which then renders as the value of that field instead of "Not filled in".
+ * A prompt can't be relied on to never do this, so the check lives here.
+ *
+ * Deliberately whole-value only: a field reading exactly "unknown" carries nothing, while a
+ * sentence that merely contains the word ("their target market is unknown to them") is real
+ * content an account manager should see.
+ */
+const PLACEHOLDER = /^[<\[(]?\s*(unknown|n\/?a|none|null|tbd|not\s+(stated|provided|given|specified|mentioned|available|filled(\s+in)?)|[-–—?])\s*[>\])]?[.]?$/i;
+const blankIfPlaceholder = (v: string) => {
+    const t = v.trim();
+    return PLACEHOLDER.test(t) ? "" : t;
+};
+
 export default async (req: Request) => {
     if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
 
@@ -156,7 +174,7 @@ export default async (req: Request) => {
         // Only fields the form actually renders are passed on. If the schema and the form drift
         // apart, the extra keys are dropped here rather than saved into the row forever.
         const raw = block.input as Record<string, unknown>;
-        const doc = Object.fromEntries(Object.keys(FIELDS).map((k) => [k, String(raw[k] ?? "").trim()]));
+        const doc = Object.fromEntries(Object.keys(FIELDS).map((k) => [k, blankIfPlaceholder(String(raw[k] ?? ""))]));
 
         return Response.json({ doc, sources: { intake: !!intakeText, brandVision: !!visionText, recordings: spoken.length } });
     } catch (err) {
