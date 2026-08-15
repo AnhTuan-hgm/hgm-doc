@@ -102,9 +102,6 @@ type FaqItem = NonNullable<DashboardContent["foundation"]>["faqs"][number];
 
 const STATUS_OPTIONS = ["Onboarding", "Active", "Paused"] as const;
 
-/** Submission dates, formatted the same way the form cards already print them. */
-const fmtDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" });
-
 const normEmail = (e: string) => e.trim().toLowerCase();
 
 /**
@@ -931,16 +928,11 @@ const TeamRecordingSummary = ({ log }: { log?: ScriptLog }) => {
 const OnboardingAnswers = ({
     sections,
     onEdit,
-    canExport,
     isTeamView,
     clientName,
-    formTitle,
-    submittedOn,
 }: {
     sections: OnboardingAnswerSection[];
     onEdit: (field: string) => void;
-    /** Team-only: the PDF export can carry a client's answers off-platform. */
-    canExport?: boolean;
     /**
      * Whose voice to write in. The client reading this panel is looking at their OWN submission,
      * so "Their answers" tells them the site is talking about them to somebody else. False while
@@ -948,12 +940,8 @@ const OnboardingAnswers = ({
      */
     isTeamView?: boolean;
     clientName: string;
-    formTitle: string;
-    submittedOn?: string;
 }) => {
     const [shown, setShown] = useState<Record<string, boolean>>({});
-    const [pdfBusy, setPdfBusy] = useState(false);
-    const [pdfError, setPdfError] = useState(false);
     const answered = sections.flatMap((s) => s.rows).filter((r) => r.lines.length || r.mediaPath).length;
 
     /* ── Team-only: AI summaries of the recorded answers ────────────────
@@ -1046,32 +1034,6 @@ const OnboardingAnswers = ({
         setBulkBusy(false);
     };
 
-    /** jsPDF arrives on click, so it costs nothing until someone exports. */
-    const exportPdf = async () => {
-        if (pdfBusy) return;
-        setPdfBusy(true);
-        setPdfError(false);
-        try {
-            const { buildFormAnswersPdf, formAnswersFileName } = await import("@/utils/form-answers-pdf");
-            buildFormAnswersPdf({
-                clientName,
-                formTitle,
-                submittedOn,
-                generatedOn: new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
-                sections,
-                // Credentials stay masked: a PDF gets emailed and filed, a much weaker
-                // place for a client's logins than the dashboard behind a session.
-                includeSecrets: false,
-            }).save(formAnswersFileName(clientName, formTitle));
-        } catch (err) {
-            console.error("[form answers] PDF export failed", err);
-            setPdfError(true);
-            setTimeout(() => setPdfError(false), 3200);
-        } finally {
-            setPdfBusy(false);
-        }
-    };
-
     return (
         <div className="mt-5 border-t border-secondary pt-5">
             <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
@@ -1084,13 +1046,8 @@ const OnboardingAnswers = ({
                         {summaryError}
                     </span>
                 )}
-                {(canExport || isTeamView) && (
+                {isTeamView && (
                     <div className="flex flex-wrap items-center gap-3">
-                        {pdfError && (
-                            <span className="text-sm text-error-primary" role="alert">
-                                Couldn't build the PDF.
-                            </span>
-                        )}
                         {/* The one control that reads every recording on this form. Team only —
                             the client never sees it, and never sees what it produces. Hidden
                             once there's nothing left to do rather than sitting there disabled,
@@ -1107,18 +1064,6 @@ const OnboardingAnswers = ({
                                 {bulkBusy
                                     ? "Starting…"
                                     : `Summarise ${pending.length} recording${pending.length === 1 ? "" : "s"}`}
-                            </Button>
-                        )}
-                        {canExport && (
-                            <Button
-                                size="sm"
-                                color="secondary"
-                                iconLeading={Download01}
-                                isLoading={pdfBusy}
-                                showTextWhileLoading
-                                onClick={() => void exportPdf()}
-                            >
-                                {pdfBusy ? "Preparing PDF…" : "Download PDF"}
                             </Button>
                         )}
                     </div>
@@ -2957,11 +2902,8 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                             {intakeSubmitted && intakeData && (
                                                                 <OnboardingAnswers
                                                                     sections={clientOnboardingAnswers(intakeData)}
-                                                                    canExport={isTeam}
                                                                     isTeamView={isTeam}
                                                                     clientName={clientName}
-                                                                    formTitle="Onboarding Form"
-                                                                    submittedOn={intakeSubmittedAt ? fmtDate(intakeSubmittedAt) : undefined}
                                                                     onEdit={(field) => {
                                                                         setFormModalField(field);
                                                                         setFormModal("intake");
@@ -3119,11 +3061,8 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                             {onboardingSubmitted && brandData && (
                                                                 <OnboardingAnswers
                                                                     sections={hostOnboardingAnswers(brandData)}
-                                                                    canExport={isTeam}
                                                                     isTeamView={isTeam}
                                                                     clientName={clientName}
-                                                                    formTitle="Brand Vision Form"
-                                                                    submittedOn={onboardingSubmittedAt ? fmtDate(onboardingSubmittedAt) : undefined}
                                                                     onEdit={(field) => {
                                                                         setFormModalField(field);
                                                                         setFormModal("brand");
