@@ -356,7 +356,9 @@ const mergeContent = (partial?: Partial<DashboardContent> | null): DashboardCont
  * section body.
  */
 const PHASES = {
-    input: { num: null, label: "Client input", bg: "bg-utility-indigo-50", text: "text-utility-indigo-700" },
+    // "Your forms", not "Client input": the client reading this dashboard would be looking at a
+    // category named after their role in our process. Every label here is read by them first.
+    input: { num: null, label: "Your forms", bg: "bg-utility-indigo-50", text: "text-utility-indigo-700" },
     brandwork: { num: null, label: "Brand foundation", bg: "bg-brand-secondary", text: "text-brand-secondary" },
     marketing: { num: null, label: "Marketing", bg: "bg-utility-purple-50", text: "text-utility-purple-700" },
     resources: { num: null, label: "Resources", bg: "bg-success-secondary", text: "text-success-primary" },
@@ -528,7 +530,7 @@ const EyeOffGlyph = () => (
  */
 const NAV_GROUPS: { label: string; phase: PhaseId; items: { id: SectionId; label: string; icon: typeof LayoutAlt01; soon?: boolean; to?: string }[] }[] = [
     {
-        label: "Client input",
+        label: "Your forms",
         phase: "input",
         items: [
             { id: "intake", label: "Onboarding form", icon: ClipboardCheck },
