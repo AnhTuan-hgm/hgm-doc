@@ -1648,8 +1648,26 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ slug }),
             });
-            const json = await res.json();
-            if (!res.ok || json?.error) throw new Error(json?.error || `Request failed (${res.status})`);
+            /* Read as text and parse by hand. res.json() throws a raw
+               "Unexpected end of JSON input" when the reply isn't JSON, and that string then
+               lands in front of an account manager as the entire explanation. The two ways it
+               happens are the local dev server, which serves no functions at all, and Netlify
+               returning an HTML error page — so both get named instead. */
+            const body = await res.text();
+            let json: { doc?: Partial<OverviewDoc>; error?: string } | null = null;
+            try {
+                json = body ? JSON.parse(body) : null;
+            } catch {
+                json = null;
+            }
+            if (!json) {
+                throw new Error(
+                    res.status === 404
+                        ? "Drafting only runs on the live site — the local dev server doesn't serve it."
+                        : `The server didn't send a usable reply (${res.status}). Try again in a moment.`,
+                );
+            }
+            if (!res.ok || json.error) throw new Error(json.error || `Request failed (${res.status})`);
             patchOverviewDoc({
                 ...(json.doc as Partial<OverviewDoc>),
                 generated_at: new Date().toISOString(),
