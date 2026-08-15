@@ -114,8 +114,37 @@ export async function queueSummary(input: {
     return row;
 }
 
-/** Re-poke the function for a row that stalled. Safe to call repeatedly — the function
- *  ignores anything that isn't still `queued`. */
+/**
+ * The newest summary for each of the given recordings, keyed by storage path.
+ *
+ * One query for a whole answers panel rather than one per recording — a submitted form can
+ * carry a dozen recordings, and a dozen round trips would be visible on every page load.
+ *
+ * Call this ONLY for a team viewer. The table denies anon outright and restricts
+ * `authenticated` to @hiddengem.media, so a client would get a 42501 rather than an empty
+ * result, and an error is a worse thing to render than nothing.
+ */
+export async function listSummariesForPaths(paths: string[]): Promise<Record<string, ScriptLog>> {
+    if (!paths.length) return {};
+    const { data, error } = await supabase
+        .from("script_logs")
+        .select("*")
+        .in("source_path", paths)
+        .order("created_at", { ascending: false });
+    if (error) throw error;
+
+    // Newest wins. Rows are already sorted newest-first, so the first one seen for a path is
+    // the one to keep — a recording summarised twice should show the latest attempt, not the
+    // first, or a successful retry would stay hidden behind the failure it replaced.
+    const byPath: Record<string, ScriptLog> = {};
+    for (const row of (data ?? []) as ScriptLog[]) {
+        if (!byPath[row.source_path]) byPath[row.source_path] = row;
+    }
+    return byPath;
+}
+
+/** Re-poke the function for a row that stalled or failed. Safe to call repeatedly — the
+ *  function ignores anything already finished or still legitimately running. */
 export async function retrySummary(id: string): Promise<void> {
     await fetch("/.netlify/functions/generate-summary", {
         method: "POST",

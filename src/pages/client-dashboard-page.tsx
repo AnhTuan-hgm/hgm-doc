@@ -1,6 +1,7 @@
-import { type ChangeEvent, type FC, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ChangeEvent, type FC, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 // Functional UI icons — Untitled UI PRO, line style (drop-in for the free set).
 import {
+    AlertTriangle,
     ArrowDown,
     ArrowRight,
     ArrowUp,
@@ -8,9 +9,14 @@ import {
     Calendar,
     Camera01,
     Check,
+    CheckDone01,
     BookOpen01,
     CheckCircle,
     ChevronDown,
+    Flag01,
+    Lightbulb01,
+    MessageTextSquare01,
+    Stars02,
     ClipboardCheck,
     Copy01,
     Download01,
@@ -55,6 +61,7 @@ import { Instagram } from "@/components/foundations/social-icons";
 import { Reveal } from "@/components/shared-assets/reveal";
 import { useAuthUser } from "@/hooks/use-auth-user";
 import { useEditShortcuts } from "@/hooks/use-edit-shortcuts";
+import { isInFlight, isStalled, listSummariesForPaths, queueSummary, retrySummary, type ScriptLog } from "@/lib/script-logs";
 import { type DashboardContent, type HostOnboardingData, supabase } from "@/lib/supabase";
 import { useSuppressFloatingThemeToggle, useTheme } from "@/providers/theme-provider";
 import { compressImageFile } from "@/utils/compress-image";
@@ -795,6 +802,120 @@ const InlineRecording = ({ path, kind }: { path: string; kind: "audio" | "video"
     );
 };
 
+/** One labelled list inside a recording summary. Renders nothing when the model had
+ *  nothing to put in it, so an empty answer doesn't produce four empty headings. */
+const SummaryBullets = ({ title, icon: Icon, items }: { title: string; icon: typeof Flag01; items?: string[] }) => {
+    if (!items?.length) return null;
+    return (
+        <div>
+            <p className="flex items-center gap-1.5 text-xs font-semibold text-secondary">
+                <Icon className="size-3.5 shrink-0 text-fg-quaternary" aria-hidden="true" />
+                {title}
+            </p>
+            <ul className="mt-1 flex flex-col gap-1">
+                {items.map((item, i) => (
+                    <li key={i} className="flex gap-2 text-sm text-tertiary">
+                        <span className="mt-1.5 size-1 shrink-0 rounded-full bg-quaternary" aria-hidden="true" />
+                        <span className="text-pretty">{item}</span>
+                    </li>
+                ))}
+            </ul>
+        </div>
+    );
+};
+
+/**
+ * AI summary of a recorded answer — TEAM ONLY.
+ *
+ * An AM opening a submitted form shouldn't have to sit through a two-minute video to find
+ * out what the client said. This reads the recording back as key points and action items.
+ *
+ * The client must never see this, so it is gated twice over. The caller renders it only
+ * when `isTeamView`, and independently of that the `script_logs` table denies `anon`
+ * outright and restricts `authenticated` to @hiddengem.media — so even a bug that rendered
+ * this for a client would have no data to show. The visible "Only your team sees this"
+ * label is not decoration: an AM needs to know at a glance that a machine's reading of the
+ * client's words is not being shown back to the client as if it were their own answer.
+ *
+ * Summaries that already exist appear on their own; generating a new one takes a click,
+ * because transcription is billed per minute and a dashboard that quietly spent money
+ * every time someone opened a form would be a bad surprise.
+ */
+const TeamRecordingSummary = ({ log }: { log?: ScriptLog }) => {
+    const shell = "mt-3 rounded-xl bg-secondary p-3 ring-1 ring-secondary";
+    const eyebrow = (
+        <p className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-brand-secondary uppercase">
+            <Stars02 className="size-3.5 shrink-0" aria-hidden="true" />
+            AI summary
+            <span className="font-normal tracking-normal text-quaternary normal-case">· only your team sees this</span>
+        </p>
+    );
+
+    // Nothing generated yet. Deliberately not a per-recording button: the AM presses one
+    // control above the answers and every recording on the form is handled, so a form with
+    // a dozen recordings isn't a dozen clicks.
+    if (!log) {
+        return <p className="mt-2 text-xs text-quaternary">Not summarised yet.</p>;
+    }
+
+    if (isInFlight(log)) {
+        return (
+            <div className={shell}>
+                {eyebrow}
+                <p className="mt-1.5 flex items-center gap-2 text-sm text-tertiary">
+                    <span className="size-3.5 animate-spin rounded-full border-2 border-brand border-t-transparent" aria-hidden="true" />
+                    {log.status === "transcribing" ? "Transcribing the recording…" : log.status === "summarising" ? "Writing the summary…" : "Waiting to start…"}
+                    {isStalled(log) && " — this is taking longer than expected."}
+                </p>
+            </div>
+        );
+    }
+
+    if (log.status === "error") {
+        return (
+            <div className="mt-3 rounded-xl bg-error-primary p-3 ring-1 ring-error_subtle">
+                {eyebrow}
+                <p className="mt-1.5 flex gap-2 text-sm text-tertiary text-pretty">
+                    <AlertTriangle className="mt-0.5 size-4 shrink-0 text-fg-error-secondary" aria-hidden="true" />
+                    {log.error || "That didn't work."}
+                </p>
+                <button
+                    type="button"
+                    onClick={() => void retrySummary(log.id)}
+                    className="mt-2 text-sm font-semibold text-brand-secondary transition duration-100 ease-linear hover:underline"
+                >
+                    Try again
+                </button>
+            </div>
+        );
+    }
+
+    const s = log.summary;
+    if (!s) return null;
+
+    return (
+        <div className={shell}>
+            {eyebrow}
+            <p className="mt-1.5 text-sm font-semibold text-primary text-pretty">{s.headline}</p>
+            {s.context && <p className="mt-1 text-sm text-tertiary text-pretty">{s.context}</p>}
+            <div className="mt-3 flex flex-col gap-3">
+                <SummaryBullets title="Key points" icon={Lightbulb01} items={s.key_points} />
+                <SummaryBullets title="Action items" icon={CheckDone01} items={s.action_items} />
+                <SummaryBullets title="Worth quoting" icon={MessageTextSquare01} items={s.quotes} />
+                <SummaryBullets title="Flagged" icon={Flag01} items={s.flags} />
+            </div>
+            {log.transcript && (
+                <details className="mt-3">
+                    <summary className="cursor-pointer list-none text-xs font-medium text-quaternary select-none hover:text-tertiary">
+                        Read the transcript instead
+                    </summary>
+                    <p className="mt-2 text-sm whitespace-pre-wrap text-tertiary">{log.transcript}</p>
+                </details>
+            )}
+        </div>
+    );
+};
+
 /**
  * A submitted form rendered inline, grouped by section.
  *
@@ -835,6 +956,96 @@ const OnboardingAnswers = ({
     const [pdfError, setPdfError] = useState(false);
     const answered = sections.flatMap((s) => s.rows).filter((r) => r.lines.length || r.mediaPath).length;
 
+    /* ── Team-only: AI summaries of the recorded answers ────────────────
+       Every query below is gated on isTeamView. That is belt-and-braces rather than the
+       actual protection — script_logs denies anon and restricts authenticated to
+       @hiddengem.media — but a client should not be firing requests that can only 403. */
+
+    const { user: viewer } = useAuthUser();
+    const [summaries, setSummaries] = useState<Record<string, ScriptLog>>({});
+    const [bulkBusy, setBulkBusy] = useState(false);
+    const [summaryError, setSummaryError] = useState("");
+
+    const mediaRows = useMemo(() => sections.flatMap((s) => s.rows).filter((r) => r.mediaPath), [sections]);
+    // A stable primitive to depend on: the rows array is rebuilt every render, so depending
+    // on it directly would refetch summaries in a loop.
+    const pathKey = mediaRows.map((r) => r.mediaPath).join("|");
+
+    const loadSummaries = useCallback(async () => {
+        const paths = pathKey ? pathKey.split("|") : [];
+        if (!isTeamView || !paths.length) return;
+        try {
+            setSummaries(await listSummariesForPaths(paths));
+        } catch (err) {
+            // Non-fatal by design: the answers themselves must still render. A team member
+            // who can't reach script_logs sees the recordings exactly as before.
+            console.error("[dashboard] could not load recording summaries", err);
+        }
+    }, [isTeamView, pathKey]);
+
+    useEffect(() => {
+        void loadSummaries();
+    }, [loadSummaries]);
+
+    // Generation is a background function that can't call back, so the only way to learn it
+    // finished is to look again — but only while something is actually running.
+    const anyInFlight = Object.values(summaries).some(isInFlight);
+    const loadRef = useRef(loadSummaries);
+    loadRef.current = loadSummaries;
+    useEffect(() => {
+        if (!anyInFlight) return;
+        const id = window.setInterval(() => void loadRef.current(), 4000);
+        return () => window.clearInterval(id);
+    }, [anyInFlight]);
+
+    /**
+     * Recordings with no summary and nothing already running for them.
+     *
+     * Anything already `done` is excluded, so pressing the button twice doesn't pay to
+     * transcribe the same audio again. A failed row is excluded too — it has its own "Try
+     * again" so one broken recording can't make the bulk button re-run the other eleven.
+     */
+    const pending = mediaRows.filter((r) => !summaries[r.mediaPath]);
+
+    /**
+     * One press, every recording on this form.
+     *
+     * Queued one at a time rather than with Promise.all: each row appears as it's accepted,
+     * so a form with a dozen recordings visibly fills in instead of sitting still and then
+     * changing all at once. The actual transcription work happens in parallel anyway — these
+     * are just the inserts, and each one hands off to a background function that returns
+     * immediately.
+     */
+    const generateAll = async () => {
+        if (!pending.length) return;
+        setBulkBusy(true);
+        setSummaryError("");
+        let failed = 0;
+        for (const row of pending) {
+            try {
+                const created = await queueSummary({
+                    // Recordings are namespaced by the FORM's slug, not the dashboard's, so
+                    // the owning slug comes from the path rather than from this page.
+                    clientSlug: row.mediaPath.split("/")[0],
+                    clientName,
+                    sourcePath: row.mediaPath,
+                    sourceLabel: row.label,
+                    mediaKind: row.mediaKind,
+                    createdBy: viewer?.email ?? "",
+                });
+                setSummaries((prev) => ({ ...prev, [row.mediaPath]: created }));
+            } catch (err) {
+                console.error("[dashboard] could not queue a summary for", row.mediaPath, err);
+                failed++;
+            }
+        }
+        if (failed) {
+            setSummaryError(`Couldn't start ${failed} of ${pending.length} — press again to retry those.`);
+            setTimeout(() => setSummaryError(""), 6000);
+        }
+        setBulkBusy(false);
+    };
+
     /** jsPDF arrives on click, so it costs nothing until someone exports. */
     const exportPdf = async () => {
         if (pdfBusy) return;
@@ -868,23 +1079,48 @@ const OnboardingAnswers = ({
                     {isTeamView ? "Their answers" : "Your answers"}{" "}
                     <span className="font-normal text-tertiary tabular-nums">· {answered} answered</span>
                 </p>
-                {canExport && (
+                {summaryError && (
+                    <span className="text-sm text-error-primary" role="alert">
+                        {summaryError}
+                    </span>
+                )}
+                {(canExport || isTeamView) && (
                     <div className="flex flex-wrap items-center gap-3">
                         {pdfError && (
                             <span className="text-sm text-error-primary" role="alert">
                                 Couldn't build the PDF.
                             </span>
                         )}
-                        <Button
-                            size="sm"
-                            color="secondary"
-                            iconLeading={Download01}
-                            isLoading={pdfBusy}
-                            showTextWhileLoading
-                            onClick={() => void exportPdf()}
-                        >
-                            {pdfBusy ? "Preparing PDF…" : "Download PDF"}
-                        </Button>
+                        {/* The one control that reads every recording on this form. Team only —
+                            the client never sees it, and never sees what it produces. Hidden
+                            once there's nothing left to do rather than sitting there disabled,
+                            because a permanently greyed-out button reads as broken. */}
+                        {isTeamView && pending.length > 0 && (
+                            <Button
+                                size="sm"
+                                color="secondary"
+                                iconLeading={Stars02}
+                                isLoading={bulkBusy}
+                                showTextWhileLoading
+                                onClick={() => void generateAll()}
+                            >
+                                {bulkBusy
+                                    ? "Starting…"
+                                    : `Summarise ${pending.length} recording${pending.length === 1 ? "" : "s"}`}
+                            </Button>
+                        )}
+                        {canExport && (
+                            <Button
+                                size="sm"
+                                color="secondary"
+                                iconLeading={Download01}
+                                isLoading={pdfBusy}
+                                showTextWhileLoading
+                                onClick={() => void exportPdf()}
+                            >
+                                {pdfBusy ? "Preparing PDF…" : "Download PDF"}
+                            </Button>
+                        )}
                     </div>
                 )}
             </div>
@@ -934,6 +1170,9 @@ const OnboardingAnswers = ({
                                                 ),
                                             )}
                                             {row.mediaPath && <InlineRecording path={row.mediaPath} kind={row.mediaKind} />}
+                                            {/* Team only. The client keeps seeing exactly what they
+                                                recorded and nothing else. */}
+                                            {row.mediaPath && isTeamView && <TeamRecordingSummary log={summaries[row.mediaPath]} />}
                                         </dd>
                                         <button
                                             type="button"
