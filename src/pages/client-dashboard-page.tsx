@@ -62,7 +62,7 @@ import { Reveal } from "@/components/shared-assets/reveal";
 import { useAuthUser } from "@/hooks/use-auth-user";
 import { useEditShortcuts } from "@/hooks/use-edit-shortcuts";
 import { isInFlight, isStalled, listSummariesForPaths, queueSummary, retrySummary, type ScriptLog } from "@/lib/script-logs";
-import { type DashboardContent, type HostOnboardingData, supabase } from "@/lib/supabase";
+import { type DashboardContent, type HostOnboardingData, type OverviewDoc, supabase } from "@/lib/supabase";
 import { useSuppressFloatingThemeToggle, useTheme } from "@/providers/theme-provider";
 import { compressImageFile } from "@/utils/compress-image";
 import { cx } from "@/utils/cx";
@@ -228,6 +228,98 @@ const DEFAULT_FOUNDATION: NonNullable<DashboardContent["foundation"]> = {
     localRecommendations: "",
     bookingLinks: "",
     faqs: [],
+};
+
+/**
+ * The Client Overview Document's fields, in the order they appear on screen.
+ *
+ * One list drives the form, the "x of 26 filled" counter and the tool schema the model
+ * fills, so a field can't exist in one of those and be missing from another. `long` picks a
+ * textarea over a single line; `half` puts two fields side by side.
+ */
+const OVERVIEW_SECTIONS: {
+    id: string;
+    title: string;
+    fields: { key: keyof OverviewDoc; label: string; placeholder?: string; long?: boolean; half?: boolean }[];
+}[] = [
+    {
+        id: "client",
+        title: "Client information",
+        fields: [
+            { key: "client_name", label: "Client name", half: true },
+            { key: "business_name", label: "Business name", half: true },
+            { key: "email", label: "Email", placeholder: "you@example.com", half: true },
+            { key: "business_type", label: "Business type", placeholder: "e.g. cabins, beach houses", half: true },
+            { key: "locations", label: "Business location(s)" },
+        ],
+    },
+    {
+        id: "platforms",
+        title: "Platforms",
+        fields: [
+            { key: "instagram", label: "Instagram", placeholder: "@handle", half: true },
+            { key: "tiktok", label: "TikTok", placeholder: "@handle", half: true },
+            { key: "direct_booking_website", label: "Direct booking website", placeholder: "https://", half: true },
+            { key: "airbnb", label: "Airbnb", placeholder: "https://", half: true },
+        ],
+    },
+    {
+        id: "goals",
+        title: "Business goals & objectives",
+        fields: [
+            { key: "short_term_goals", label: "Short-term goals", placeholder: "e.g. increasing bookings, building brand awareness, optimizing listings", long: true },
+            { key: "long_term_goals", label: "Long-term goals", placeholder: "e.g. business growth, equity value, direct booking focus", long: true },
+            { key: "success_metrics", label: "Key success metrics", placeholder: "e.g. website conversion rate, ADR, occupancy rate", long: true },
+        ],
+    },
+    {
+        id: "brand",
+        title: "Brand & positioning",
+        fields: [
+            { key: "target_audience", label: "Target audience", long: true },
+            { key: "unique_selling_points", label: "Unique selling points", long: true },
+            { key: "branding", label: "Branding", long: true },
+            { key: "competitor_inspiration", label: "Competitor inspiration", long: true, half: true },
+            { key: "market_insights", label: "Market insights", long: true, half: true },
+        ],
+    },
+    {
+        id: "preferences",
+        title: "Client preferences & notes",
+        fields: [
+            { key: "communication_style", label: "Preferred communication style", long: true },
+            { key: "concerns", label: "Client's concerns or requests", long: true },
+            { key: "other_notes", label: "Other notes", long: true },
+        ],
+    },
+];
+
+/** The kickoff numbers. Kept out of OVERVIEW_SECTIONS because they render as tiles, not rows. */
+const OVERVIEW_BASELINE: { key: keyof OverviewDoc; label: string }[] = [
+    { key: "instagram_followers", label: "Instagram followers" },
+    { key: "facebook_followers", label: "Facebook followers" },
+    { key: "tiktok_followers", label: "TikTok followers" },
+    { key: "email_list_size", label: "Email list size" },
+];
+
+/** Everything the "x of 26 fields filled" counter looks at. Properties are a list, so they
+ *  are deliberately not part of the count — a client with two properties isn't 24/26 done. */
+const OVERVIEW_COUNTED_FIELDS: (keyof OverviewDoc)[] = [
+    ...OVERVIEW_SECTIONS.flatMap((s) => s.fields.map((f) => f.key)),
+    ...OVERVIEW_BASELINE.map((f) => f.key),
+    "direct_booking_split",
+    "instagram_screenshot",
+];
+
+const DEFAULT_OVERVIEW_DOC: OverviewDoc = {
+    client_name: "", business_name: "", email: "", business_type: "", locations: "",
+    instagram: "", tiktok: "", direct_booking_website: "", airbnb: "",
+    properties: [],
+    short_term_goals: "", long_term_goals: "", success_metrics: "",
+    target_audience: "", unique_selling_points: "", branding: "", competitor_inspiration: "", market_insights: "",
+    communication_style: "", concerns: "", other_notes: "",
+    instagram_followers: "", facebook_followers: "", tiktok_followers: "", email_list_size: "",
+    direct_booking_split: "", instagram_screenshot: "",
 };
 
 /** Compile the Master Document the AM reviews — deterministic v1 template assembled
@@ -469,6 +561,7 @@ type SectionId =
     | "overview"
     | "intake"
     | "onboarding"
+    | "overviewdoc"
     | "foundation"
     | "brand"
     | "videos"
@@ -532,7 +625,26 @@ const EyeOffGlyph = () => (
  * "Signing On" (phase 0) is deliberately absent — by the time this dashboard exists,
  * it's done.
  */
-const NAV_GROUPS: { label: string; phase: PhaseId; items: { id: SectionId; label: string; icon: typeof LayoutAlt01; soon?: boolean; to?: string }[] }[] = [
+const NAV_GROUPS: {
+    label: string;
+    phase: PhaseId;
+    items: {
+        id: SectionId;
+        label: string;
+        icon: typeof LayoutAlt01;
+        soon?: boolean;
+        to?: string;
+        /**
+         * Never rendered for a client — not as a row, not as "Soon", not as anything.
+         *
+         * Different from the eye-toggle reveal every other row uses. Those are things the
+         * client will eventually see and are merely not ready; this is a row whose contents
+         * are about the client rather than for them, so there is nothing to reveal later and
+         * no eye offered in edit mode.
+         */
+        teamOnly?: boolean;
+    }[];
+}[] = [
     {
         label: "Your forms",
         phase: "input",
@@ -545,6 +657,7 @@ const NAV_GROUPS: { label: string; phase: PhaseId; items: { id: SectionId; label
         label: "Brand foundation",
         phase: "brandwork",
         items: [
+            { id: "overviewdoc", label: "Overview Document", icon: ClipboardCheck, teamOnly: true },
             { id: "foundation", label: "Master Brand", icon: FileCheck02 },
             { id: "brand", label: "Brand Kit", icon: Image01 },
         ],
@@ -597,6 +710,14 @@ const HIDDEN_ITEMS: { id: SectionId; label: string; icon: typeof LayoutAlt01 }[]
 const phaseOfSection = (id: SectionId): PhaseId | null => NAV_GROUPS.find((g) => g.items.some((i) => i.id === id))?.phase ?? null;
 
 const SECTIONS = [OVERVIEW_ITEM, ...NAV_GROUPS.flatMap((g) => g.items), ...HIDDEN_ITEMS];
+
+/**
+ * Sections a client can never reach, by any route.
+ *
+ * Derived from the nav rather than hand-listed so adding a `teamOnly` row can't leave the
+ * search box or a pasted deep link as a way in that somebody forgot to close.
+ */
+const TEAM_ONLY_SECTIONS = new Set<SectionId>(NAV_GROUPS.flatMap((g) => g.items.filter((i) => i.teamOnly).map((i) => i.id)));
 
 /** Read from the form itself so the copy never goes stale if a question is added. */
 const ONBOARDING_TOTAL_QUESTIONS = hostOnboardingProgress().total;
@@ -1500,6 +1621,58 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
         setContent((c) => ({ ...c, foundation: { ...DEFAULT_FOUNDATION, ...c.foundation, ...patch } }));
 
     const foundation = content.foundation ?? DEFAULT_FOUNDATION;
+
+    /* ── Client Overview Document (team only) ── */
+    const overviewDoc: OverviewDoc = { ...DEFAULT_OVERVIEW_DOC, ...(content.overview_doc ?? {}) };
+    const patchOverviewDoc = (patch: Partial<OverviewDoc>) =>
+        setContent((c) => ({ ...c, overview_doc: { ...DEFAULT_OVERVIEW_DOC, ...(c.overview_doc ?? {}), ...patch } }));
+    const overviewFilled = OVERVIEW_COUNTED_FIELDS.filter((k) => String(overviewDoc[k] ?? "").trim()).length;
+    const [overviewBusy, setOverviewBusy] = useState(false);
+    const [overviewError, setOverviewError] = useState("");
+
+    /**
+     * Draft the whole document from what the client has already told us.
+     *
+     * Runs on the server so the client's form answers are read with the service-role key
+     * rather than re-fetched here, and so the Anthropic key stays off the browser. It
+     * returns the fields; nothing is saved until an AM saves the dashboard, which keeps a
+     * bad draft from silently replacing an AM's own notes.
+     */
+    const generateOverview = async () => {
+        if (!slug || isTemplate) return;
+        setOverviewBusy(true);
+        setOverviewError("");
+        try {
+            const res = await fetch("/.netlify/functions/generate-overview", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ slug }),
+            });
+            const json = await res.json();
+            if (!res.ok || json?.error) throw new Error(json?.error || `Request failed (${res.status})`);
+            patchOverviewDoc({
+                ...(json.doc as Partial<OverviewDoc>),
+                generated_at: new Date().toISOString(),
+                generated_by: user?.email ?? "",
+            });
+        } catch (err) {
+            console.error("[overview doc] generation failed", err);
+            setOverviewError(err instanceof Error ? err.message : "Couldn't draft the document.");
+        } finally {
+            setOverviewBusy(false);
+        }
+    };
+
+    const onPickOverviewShot = async (e: ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        e.target.value = "";
+        if (!file) return;
+        try {
+            patchOverviewDoc({ instagram_screenshot: await compressImageFile(file) });
+        } catch {
+            /* keep whatever is already there if compression fails */
+        }
+    };
     const updateFaq = (i: number, patch: Partial<FaqItem>) => patchFoundation({ faqs: foundation.faqs.map((f, j) => (j === i ? { ...f, ...patch } : f)) });
 
     /* ── Resources group: this client's own owner guide ──
@@ -1542,7 +1715,8 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     // Overview is the main dashboard — always visible, never hideable, so a client can
     // never end up with nowhere to land. Same reasoning as the owner guide, where the
     // Welcome and Review steps can't be hidden either.
-    const revealedToClient = (id: SectionId) => id === "overview" || clientVisible.includes(id);
+    const revealedToClient = (id: SectionId) =>
+        id === "overview" || (!TEAM_ONLY_SECTIONS.has(id) && clientVisible.includes(id));
     const toggleClientVisible = (id: SectionId) =>
         setContent((c) => {
             const cur = c.client_visible ?? DEFAULT_CLIENT_VISIBLE;
@@ -1582,6 +1756,9 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
      * eye, revealed-able ones are full-contrast with an eye in edit mode.
      */
     const navBadge = (s: NavItem) => {
+        if (s.teamOnly) {
+            return <span className="ml-2 shrink-0 text-[10px] font-bold text-quaternary uppercase">Team</span>;
+        }
         const clientCanSee = !navNotBuilt(s) && revealedToClient(s.id);
         if (clientCanSee) return sectionBadge(s.id);
         return (
@@ -1672,7 +1849,9 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
         // disagree — a client should be able to find everything they can see and nothing
         // they can't. Using the raw list here left Overview unsearchable despite being
         // pinned in their menu.
-        const canOpen = (id: SectionId) => isTeam || id === "overview" || clientVisible.includes(id);
+        // Goes through revealedToClient rather than reading clientVisible directly, so a
+        // team-only section can't be surfaced by search even though it's absent from the menu.
+        const canOpen = (id: SectionId) => isTeam || revealedToClient(id);
         const navHits = SECTIONS.filter((s) => !("soon" in s && s.soon) && canOpen(s.id)).map((s) => ({ id: s.id, label: s.label }));
         const linkHits = content.links
             .map((l) => ({
@@ -2175,7 +2354,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                         </button>
                                         {!isGroupCollapsed(group.phase) && (
                                             <div className="flex flex-col gap-1">
-                                                {group.items.map((s) => (
+                                                {group.items.filter((s) => isTeam || !s.teamOnly).map((s) => (
                                                     <motion.div key={s.id} variants={{ hidden: { opacity: 0, x: -8 }, show: { opacity: 1, x: 0 } }}>
                                                         <SectionNavItem
                                                             icon={s.icon}
@@ -2193,7 +2372,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                 // rather than an immediate reveal — the client keeps
                                                                 // seeing "Soon" either way — so the tooltip says so
                                                                 // instead of implying a change they'd look for.
-                                                                !isLocked && isTeam ? (
+                                                                !isLocked && isTeam && !s.teamOnly ? (
                                                                     <button
                                                                         type="button"
                                                                         title={
@@ -3082,6 +3261,263 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                 )}
 
                                                 {/* ── Master Document — the Foundation everything downstream reads from ── */}
+                                                {/* ── Client Overview Document — the AM's internal brief ──
+                                                    Rendered only for the team. The nav row is filtered out for a
+                                                    client and revealedToClient() refuses this id outright, so this
+                                                    guard is the third of three rather than the only one. */}
+                                                {activeSection === "overviewdoc" && isTeam && (
+                                                    <Reveal>
+                                                        <SectionEyebrow section={activeSection} />
+                                                        <div className="flex flex-wrap items-center gap-3">
+                                                            <SectionHeading>Client Overview</SectionHeading>
+                                                            <BadgeWithDot color="warning" size="sm" type="pill-color">
+                                                                Team only
+                                                            </BadgeWithDot>
+                                                        </div>
+                                                        <p className="mt-3 text-md text-tertiary">
+                                                            Your working brief on this client — what they sell, who they sell it to, and how they want to be
+                                                            handled. The client never sees this section.
+                                                        </p>
+
+                                                        <div className="mt-4 flex flex-wrap items-center gap-3">
+                                                            {!isTemplate && (
+                                                                <Button
+                                                                    size="sm"
+                                                                    color="secondary"
+                                                                    iconLeading={Stars02}
+                                                                    isLoading={overviewBusy}
+                                                                    showTextWhileLoading
+                                                                    onClick={() => void generateOverview()}
+                                                                >
+                                                                    {overviewBusy ? "Reading their answers…" : "Draft from the onboarding form"}
+                                                                </Button>
+                                                            )}
+                                                            <span className="text-sm text-quaternary tabular-nums">
+                                                                {OVERVIEW_SECTIONS.length + 2} sections · {overviewFilled} of {OVERVIEW_COUNTED_FIELDS.length} fields filled
+                                                            </span>
+                                                            {overviewDoc.generated_at && (
+                                                                <span className="text-xs text-quaternary">
+                                                                    Drafted {new Date(overviewDoc.generated_at).toLocaleDateString()} — review before relying on it
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        {overviewError && (
+                                                            <p className="mt-2 flex items-start gap-1.5 text-sm text-error-primary" role="alert">
+                                                                <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                                                                {overviewError}
+                                                            </p>
+                                                        )}
+                                                        {isLocked && (
+                                                            <p className="mt-2 text-xs text-quaternary">
+                                                                Unlock the dashboard to edit these fields.
+                                                            </p>
+                                                        )}
+
+                                                        <div className="mt-8 flex flex-col gap-10">
+                                                            {OVERVIEW_SECTIONS.map((sec) => (
+                                                                <section key={sec.id}>
+                                                                    <p className="text-xs font-semibold tracking-wide text-brand-secondary uppercase">{sec.title}</p>
+                                                                    <div className="mt-4 grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2">
+                                                                        {sec.fields.map((f) => (
+                                                                            <div key={String(f.key)} className={cx(!f.half && "sm:col-span-2")}>
+                                                                                <p className="text-sm font-medium text-secondary">{f.label}</p>
+                                                                                {isLocked ? (
+                                                                                    <p
+                                                                                        className={cx(
+                                                                                            "mt-1 text-md whitespace-pre-wrap",
+                                                                                            String(overviewDoc[f.key] ?? "").trim() ? "text-tertiary" : "text-quaternary italic",
+                                                                                        )}
+                                                                                    >
+                                                                                        {String(overviewDoc[f.key] ?? "").trim() || "Not filled in"}
+                                                                                    </p>
+                                                                                ) : f.long ? (
+                                                                                    <textarea
+                                                                                        rows={2}
+                                                                                        placeholder={f.placeholder}
+                                                                                        value={String(overviewDoc[f.key] ?? "")}
+                                                                                        onChange={(e) => patchOverviewDoc({ [f.key]: e.target.value } as Partial<OverviewDoc>)}
+                                                                                        className={cx(editInput(), "mt-1.5 resize-y")}
+                                                                                    />
+                                                                                ) : (
+                                                                                    <input
+                                                                                        placeholder={f.placeholder}
+                                                                                        value={String(overviewDoc[f.key] ?? "")}
+                                                                                        onChange={(e) => patchOverviewDoc({ [f.key]: e.target.value } as Partial<OverviewDoc>)}
+                                                                                        className={cx(editInput(), "mt-1.5")}
+                                                                                    />
+                                                                                )}
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+
+                                                                    {/* Properties sit between Platforms and Goals, matching the brief's order. */}
+                                                                    {sec.id === "platforms" && (
+                                                                        <div className="mt-10">
+                                                                            <div className="flex items-center justify-between gap-3">
+                                                                                <p className="text-xs font-semibold tracking-wide text-brand-secondary uppercase">Properties</p>
+                                                                                {!isLocked && (
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={() =>
+                                                                                            patchOverviewDoc({
+                                                                                                properties: [...overviewDoc.properties, { id: crypto.randomUUID(), name: "", link: "" }],
+                                                                                            })
+                                                                                        }
+                                                                                        className="text-sm font-semibold text-brand-secondary transition duration-100 ease-linear hover:underline"
+                                                                                    >
+                                                                                        + Add property
+                                                                                    </button>
+                                                                                )}
+                                                                            </div>
+                                                                            <div className="mt-3 flex flex-col gap-2">
+                                                                                {overviewDoc.properties.map((prop, i) => (
+                                                                                    <div
+                                                                                        key={prop.id}
+                                                                                        className="grid grid-cols-[2rem_minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-3 rounded-xl bg-primary p-3 ring-1 ring-secondary"
+                                                                                    >
+                                                                                        <span className="font-mono text-xs text-quaternary tabular-nums">
+                                                                                            {String(i + 1).padStart(2, "0")}
+                                                                                        </span>
+                                                                                        {isLocked ? (
+                                                                                            <>
+                                                                                                <span className="truncate text-md text-tertiary">{prop.name || "—"}</span>
+                                                                                                <span className="truncate text-md text-tertiary">{prop.link || "—"}</span>
+                                                                                                <span />
+                                                                                            </>
+                                                                                        ) : (
+                                                                                            <>
+                                                                                                <input
+                                                                                                    placeholder="Property name"
+                                                                                                    value={prop.name}
+                                                                                                    onChange={(e) =>
+                                                                                                        patchOverviewDoc({
+                                                                                                            properties: overviewDoc.properties.map((x) =>
+                                                                                                                x.id === prop.id ? { ...x, name: e.target.value } : x,
+                                                                                                            ),
+                                                                                                        })
+                                                                                                    }
+                                                                                                    className={editInput()}
+                                                                                                />
+                                                                                                <input
+                                                                                                    placeholder="Listing link"
+                                                                                                    value={prop.link}
+                                                                                                    onChange={(e) =>
+                                                                                                        patchOverviewDoc({
+                                                                                                            properties: overviewDoc.properties.map((x) =>
+                                                                                                                x.id === prop.id ? { ...x, link: e.target.value } : x,
+                                                                                                            ),
+                                                                                                        })
+                                                                                                    }
+                                                                                                    className={editInput()}
+                                                                                                />
+                                                                                                <button
+                                                                                                    type="button"
+                                                                                                    onClick={() =>
+                                                                                                        patchOverviewDoc({
+                                                                                                            properties: overviewDoc.properties.filter((x) => x.id !== prop.id),
+                                                                                                        })
+                                                                                                    }
+                                                                                                    title="Remove this property"
+                                                                                                    className="flex size-7 items-center justify-center rounded-lg text-fg-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-error-primary"
+                                                                                                >
+                                                                                                    <Trash01 className="size-3.5" aria-hidden="true" />
+                                                                                                </button>
+                                                                                            </>
+                                                                                        )}
+                                                                                    </div>
+                                                                                ))}
+                                                                                {!overviewDoc.properties.length && (
+                                                                                    <p className="rounded-xl border border-dashed border-secondary px-4 py-3 text-sm text-quaternary italic">
+                                                                                        No properties listed yet.
+                                                                                    </p>
+                                                                                )}
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                </section>
+                                                            ))}
+
+                                                            {/* Baseline — the numbers as they stood at kickoff, so growth has a zero point. */}
+                                                            <section>
+                                                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                                                    <p className="text-xs font-semibold tracking-wide text-brand-secondary uppercase">Baseline (snapshot)</p>
+                                                                    <span className="text-xs text-quaternary">Recorded at kickoff</span>
+                                                                </div>
+                                                                <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                                                                    {OVERVIEW_BASELINE.map((f) => (
+                                                                        <div key={String(f.key)} className="rounded-xl bg-primary p-4 ring-1 ring-secondary">
+                                                                            <p className="text-sm font-medium text-secondary">{f.label}</p>
+                                                                            {isLocked ? (
+                                                                                <p className="mt-1 text-md text-tertiary tabular-nums">
+                                                                                    {String(overviewDoc[f.key] ?? "").trim() || "—"}
+                                                                                </p>
+                                                                            ) : (
+                                                                                <input
+                                                                                    placeholder="—"
+                                                                                    value={String(overviewDoc[f.key] ?? "")}
+                                                                                    onChange={(e) => patchOverviewDoc({ [f.key]: e.target.value } as Partial<OverviewDoc>)}
+                                                                                    className={cx(editInput(), "mt-1.5 tabular-nums")}
+                                                                                />
+                                                                            )}
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+
+                                                                <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-primary p-4 ring-1 ring-secondary">
+                                                                    <div>
+                                                                        <p className="text-sm font-medium text-secondary">Current direct booking split</p>
+                                                                        <p className="mt-0.5 text-xs text-quaternary">Fill out after gaining PMS access</p>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        {isLocked ? (
+                                                                            <span className="text-md text-tertiary tabular-nums">
+                                                                                {String(overviewDoc.direct_booking_split ?? "").trim() || "—"}
+                                                                            </span>
+                                                                        ) : (
+                                                                            <input
+                                                                                placeholder="—"
+                                                                                value={overviewDoc.direct_booking_split}
+                                                                                onChange={(e) => patchOverviewDoc({ direct_booking_split: e.target.value })}
+                                                                                className={cx(editInput(), "w-20 text-right tabular-nums")}
+                                                                            />
+                                                                        )}
+                                                                        <span className="text-md text-tertiary">%</span>
+                                                                    </div>
+                                                                </div>
+
+                                                                <div className="mt-3 rounded-xl bg-primary p-4 ring-1 ring-secondary">
+                                                                    <p className="text-sm font-medium text-secondary">Instagram profile screenshot</p>
+                                                                    {overviewDoc.instagram_screenshot ? (
+                                                                        <div className="mt-3 flex flex-wrap items-start gap-3">
+                                                                            <img
+                                                                                src={overviewDoc.instagram_screenshot}
+                                                                                alt="Instagram profile at kickoff"
+                                                                                className="max-h-56 rounded-lg ring-1 ring-secondary"
+                                                                            />
+                                                                            {!isLocked && (
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => patchOverviewDoc({ instagram_screenshot: "" })}
+                                                                                    className="text-sm font-medium text-tertiary transition duration-100 ease-linear hover:text-error-primary"
+                                                                                >
+                                                                                    Remove
+                                                                                </button>
+                                                                            )}
+                                                                        </div>
+                                                                    ) : isLocked ? (
+                                                                        <p className="mt-1 text-md text-quaternary italic">Not added</p>
+                                                                    ) : (
+                                                                        <label className="mt-3 flex cursor-pointer items-center justify-center rounded-lg border border-dashed border-secondary px-4 py-6 text-sm text-quaternary transition duration-100 ease-linear hover:border-brand hover:text-tertiary">
+                                                                            <input type="file" accept="image/*" className="hidden" onChange={(e) => void onPickOverviewShot(e)} />
+                                                                            Add an image — it's compressed before saving
+                                                                        </label>
+                                                                    )}
+                                                                </div>
+                                                            </section>
+                                                        </div>
+                                                    </Reveal>
+                                                )}
+
                                                 {activeSection === "foundation" && (
                                                     <Reveal>
                                                         <SectionEyebrow section={activeSection} />

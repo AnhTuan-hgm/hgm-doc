@@ -196,7 +196,7 @@ export const ChatWidgetScreen = ({
     return (
         <main className="min-h-dvh bg-secondary py-8 sm:py-12">
             <motion.article
-                className="mx-auto max-w-[816px] rounded-2xl border border-secondary bg-primary px-6 py-12 shadow-xs sm:px-12 sm:py-16"
+                className="mx-auto max-w-[816px] rounded-2xl bg-primary px-6 py-12 shadow-xs sm:px-12 sm:py-16"
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}

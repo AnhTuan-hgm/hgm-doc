@@ -123,6 +123,65 @@ export interface ChatWidgetPageData {
     created_at?: string;
 }
 
+/**
+ * The Client Overview Document — an internal brief the account manager works from.
+ *
+ * TEAM ONLY. This is our reading of the client, not the client's own words: it carries
+ * competitor notes, market read and account-handling remarks that would be awkward at best
+ * shown back to the person they describe. The dashboard never renders it for a client and
+ * never offers to reveal it, unlike every other section.
+ *
+ * Kept flat and all-strings on purpose. Every field is either typed by an AM or written by
+ * the model from the client's onboarding answers, and a flat shape means the tool schema
+ * the model fills, the form on screen, and the row in Supabase are the same shape.
+ */
+export interface OverviewDocProperty {
+    id: string;
+    name: string;
+    link: string;
+}
+
+export interface OverviewDoc {
+    // Client information
+    client_name: string;
+    business_name: string;
+    email: string;
+    business_type: string;
+    locations: string;
+    // Platforms
+    instagram: string;
+    tiktok: string;
+    direct_booking_website: string;
+    airbnb: string;
+    // Properties (repeatable — not counted in the 26 fields)
+    properties: OverviewDocProperty[];
+    // Business goals & objectives
+    short_term_goals: string;
+    long_term_goals: string;
+    success_metrics: string;
+    // Brand & positioning
+    target_audience: string;
+    unique_selling_points: string;
+    branding: string;
+    competitor_inspiration: string;
+    market_insights: string;
+    // Client preferences & notes
+    communication_style: string;
+    concerns: string;
+    other_notes: string;
+    // Baseline snapshot, recorded at kickoff
+    instagram_followers: string;
+    facebook_followers: string;
+    tiktok_followers: string;
+    email_list_size: string;
+    direct_booking_split: string;
+    /** Compressed WebP data URL — see compressImageFile(). */
+    instagram_screenshot: string;
+    /** Set when the model last wrote this, so an AM can tell drafted-by-AI from typed-by-hand. */
+    generated_at?: string;
+    generated_by?: string;
+}
+
 /** Section content for per-client dashboards (dashboard_pages.data jsonb). */
 export interface DashboardContent {
     status: string; // Onboarding | Active | Paused
@@ -197,6 +256,8 @@ export interface DashboardContent {
      * to the shared leaf-shadow loop, so a client never lands on a bare page.
      */
     login_bg_url?: string;
+    /** The team's internal Client Overview Document. Never rendered for a client — see OverviewDoc. */
+    overview_doc?: Partial<OverviewDoc>;
 }
 
 export interface DashboardPageData {
