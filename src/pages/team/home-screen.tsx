@@ -4,7 +4,7 @@ import { animate, motion } from "motion/react";
 import { ArrowUpRight, Award01, Globe01, HelpCircle, Home02, Plus, Rocket02, Star01, Trophy01, UserCheck01, UserMinus01, Users01 } from "@untitledui/icons";
 import { Avatar } from "@/components/base/avatar/avatar";
 import { AppShell, CollapsedTopBar, HeaderAvatar, IconRail, RailBottom, useNavCollapsed } from "@/components/application/icon-rail";
-import { ONBOARDING_PHASES, TeamGate } from "@/pages/dashboard-screen";
+import { ONBOARDING_PHASES, TeamGate } from "@/pages/team/dashboard-screen";
 import { useAuthUser } from "@/hooks/use-auth-user";
 import { supabase, type ClientRecord } from "@/lib/supabase";
 import { teamPhoto } from "@/utils/team-photos";

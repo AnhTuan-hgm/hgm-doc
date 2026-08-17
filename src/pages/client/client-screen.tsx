@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router";
-import { PixelPage } from "./pixel-page";
-import { PopupPage } from "./popup-page";
-import { ChatWidgetScreen } from "./chat-widget-screen";
-import { ClientDashboardPage } from "./client-dashboard-page";
-import { HostOnboardingFormPage } from "./host-onboarding-form-page";
-import { ClientOnboardingFormPage, type ClientOnboardingData } from "./client-onboarding-form-page";
-import { TemplateOneScreen } from "./template-one-screen";
-import { NotFound } from "./not-found";
+import { PixelPage } from "@/pages/client/pixel-page";
+import { PopupPage } from "@/pages/client/popup-page";
+import { ChatWidgetScreen } from "@/pages/client/chat-widget-screen";
+import { ClientDashboardPage } from "@/pages/client/client-dashboard-page";
+import { HostOnboardingFormPage } from "@/pages/client/host-onboarding-form-page";
+import { ClientOnboardingFormPage, type ClientOnboardingData } from "@/pages/client/client-onboarding-form-page";
+import { TemplateOneScreen } from "@/pages/templates/template-one-screen";
+import { NotFound } from "@/pages/not-found";
 import { supabase, type ChatWidgetPageData, type ClientPageData, type DashboardPageData, type HostOnboardingPageData, type LeadCapturePageData } from "@/lib/supabase";
 
 type ClientOnboardingPageRow = {

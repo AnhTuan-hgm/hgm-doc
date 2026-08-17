@@ -6,7 +6,7 @@ import { Avatar } from "@/components/base/avatar/avatar";
 import { useAuthUser } from "@/hooks/use-auth-user";
 import { fetchAttentionItems, type AttentionItem } from "@/lib/notifications";
 import { teamPhoto } from "@/utils/team-photos";
-import { SettingsDialog } from "@/pages/settings-screen";
+import { SettingsDialog } from "@/pages/team/settings-screen";
 import { useTheme } from "@/providers/theme-provider";
 import { HelpMenu } from "@/components/application/help-menu";
 import { SearchBar } from "@/components/application/search-modal";

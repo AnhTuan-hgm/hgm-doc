@@ -16,7 +16,7 @@ import {
 } from "@untitledui/icons";
 import { Badge } from "@/components/base/badges/badges";
 import { AppShell, CollapsedTopBar, IconRail, NavCollapseButton, useNavCollapsed } from "@/components/application/icon-rail";
-import { TeamGate } from "@/pages/dashboard-screen";
+import { TeamGate } from "@/pages/team/dashboard-screen";
 import { cx } from "@/utils/cx";
 
 /**

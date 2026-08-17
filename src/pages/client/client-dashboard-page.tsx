@@ -75,8 +75,8 @@ import {
     clientOnboardingAnswers,
     clientOnboardingProgress,
     ensureClientOnboardingForm,
-} from "./client-onboarding-form-page";
-import { HostOnboardingFormPage, ensureHostOnboardingForm, hostOnboardingAnswers, hostOnboardingProgress } from "./host-onboarding-form-page";
+} from "@/pages/client/client-onboarding-form-page";
+import { HostOnboardingFormPage, ensureHostOnboardingForm, hostOnboardingAnswers, hostOnboardingProgress } from "@/pages/client/host-onboarding-form-page";
 
 const PASSWORD = "ANHTUAN";
 const SUPPORT_EMAIL = "anhtuan@hiddengem.media";
