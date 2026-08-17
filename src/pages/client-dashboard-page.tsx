@@ -6,42 +6,41 @@ import {
     ArrowRight,
     ArrowUp,
     ArrowUpRight,
+    BookOpen01,
     Calendar,
     Camera01,
     Check,
-    CheckDone01,
-    BookOpen01,
     CheckCircle,
+    CheckDone01,
     ChevronDown,
-    Flag01,
-    Lightbulb01,
-    MessageTextSquare01,
-    Stars02,
     ClipboardCheck,
     Copy01,
     Download01,
     Edit01,
     FileCheck02,
+    Flag01,
     Folder,
     Globe01,
-    HelpCircle,
     Image01,
     LayoutAlt01,
+    Lightbulb01,
     LinkExternal01,
     Mail01,
     MessageChatCircle,
+    MessageTextSquare01,
     Moon01,
     PlayCircle,
     Plus,
     RefreshCw01,
     Repeat01,
     SearchLg,
+    Stars02,
     Sun,
     Target04,
     Trash01,
     TrendUp01,
-    Users01,
     UploadCloud02,
+    Users01,
     XClose,
 } from "@untitledui-pro/icons/line";
 import { AnimatePresence, motion } from "motion/react";
@@ -52,7 +51,7 @@ import { RecordingPlayer } from "@/components/application/media-answer";
 import { SignInBackdrop } from "@/components/application/sign-in-backdrop";
 import { VideoAttach, VideoEmbed } from "@/components/application/video-block";
 import { WelcomeFlowSection } from "@/components/application/welcome-flow";
-import { BadgeWithDot, BadgeWithIcon } from "@/components/base/badges/badges";
+import { Badge, BadgeWithDot, BadgeWithIcon } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
 import { ProgressBarCircle } from "@/components/base/progress-indicators/progress-circles";
 import { ProgressBar } from "@/components/base/progress-indicators/progress-indicators";
@@ -61,7 +60,7 @@ import { Instagram } from "@/components/foundations/social-icons";
 import { Reveal } from "@/components/shared-assets/reveal";
 import { useAuthUser } from "@/hooks/use-auth-user";
 import { useEditShortcuts } from "@/hooks/use-edit-shortcuts";
-import { isInFlight, isStalled, listSummariesForPaths, queueSummary, retrySummary, type ScriptLog } from "@/lib/script-logs";
+import { type ScriptLog, isInFlight, isStalled, listSummariesForPaths, queueSummary, retrySummary } from "@/lib/script-logs";
 import { type DashboardContent, type HostOnboardingData, type OverviewDoc, supabase } from "@/lib/supabase";
 import { useSuppressFloatingThemeToggle, useTheme } from "@/providers/theme-provider";
 import { compressImageFile } from "@/utils/compress-image";
@@ -98,7 +97,11 @@ type GhlItem = DashboardContent["ghl"]["items"][number];
 type RevenueMonth = DashboardContent["revenue"]["months"][number];
 type QuickLink = DashboardContent["links"][number];
 type VideoGuide = NonNullable<DashboardContent["videos"]>[number];
-type FaqItem = NonNullable<DashboardContent["foundation"]>["faqs"][number];
+type Foundation = NonNullable<DashboardContent["foundation"]>;
+type Persona = Foundation["personas"][number];
+type FocusProperty = Foundation["focusProperties"][number];
+type LocalFavorite = Foundation["restaurants"][number];
+type WebsiteLink = Foundation["websiteLinks"][number];
 
 const STATUS_OPTIONS = ["Onboarding", "Active", "Paused"] as const;
 
@@ -151,9 +154,7 @@ const DashboardAccessGate = ({
             <form onSubmit={submit} className="w-full max-w-sm rounded-2xl bg-primary p-8 shadow-2xl ring-1 ring-secondary">
                 <img src="/hgm logo/Favicon ON LIGHT.svg" alt="HiddenGem Media" className="mx-auto size-11" draggable={false} />
                 <h1 className="mt-5 text-center text-lg font-semibold text-primary">This dashboard is private</h1>
-                <p className="mt-2 text-center text-sm text-tertiary text-pretty">
-                    Enter the email and password your HiddenGem team shared with you.
-                </p>
+                <p className="mt-2 text-center text-sm text-pretty text-tertiary">Enter the email and password your HiddenGem team shared with you.</p>
 
                 <div className="mt-6 flex flex-col gap-3">
                     <input
@@ -220,15 +221,136 @@ function slugify(name: string): string {
 
 const uid = () => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `id-${Math.random().toString(36).slice(2)}`);
 
-const DEFAULT_FOUNDATION: NonNullable<DashboardContent["foundation"]> = {
-    propertyBasics: "",
-    persona: "",
-    toneOfVoice: "",
-    amenities: "",
-    localRecommendations: "",
-    bookingLinks: "",
-    faqs: [],
+const DEFAULT_FOUNDATION: Foundation = {
+    hosts: "",
+    propertyType: "",
+    structure: "",
+    generalAmenities: "",
+    sharedAmenities: "",
+    exactLocation: "",
+    proximityCities: "",
+    proximityAirports: "",
+    targetAudience: "",
+    uvp: "",
+    brandVoice: "",
+    taglines: ["", "", ""],
+    brandBio: "",
+    personas: [],
+    personaResonance: "",
+    focusProperties: [],
+    restaurants: [],
+    activities: [],
+    corePillars: "",
+    emotionalThemes: "",
+    promptHidden: false,
+    websiteLinks: [],
 };
+
+const emptyPersona = (rank: string): Persona => ({
+    id: uid(),
+    name: "",
+    summary: "",
+    rank,
+    age: "",
+    relationship: "",
+    location: "",
+    interests: "",
+    painPoints: "",
+    seeking: "",
+    howTheyBook: "",
+    keywords: [],
+});
+
+const emptyFocusProperty = (): FocusProperty => ({
+    id: uid(),
+    name: "",
+    link: "",
+    location: "",
+    guests: "",
+    bedrooms: "",
+    beds: "",
+    bathrooms: "",
+    description: "",
+    features: "",
+    terms: "",
+    reviews: ["", "", ""],
+});
+
+const emptyFavorite = (): LocalFavorite => ({ id: uid(), name: "", description: "" });
+const emptyWebsiteLink = (page = ""): WebsiteLink => ({ id: uid(), page, url: "" });
+
+/**
+ * The Master Brand Document's eleven sections, in reading order.
+ *
+ * One list drives the in-page rail, the scroll-spy, the "x of 11 sections filled" readout,
+ * the compiled AM document and the PDF — so a section can't appear in the rail and be
+ * missing from the export. `workflow` marks the four an AM pastes in from the brand
+ * messaging workflow rather than asking the client for; those carry a badge and, for the
+ * client, no instruction to go and fill them in themselves.
+ */
+const FOUNDATION_SECTIONS = [
+    { id: "hosts", label: "About the hosts", workflow: false },
+    { id: "properties", label: "About the properties", workflow: false },
+    { id: "location", label: "Location", workflow: false },
+    { id: "audience", label: "Target audience profile", workflow: true },
+    { id: "uvp", label: "Unique value proposition", workflow: true },
+    { id: "brand", label: "About the brand", workflow: true },
+    { id: "personas", label: "Personas", workflow: true },
+    { id: "focus", label: "Focus properties", workflow: false },
+    { id: "favorites", label: "Local favorites", workflow: false },
+    { id: "reviews", label: "Reviews", workflow: false },
+    { id: "links", label: "Website links", workflow: false },
+] as const;
+
+type FoundationSectionId = (typeof FOUNDATION_SECTIONS)[number]["id"];
+
+const WORKFLOW_SECTION_COUNT = FOUNDATION_SECTIONS.filter((s) => s.workflow).length;
+
+const filled = (v: string | undefined) => Boolean(v && v.trim());
+
+/** Which of the eleven sections have any content — drives the rail ticks and the counter. */
+const foundationProgress = (f: Foundation): Record<FoundationSectionId, boolean> => ({
+    hosts: filled(f.hosts),
+    properties: [f.propertyType, f.structure, f.generalAmenities, f.sharedAmenities].some(filled),
+    location: [f.exactLocation, f.proximityCities, f.proximityAirports].some(filled),
+    audience: filled(f.targetAudience),
+    uvp: filled(f.uvp),
+    brand: [f.brandVoice, f.brandBio, ...f.taglines].some(filled),
+    personas: f.personas.some((p) => filled(p.name) || filled(p.summary)),
+    focus: f.focusProperties.some((p) => filled(p.name) || filled(p.link)),
+    favorites: [...f.restaurants, ...f.activities].some((r) => filled(r.name)),
+    reviews: [f.corePillars, f.emotionalThemes].some(filled),
+    links: f.websiteLinks.some((l) => filled(l.page) || filled(l.url)),
+});
+
+/** The ChatGPT/Gemini prompt an AM runs over 30+ guest reviews before filling in Reviews. */
+const REVIEW_WORKING_PROMPT = `You are an expert hospitality marketing analyst and brand strategist. Your task is to analyze raw guest review data for a vacation rental business to uncover deep insights for its marketing and branding.
+
+Here is the raw text of the guest reviews:
+
+[PASTE ALL 30+ GUEST REVIEWS HERE]
+
+Based on this data, please perform the following two analyses:
+
+1. Identify Core Brand Pillars & Key Selling Points:
+- List the top 5-7 most frequently mentioned amenities, property features, or design elements that guests consistently praise.
+- List the top 5-7 most common emotional or experiential themes guests use to describe their stay (e.g., "peaceful escape," "luxurious comfort," "perfect for families," "attention to detail"). These themes should be the emotional heart of the brand.
+
+2. Generate Marketing Copy Insights:
+- For each of the top 3-5 most compelling amenities/features identified in the first step, provide 3-4 actual quotes (or close paraphrases) from the reviews. This raw, emotional language is excellent for social media hooks and email subject lines.
+- For the top 3 most common emotional/experiential themes, suggest a short, impactful Brand Tagline (2-6 words) that captures that feeling.
+
+Output your results clearly using bullet points for each section.`;
+
+/** v1 Master Document fields, kept read-only so pre-redesign answers stay visible. */
+const LEGACY_FOUNDATION_FIELDS = [
+    { key: "propertyBasics", label: "Property basics" },
+    { key: "persona", label: "Ideal guest persona" },
+    { key: "toneOfVoice", label: "Tone of voice" },
+    { key: "amenities", label: "Amenities & house rules" },
+    { key: "localRecommendations", label: "Local recommendations" },
+    { key: "bookingLinks", label: "Booking & upsell links" },
+] as const;
 
 /**
  * The Client Overview Document's fields, in the order they appear on screen.
@@ -267,7 +389,12 @@ const OVERVIEW_SECTIONS: {
         id: "goals",
         title: "Business goals & objectives",
         fields: [
-            { key: "short_term_goals", label: "Short-term goals", placeholder: "e.g. increasing bookings, building brand awareness, optimizing listings", long: true },
+            {
+                key: "short_term_goals",
+                label: "Short-term goals",
+                placeholder: "e.g. increasing bookings, building brand awareness, optimizing listings",
+                long: true,
+            },
             { key: "long_term_goals", label: "Long-term goals", placeholder: "e.g. business growth, equity value, direct booking focus", long: true },
             { key: "success_metrics", label: "Key success metrics", placeholder: "e.g. website conversion rate, ADR, occupancy rate", long: true },
         ],
@@ -312,51 +439,188 @@ const OVERVIEW_COUNTED_FIELDS: (keyof OverviewDoc)[] = [
 ];
 
 const DEFAULT_OVERVIEW_DOC: OverviewDoc = {
-    client_name: "", business_name: "", email: "", business_type: "", locations: "",
-    instagram: "", tiktok: "", direct_booking_website: "", airbnb: "",
+    client_name: "",
+    business_name: "",
+    email: "",
+    business_type: "",
+    locations: "",
+    instagram: "",
+    tiktok: "",
+    direct_booking_website: "",
+    airbnb: "",
     properties: [],
-    short_term_goals: "", long_term_goals: "", success_metrics: "",
-    target_audience: "", unique_selling_points: "", branding: "", competitor_inspiration: "", market_insights: "",
-    communication_style: "", concerns: "", other_notes: "",
-    instagram_followers: "", facebook_followers: "", tiktok_followers: "", email_list_size: "",
-    direct_booking_split: "", instagram_screenshot: "",
+    short_term_goals: "",
+    long_term_goals: "",
+    success_metrics: "",
+    target_audience: "",
+    unique_selling_points: "",
+    branding: "",
+    competitor_inspiration: "",
+    market_insights: "",
+    communication_style: "",
+    concerns: "",
+    other_notes: "",
+    instagram_followers: "",
+    facebook_followers: "",
+    tiktok_followers: "",
+    email_list_size: "",
+    direct_booking_split: "",
+    instagram_screenshot: "",
 };
 
-/** Compile the Master Document the AM reviews — deterministic v1 template assembled
- * from the Foundation fields (per the project-log decision: the client answers the
- * FAQs/forms, we "follow a template and generate for AM so they just review it").
+/** Join a set of sub-fields into one block, keeping the labels of the ones that have an
+ * answer and dropping the rest — an export shouldn't be mostly "Not provided yet". */
+const subBlock = (parts: [string, string | undefined][]): string =>
+    parts
+        .filter(([, v]) => filled(v))
+        .map(([label, v]) => `${label}: ${v!.trim()}`)
+        .join("\n");
+
+/** Compile the Master Brand Document the AM reviews — a deterministic flattening of the
+ * eleven sections into label/value blocks (per the project-log decision: the client fills
+ * the document, we "follow a template and generate for AM so they just review it").
  * Swap for Claude-API generation once the shared server-function decision lands. */
 const compileMasterDocument = (
     clientName: string,
     clientWebsite: string,
-    f: NonNullable<DashboardContent["foundation"]>,
-): { doc: string; missing: string[]; sections: MasterDocSection[]; faqs: FaqItem[]; generatedOn: string } => {
-    const sections = [
-        { label: "Property basics", value: f.propertyBasics },
-        { label: "Ideal guest persona", value: f.persona },
-        { label: "Tone of voice", value: f.toneOfVoice },
-        { label: "Amenities & house rules", value: f.amenities },
-        { label: "Local recommendations", value: f.localRecommendations },
-        { label: "Booking & upsell links", value: f.bookingLinks },
+    f: Foundation,
+): { doc: string; missing: string[]; sections: MasterDocSection[]; generatedOn: string } => {
+    const personaBlock = f.personas
+        .filter((p) => filled(p.name) || filled(p.summary))
+        .map((p) =>
+            [
+                `${p.name.trim() || "Unnamed persona"}${filled(p.rank) ? ` (${p.rank.trim()})` : ""}`,
+                p.summary.trim(),
+                subBlock([
+                    ["Age", p.age],
+                    ["Relationship status", p.relationship],
+                    ["Location", p.location],
+                    ["Interests", p.interests],
+                    ["Pain points", p.painPoints],
+                    ["What they're seeking", p.seeking],
+                    ["How they book", p.howTheyBook],
+                    ["Keywords", p.keywords.filter((k) => k.trim()).join(", ")],
+                ]),
+            ]
+                .filter(Boolean)
+                .join("\n"),
+        )
+        .join("\n\n");
+
+    const focusBlock = f.focusProperties
+        .filter((p) => filled(p.name) || filled(p.link))
+        .map((p) =>
+            [
+                p.name.trim() || "Unnamed property",
+                subBlock([
+                    ["Listing", p.link],
+                    ["Location", p.location],
+                    [
+                        "Sleeps",
+                        [p.guests && `${p.guests} guests`, p.bedrooms && `${p.bedrooms} bed`, p.beds && `${p.beds} beds`, p.bathrooms && `${p.bathrooms} bath`]
+                            .filter(Boolean)
+                            .join(" · "),
+                    ],
+                    ["Listing description", p.description],
+                    ["Features & amenities", p.features],
+                    ["Terms & rules", p.terms],
+                    [
+                        "Top reviews",
+                        p.reviews
+                            .filter((r) => r.trim())
+                            .map((r) => `“${r.trim()}”`)
+                            .join("\n"),
+                    ],
+                ]),
+            ]
+                .filter(Boolean)
+                .join("\n"),
+        )
+        .join("\n\n");
+
+    const favouriteList = (rows: LocalFavorite[]) =>
+        rows
+            .filter((r) => filled(r.name))
+            .map((r) => `${r.name.trim()}${filled(r.description) ? ` — ${r.description.trim()}` : ""}`)
+            .join("\n");
+
+    // Order and labels mirror FOUNDATION_SECTIONS so the export reads like the page.
+    const sections: MasterDocSection[] = [
+        { label: "About the hosts", value: f.hosts },
+        {
+            label: "About the properties",
+            value: subBlock([
+                ["Property type", f.propertyType],
+                ["Structure", f.structure],
+                ["General amenities", f.generalAmenities],
+                ["Shared resort amenities", f.sharedAmenities],
+            ]),
+        },
+        {
+            label: "Location",
+            value: subBlock([
+                ["Exact location", f.exactLocation],
+                ["Proximity to popular cities", f.proximityCities],
+                ["Proximity to airports", f.proximityAirports],
+            ]),
+        },
+        { label: "Target audience profile", value: f.targetAudience },
+        { label: "Unique value proposition", value: f.uvp },
+        {
+            label: "About the brand",
+            value: subBlock([
+                ["Brand voice", f.brandVoice],
+                [
+                    "Taglines",
+                    f.taglines
+                        .filter((t) => t.trim())
+                        .map((t, i) => `${String(i + 1).padStart(2, "0")}. ${t.trim()}`)
+                        .join("\n"),
+                ],
+                ["Brand bio", f.brandBio],
+            ]),
+        },
+        {
+            label: "Personas",
+            value: [personaBlock, filled(f.personaResonance) && `Why the brand resonates: ${f.personaResonance.trim()}`].filter(Boolean).join("\n\n"),
+        },
+        { label: "Focus properties", value: focusBlock },
+        {
+            label: "Local favorites",
+            value: subBlock([
+                ["Restaurants", favouriteList(f.restaurants)],
+                ["Activities / attractions", favouriteList(f.activities)],
+            ]),
+        },
+        {
+            label: "Reviews",
+            value: subBlock([
+                ["Core brand pillars & key selling points", f.corePillars],
+                ["Emotional & experiential themes", f.emotionalThemes],
+            ]),
+        },
+        {
+            label: "Website links",
+            value: f.websiteLinks
+                .filter((l) => filled(l.page) || filled(l.url))
+                .map((l) => `${l.page.trim() || "Untitled page"} — ${l.url.trim() || "no URL"}`)
+                .join("\n"),
+        },
     ];
-    const faqs = f.faqs.filter((q) => q.question.trim());
-    const missing = sections.filter((s) => !s.value.trim()).map((s) => s.label);
-    if (!faqs.length) missing.push("FAQ bank");
+
+    const missing = sections.filter((s) => !filled(s.value)).map((s) => s.label);
     const generatedOn = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
 
     const lines: string[] = [
-        `# Master Document — ${clientName.trim() || "Client"}`,
+        `# Master Brand Document — ${clientName.trim() || "Client"}`,
         "",
         [clientWebsite.trim() && `Website: ${clientWebsite.trim()}`, `Generated: ${generatedOn}`].filter(Boolean).join("  ·  "),
         "",
     ];
     sections.forEach((s, i) => lines.push(`## ${i + 1}. ${s.label}`, "", s.value.trim() || "_Not provided yet._", ""));
-    lines.push(`## ${sections.length + 1}. FAQ bank${faqs.length ? ` (${faqs.length})` : ""}`, "");
-    if (!faqs.length) lines.push("_No FAQs yet._", "");
-    faqs.forEach((q) => lines.push(`**Q: ${q.question.trim()}**`, `A: ${q.answer.trim() || "_No answer yet._"}`, ""));
-    // `sections`/`faqs`/`generatedOn` are returned alongside the markdown so the PDF
-    // export can lay the document out properly instead of re-parsing the markdown.
-    return { doc: lines.join("\n"), missing, sections, faqs, generatedOn };
+    // `sections`/`generatedOn` are returned alongside the markdown so the PDF export can
+    // lay the document out properly instead of re-parsing the markdown.
+    return { doc: lines.join("\n"), missing, sections, generatedOn };
 };
 
 const DEFAULT_GHL_ITEMS: GhlItem[] = [
@@ -416,7 +680,16 @@ const createDefaultContent = (base: string): DashboardContent => ({
     revenue: { currency: "USD", months: [] },
     ghl: { ...TEMPLATE_CONTENT.ghl, items: DEFAULT_GHL_ITEMS.map((i) => ({ ...i })) },
     links: defaultLinks(base),
-    foundation: { ...DEFAULT_FOUNDATION, faqs: [] },
+    // A fresh client copy starts with the scaffolding an AM would otherwise add by hand:
+    // two ranked personas, one focus property, and a Home row in the sitemap table.
+    foundation: {
+        ...DEFAULT_FOUNDATION,
+        personas: [emptyPersona("Primary"), emptyPersona("Secondary")],
+        focusProperties: [emptyFocusProperty()],
+        restaurants: [emptyFavorite(), emptyFavorite(), emptyFavorite()],
+        activities: [emptyFavorite(), emptyFavorite(), emptyFavorite()],
+        websiteLinks: [emptyWebsiteLink("Home"), emptyWebsiteLink(), emptyWebsiteLink()],
+    },
     videos: [],
     client_visible: [...DEFAULT_CLIENT_VISIBLE],
 });
@@ -431,7 +704,23 @@ const mergeContent = (partial?: Partial<DashboardContent> | null): DashboardCont
     revenue: { ...TEMPLATE_CONTENT.revenue, ...partial?.revenue },
     links: partial?.links ?? TEMPLATE_CONTENT.links,
     videos: partial?.videos ?? [],
-    foundation: { ...DEFAULT_FOUNDATION, ...partial?.foundation, faqs: partial?.foundation?.faqs ?? [] },
+    // Arrays are spread-hostile: `...partial.foundation` would hand back `undefined` for
+    // every list an older row predates, and the section renderers all call .map on them.
+    // Each one falls back explicitly. `taglines` is padded to three so the 01/02/03 rail
+    // renders even if a row was written with fewer.
+    foundation: {
+        ...DEFAULT_FOUNDATION,
+        ...partial?.foundation,
+        taglines: [0, 1, 2].map((i) => partial?.foundation?.taglines?.[i] ?? ""),
+        personas: partial?.foundation?.personas ?? [],
+        focusProperties: partial?.foundation?.focusProperties ?? [],
+        restaurants: partial?.foundation?.restaurants ?? [],
+        activities: partial?.foundation?.activities ?? [],
+        websiteLinks: partial?.foundation?.websiteLinks ?? [],
+        // Deprecated v1 keys — carried through untouched so saving a redesigned document
+        // never erases answers a client gave against the old one.
+        faqs: partial?.foundation?.faqs ?? [],
+    },
     // Absent ⇒ the intake-forms-only default. An AM who hides everything stores an empty
     // array, which is meaningfully different from "never set" and must survive as [].
     client_visible: partial?.client_visible ?? [...DEFAULT_CLIENT_VISIBLE],
@@ -493,7 +782,14 @@ const JOURNEY_STEPS: {
     /** Step that must be done before `href` is offered. */
     requires?: JourneyStepId;
 }[] = [
-    { id: "form", label: "Fill in the Onboarding form", detail: "Your business details and the logins we need.", icon: ClipboardCheck, to: "intake", auto: true },
+    {
+        id: "form",
+        label: "Fill in the Onboarding form",
+        detail: "Your business details and the logins we need.",
+        icon: ClipboardCheck,
+        to: "intake",
+        auto: true,
+    },
     {
         id: "kickoff",
         label: "Book the Kick-off Call",
@@ -508,8 +804,21 @@ const JOURNEY_STEPS: {
         requires: "form",
     },
     { id: "call", label: "Onboarding Call", detail: "With Dustin and your Account Manager.", icon: Users01 },
-    { id: "vision", label: "Fill in the Brand Vision Form", detail: "How your brand should look, sound and feel.", icon: FileCheck02, to: "onboarding", auto: true },
-    { id: "masterdoc", label: "Review the Master Brand", detail: "Persona, tone, amenities and FAQs — what everything else reads from.", icon: FileCheck02, to: "foundation" },
+    {
+        id: "vision",
+        label: "Fill in the Brand Vision Form",
+        detail: "How your brand should look, sound and feel.",
+        icon: FileCheck02,
+        to: "onboarding",
+        auto: true,
+    },
+    {
+        id: "masterdoc",
+        label: "Review the Master Brand",
+        detail: "Hosts, personas, properties and brand voice — what everything else reads from.",
+        icon: FileCheck02,
+        to: "foundation",
+    },
     { id: "brandkit", label: "Review the Brand Kit", detail: "Colours, fonts and logo.", icon: Image01, to: "brand" },
     {
         id: "funnel",
@@ -541,6 +850,270 @@ const SectionEyebrow = ({ section }: { section: SectionId }) => {
 
 const SectionHeading = ({ children }: { children: ReactNode }) => (
     <h2 className="mt-4 text-display-xs font-semibold text-primary md:text-display-sm">{children}</h2>
+);
+
+/** Shared chrome for every editable field on the dashboard. Module scope (it closes over
+ *  nothing) so the Master Brand Document's sub-components below can reach it too. */
+const editInput = (extra?: string) =>
+    cx(
+        "w-full rounded-lg border border-secondary bg-transparent px-2.5 py-1.5 text-sm text-primary transition duration-100 ease-linear outline-none placeholder:text-placeholder focus:border-brand focus:ring-1 focus:ring-brand",
+        extra,
+    );
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Master Brand Document — the eleven-section brand foundation.
+   Small presentational pieces, kept at module scope so the section's JSX
+   below reads as the document it renders rather than as nested divs.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/** One of the eleven sections. Anchored by id so the in-page rail can jump to it;
+ *  `scroll-mt-24` keeps the eyebrow clear of the sticky dashboard header on arrival. */
+const DocSection = ({
+    id,
+    label,
+    badge,
+    action,
+    children,
+}: {
+    id: FoundationSectionId;
+    label: string;
+    badge?: ReactNode;
+    action?: ReactNode;
+    children: ReactNode;
+}) => (
+    <section id={`mbd-${id}`} className="scroll-mt-24 border-t border-secondary pt-8 first:border-t-0 first:pt-0">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+            <div className="flex flex-wrap items-center gap-2.5">
+                <h3 className="font-mono text-[11px] font-semibold tracking-[0.08em] text-quaternary uppercase">{label}</h3>
+                {badge}
+            </div>
+            {action}
+        </div>
+        <div className="mt-4">{children}</div>
+    </section>
+);
+
+/** Marks the four sections an AM pastes in from the brand messaging workflow. */
+const WorkflowBadge = () => (
+    <BadgeWithDot color="warning" size="sm" type="pill-color">
+        From brand messaging workflow
+    </BadgeWithDot>
+);
+
+/** A labelled field. Renders read-only prose when locked and an input when not, so the
+ *  document reads as a document rather than as a form full of empty boxes. */
+const DocField = ({
+    label,
+    hint,
+    value,
+    placeholder,
+    rows,
+    isLocked,
+    onChange,
+    className,
+    mono,
+}: {
+    label?: string;
+    hint?: string;
+    value: string;
+    placeholder?: string;
+    /** Present ⇒ textarea of this many rows; absent ⇒ single-line input. */
+    rows?: number;
+    isLocked: boolean;
+    onChange: (v: string) => void;
+    className?: string;
+    mono?: boolean;
+}) => (
+    <div className={className}>
+        {label && <p className="text-sm font-medium text-secondary">{label}</p>}
+        {hint && <p className="mt-0.5 text-xs text-quaternary">{hint}</p>}
+        {isLocked ? (
+            <p className={cx("mt-1 text-md whitespace-pre-wrap", filled(value) ? "text-tertiary" : "text-quaternary italic", mono && "font-mono text-sm")}>
+                {filled(value) ? value : "Not filled in"}
+            </p>
+        ) : rows ? (
+            <textarea
+                rows={rows}
+                placeholder={placeholder}
+                value={value}
+                onChange={(e) => onChange(e.target.value)}
+                className={cx(editInput(), "mt-1.5 resize-y", mono && "font-mono")}
+            />
+        ) : (
+            <input
+                placeholder={placeholder}
+                value={value}
+                onChange={(e) => onChange(e.target.value)}
+                className={cx(editInput(), "mt-1.5", mono && "font-mono")}
+            />
+        )}
+    </div>
+);
+
+/** The boxed guests / bedrooms / beds / bathrooms counts on a focus property. */
+const DocStat = ({ label, value, isLocked, onChange }: { label: string; value: string; isLocked: boolean; onChange: (v: string) => void }) => (
+    <div className="rounded-xl bg-primary p-3 ring-1 ring-secondary">
+        <p className="text-xs font-medium text-secondary">{label}</p>
+        {isLocked ? (
+            <p className={cx("mt-1 text-md tabular-nums", filled(value) ? "text-tertiary" : "text-quaternary")}>{filled(value) ? value : "—"}</p>
+        ) : (
+            <input placeholder="—" value={value} onChange={(e) => onChange(e.target.value)} className={cx(editInput(), "mt-1 tabular-nums")} />
+        )}
+    </div>
+);
+
+/**
+ * The document's own section rail — eleven entries is too many to scroll blind.
+ *
+ * Scroll-spy runs on one IntersectionObserver over all eleven anchors. The callback only
+ * receives the entries that CHANGED, so a running map of what is on screen is kept and the
+ * first section in document order wins; picking the topmost of a partial batch would make
+ * the highlight jump to whichever section happened to cross the line last. The bottom
+ * rootMargin keeps the highlight on the section you are reading rather than the one just
+ * entering from below.
+ */
+const DocRail = ({ progress, filledCount }: { progress: Record<FoundationSectionId, boolean>; filledCount: number }) => {
+    const [active, setActive] = useState<FoundationSectionId>(FOUNDATION_SECTIONS[0].id);
+    const onScreen = useRef(new Set<FoundationSectionId>());
+
+    useEffect(() => {
+        const els = FOUNDATION_SECTIONS.map((s) => document.getElementById(`mbd-${s.id}`)).filter((el): el is HTMLElement => Boolean(el));
+        if (!els.length) return;
+
+        const io = new IntersectionObserver(
+            (entries) => {
+                for (const e of entries) {
+                    const id = e.target.id.replace("mbd-", "") as FoundationSectionId;
+                    if (e.isIntersecting) onScreen.current.add(id);
+                    else onScreen.current.delete(id);
+                }
+                const first = FOUNDATION_SECTIONS.find((s) => onScreen.current.has(s.id));
+                if (first) setActive(first.id);
+            },
+            { rootMargin: "-96px 0px -55% 0px" },
+        );
+        els.forEach((el) => io.observe(el));
+        return () => io.disconnect();
+    }, []);
+
+    const jump = (id: FoundationSectionId) => {
+        document.getElementById(`mbd-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+        setActive(id);
+    };
+
+    return (
+        <nav aria-label="Master Brand Document sections" className="lg:sticky lg:top-6 lg:w-56 lg:shrink-0">
+            <p className="font-mono text-[11px] font-semibold tracking-[0.08em] text-quaternary uppercase">Sections</p>
+            <ul className="mt-3 flex flex-col gap-0.5">
+                {FOUNDATION_SECTIONS.map((s) => (
+                    <li key={s.id}>
+                        <button
+                            type="button"
+                            onClick={() => jump(s.id)}
+                            aria-current={active === s.id ? "true" : undefined}
+                            className={cx(
+                                "flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-sm transition duration-100 ease-linear",
+                                active === s.id
+                                    ? "bg-brand-primary_alt font-semibold text-brand-secondary"
+                                    : "text-tertiary hover:bg-primary_hover hover:text-secondary",
+                            )}
+                        >
+                            <span className="min-w-0 flex-1">{s.label}</span>
+                            {progress[s.id] && <Check className="size-3.5 shrink-0 text-fg-success-secondary" aria-label="Has content" />}
+                        </button>
+                    </li>
+                ))}
+            </ul>
+            <div className="mt-4 border-t border-secondary pt-3">
+                <p className="flex items-start gap-2 text-xs text-tertiary">
+                    <span className="mt-1 size-1.5 shrink-0 rounded-full bg-fg-warning-secondary" aria-hidden="true" />
+                    {WORKFLOW_SECTION_COUNT} sections pull from the brand messaging workflow
+                </p>
+                <p className="mt-2 text-xs text-quaternary tabular-nums">
+                    {FOUNDATION_SECTIONS.length} sections ·{" "}
+                    {filledCount === 0 ? "nothing filled in yet" : `${filledCount} of ${FOUNDATION_SECTIONS.length} filled`}
+                </p>
+            </div>
+        </nav>
+    );
+};
+
+/** A two-column name / short-description table (Restaurants, Activities). */
+const FavoriteTable = ({
+    title,
+    note,
+    rows,
+    isLocked,
+    onChange,
+    onAdd,
+    onRemove,
+}: {
+    title: string;
+    note: string;
+    rows: LocalFavorite[];
+    isLocked: boolean;
+    onChange: (id: string, patch: Partial<LocalFavorite>) => void;
+    onAdd: () => void;
+    onRemove: (id: string) => void;
+}) => (
+    <div>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-md font-semibold text-primary">{title}</p>
+            {isLocked ? (
+                <span className="text-xs text-quaternary">{note}</span>
+            ) : (
+                <button
+                    type="button"
+                    onClick={onAdd}
+                    className="text-sm font-semibold text-brand-secondary transition duration-100 ease-linear hover:underline"
+                >
+                    + Add row
+                </button>
+            )}
+        </div>
+        {!isLocked && <p className="mt-0.5 text-xs text-quaternary">{note}</p>}
+        <div className="mt-2">
+            {rows.length === 0 && (
+                <p className="rounded-xl border border-dashed border-secondary px-4 py-3 text-sm text-quaternary italic">Nothing added yet.</p>
+            )}
+            {rows.map((r) => (
+                <div
+                    key={r.id}
+                    className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_auto] items-center gap-3 border-b border-secondary py-2.5 last:border-b-0"
+                >
+                    {isLocked ? (
+                        <>
+                            <span className={cx("truncate text-md", filled(r.name) ? "text-primary" : "text-quaternary italic")}>
+                                {filled(r.name) ? r.name : "Name"}
+                            </span>
+                            <span className={cx("text-md", filled(r.description) ? "text-tertiary" : "text-quaternary italic")}>
+                                {filled(r.description) ? r.description : "Short description"}
+                            </span>
+                            <span />
+                        </>
+                    ) : (
+                        <>
+                            <input placeholder="Name" value={r.name} onChange={(e) => onChange(r.id, { name: e.target.value })} className={editInput()} />
+                            <input
+                                placeholder="Short description"
+                                value={r.description}
+                                onChange={(e) => onChange(r.id, { description: e.target.value })}
+                                className={editInput()}
+                            />
+                            <button
+                                type="button"
+                                title={`Remove ${r.name.trim() || "row"}`}
+                                onClick={() => onRemove(r.id)}
+                                className="flex size-7 items-center justify-center rounded-lg text-fg-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-error-primary"
+                            >
+                                <Trash01 className="size-3.5" aria-hidden="true" />
+                            </button>
+                        </>
+                    )}
+                </div>
+            ))}
+        </div>
+    </div>
 );
 
 const StatTile = ({ label, value, change }: { label: string; value: string; change?: ReactNode }) => (
@@ -982,7 +1555,11 @@ const TeamRecordingSummary = ({ log }: { log?: ScriptLog }) => {
                 {eyebrow}
                 <p className="mt-1.5 flex items-center gap-2 text-sm text-tertiary">
                     <span className="size-3.5 animate-spin rounded-full border-2 border-brand border-t-transparent" aria-hidden="true" />
-                    {log.status === "transcribing" ? "Transcribing the recording…" : log.status === "summarising" ? "Writing the summary…" : "Waiting to start…"}
+                    {log.status === "transcribing"
+                        ? "Transcribing the recording…"
+                        : log.status === "summarising"
+                          ? "Writing the summary…"
+                          : "Waiting to start…"}
                     {isStalled(log) && " — this is taking longer than expected."}
                 </p>
             </div>
@@ -993,7 +1570,7 @@ const TeamRecordingSummary = ({ log }: { log?: ScriptLog }) => {
         return (
             <div className="mt-3 rounded-xl bg-error-primary p-3 ring-1 ring-error_subtle">
                 {eyebrow}
-                <p className="mt-1.5 flex gap-2 text-sm text-tertiary text-pretty">
+                <p className="mt-1.5 flex gap-2 text-sm text-pretty text-tertiary">
                     <AlertTriangle className="mt-0.5 size-4 shrink-0 text-fg-error-secondary" aria-hidden="true" />
                     {log.error || "That didn't work."}
                 </p>
@@ -1014,8 +1591,8 @@ const TeamRecordingSummary = ({ log }: { log?: ScriptLog }) => {
     return (
         <div className={shell}>
             {eyebrow}
-            <p className="mt-1.5 text-sm font-semibold text-primary text-pretty">{s.headline}</p>
-            {s.context && <p className="mt-1 text-sm text-tertiary text-pretty">{s.context}</p>}
+            <p className="mt-1.5 text-sm font-semibold text-pretty text-primary">{s.headline}</p>
+            {s.context && <p className="mt-1 text-sm text-pretty text-tertiary">{s.context}</p>}
             <div className="mt-3 flex flex-col gap-3">
                 <SummaryBullets title="Key points" icon={Lightbulb01} items={s.key_points} />
                 <SummaryBullets title="Action items" icon={CheckDone01} items={s.action_items} />
@@ -1159,8 +1736,7 @@ const OnboardingAnswers = ({
         <div className="mt-5 border-t border-secondary pt-5">
             <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
                 <p className="text-sm font-semibold text-primary">
-                    {isTeamView ? "Their answers" : "Your answers"}{" "}
-                    <span className="font-normal text-tertiary tabular-nums">· {answered} answered</span>
+                    {isTeamView ? "Their answers" : "Your answers"} <span className="font-normal text-tertiary tabular-nums">· {answered} answered</span>
                 </p>
                 {summaryError && (
                     <span className="text-sm text-error-primary" role="alert">
@@ -1182,9 +1758,7 @@ const OnboardingAnswers = ({
                                 showTextWhileLoading
                                 onClick={() => void generateAll()}
                             >
-                                {bulkBusy
-                                    ? "Starting…"
-                                    : `Summarise ${pending.length} recording${pending.length === 1 ? "" : "s"}`}
+                                {bulkBusy ? "Starting…" : `Summarise ${pending.length} recording${pending.length === 1 ? "" : "s"}`}
                             </Button>
                         )}
                     </div>
@@ -1595,6 +2169,8 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     const [pdfBusy, setPdfBusy] = useState(false);
     const [pdfError, setPdfError] = useState(false);
     const [masterDocCopied, setMasterDocCopied] = useState(false);
+    /** "Copied" flash on the Reviews working prompt (team-only block). */
+    const [promptCopied, setPromptCopied] = useState(false);
 
     // Auto-open the create wizard when arriving via "+ New Page" (?create=1).
     useEffect(() => {
@@ -1618,10 +2194,31 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     const patchInstagram = (patch: Partial<DashboardContent["instagram"]>) => setContent((c) => ({ ...c, instagram: { ...c.instagram, ...patch } }));
     const patchGhl = (patch: Partial<DashboardContent["ghl"]>) => setContent((c) => ({ ...c, ghl: { ...c.ghl, ...patch } }));
     const patchRevenue = (patch: Partial<DashboardContent["revenue"]>) => setContent((c) => ({ ...c, revenue: { ...c.revenue, ...patch } }));
-    const patchFoundation = (patch: Partial<NonNullable<DashboardContent["foundation"]>>) =>
-        setContent((c) => ({ ...c, foundation: { ...DEFAULT_FOUNDATION, ...c.foundation, ...patch } }));
+    const patchFoundation = (patch: Partial<Foundation>) => setContent((c) => ({ ...c, foundation: { ...DEFAULT_FOUNDATION, ...c.foundation, ...patch } }));
 
     const foundation = content.foundation ?? DEFAULT_FOUNDATION;
+
+    /* ── Master Brand Document — list editors ──
+       Each repeated block (personas, focus properties, the two favourites tables, the
+       sitemap rows) is patched by id rather than by index, so removing a row mid-list
+       can't rewrite the one that slides up into its place. */
+    const patchPersona = (id: string, patch: Partial<Persona>) =>
+        patchFoundation({ personas: foundation.personas.map((p) => (p.id === id ? { ...p, ...patch } : p)) });
+    const patchFocus = (id: string, patch: Partial<FocusProperty>) =>
+        patchFoundation({ focusProperties: foundation.focusProperties.map((p) => (p.id === id ? { ...p, ...patch } : p)) });
+    const patchFavorite = (list: "restaurants" | "activities") => (id: string, patch: Partial<LocalFavorite>) =>
+        patchFoundation({ [list]: foundation[list].map((r) => (r.id === id ? { ...r, ...patch } : r)) });
+    const addFavorite = (list: "restaurants" | "activities") => () => patchFoundation({ [list]: [...foundation[list], emptyFavorite()] });
+    const removeFavorite = (list: "restaurants" | "activities") => (id: string) => patchFoundation({ [list]: foundation[list].filter((r) => r.id !== id) });
+
+    const foundationFilledMap = foundationProgress(foundation);
+    const foundationFilledCount = Object.values(foundationFilledMap).filter(Boolean).length;
+    /** v1 answers still sitting in the row — shown to the team so the redesign doesn't bury them. */
+    const legacyFoundation = LEGACY_FOUNDATION_FIELDS.filter((f) => filled(foundation[f.key])).map((f) => ({
+        ...f,
+        value: foundation[f.key]!.trim(),
+    }));
+    const legacyFaqs = (foundation.faqs ?? []).filter((q) => q.question.trim() || q.answer.trim());
 
     /* ── Client Overview Document (team only) ── */
     const overviewDoc: OverviewDoc = { ...DEFAULT_OVERVIEW_DOC, ...(content.overview_doc ?? {}) };
@@ -1692,7 +2289,6 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
             /* keep whatever is already there if compression fails */
         }
     };
-    const updateFaq = (i: number, patch: Partial<FaqItem>) => patchFoundation({ faqs: foundation.faqs.map((f, j) => (j === i ? { ...f, ...patch } : f)) });
 
     /* ── Resources group: this client's own owner guide ──
        Resolved by name from owner_guides rather than linked to the bare /owner-guide
@@ -1721,8 +2317,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     }, [clientName]);
 
     /** True when a link-type nav row has nowhere to go yet — shown as "Soon". */
-    const navTargetMissing = (id: SectionId) =>
-        (id === "contentfolder" && !content.brand.folder_link.trim()) || (id === "ownerguide" && !ownerGuideSlug);
+    const navTargetMissing = (id: SectionId) => (id === "contentfolder" && !content.brand.folder_link.trim()) || (id === "ownerguide" && !ownerGuideSlug);
 
     /* ── Per-client section visibility ──
        Two separate ideas, deliberately not conflated:
@@ -1734,8 +2329,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     // Overview is the main dashboard — always visible, never hideable, so a client can
     // never end up with nowhere to land. Same reasoning as the owner guide, where the
     // Welcome and Review steps can't be hidden either.
-    const revealedToClient = (id: SectionId) =>
-        id === "overview" || (!TEAM_ONLY_SECTIONS.has(id) && clientVisible.includes(id));
+    const revealedToClient = (id: SectionId) => id === "overview" || (!TEAM_ONLY_SECTIONS.has(id) && clientVisible.includes(id));
     const toggleClientVisible = (id: SectionId) =>
         setContent((c) => {
             const cur = c.client_visible ?? DEFAULT_CLIENT_VISIBLE;
@@ -1781,10 +2375,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
         const clientCanSee = !navNotBuilt(s) && revealedToClient(s.id);
         if (clientCanSee) return sectionBadge(s.id);
         return (
-            <span
-                className="ml-2 shrink-0 text-[10px] font-bold text-quaternary uppercase"
-                title={isTeam ? "Not shown to this client" : undefined}
-            >
+            <span className="ml-2 shrink-0 text-[10px] font-bold text-quaternary uppercase" title={isTeam ? "Not shown to this client" : undefined}>
                 {isTeam ? "Hidden" : "Soon"}
             </span>
         );
@@ -1879,11 +2470,21 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                 sub: "Link",
             }))
             .filter((h) => canOpen(h.id));
-        const faqHits = canOpen("foundation")
-            ? foundation.faqs.filter((f) => f.question.trim()).map((f) => ({ id: "foundation" as SectionId, label: f.question, sub: "FAQ" }))
+        // The Master Brand Document is eleven sections long, so its own headings — plus the
+        // personas and focus properties an AM named inside it — are indexed plainly. This
+        // replaces the old FAQ-question hits: the FAQ bank is gone, and without something
+        // in its place the whole document collapsed to a single "Master Brand" result.
+        const docHits = canOpen("foundation")
+            ? [
+                  ...FOUNDATION_SECTIONS.map((s) => ({ id: "foundation" as SectionId, label: s.label, sub: "Master Brand" })),
+                  ...foundation.personas.filter((p) => p.name.trim()).map((p) => ({ id: "foundation" as SectionId, label: p.name, sub: "Persona" })),
+                  ...foundation.focusProperties
+                      .filter((p) => p.name.trim())
+                      .map((p) => ({ id: "foundation" as SectionId, label: p.name, sub: "Focus property" })),
+              ]
             : [];
-        return [...navHits, ...linkHits, ...faqHits];
-    }, [content.links, foundation.faqs, isTeam, clientVisible]);
+        return [...navHits, ...linkHits, ...docHits];
+    }, [content.links, foundation.personas, foundation.focusProperties, isTeam, clientVisible]);
 
     /* ── Lock / save ── */
     /** Persist edits to the shared dashboard_pages row, then lock. */
@@ -1952,7 +2553,6 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                 clientWebsite,
                 generatedOn: compiled.generatedOn,
                 sections: compiled.sections,
-                faqs: compiled.faqs.map((q) => ({ question: q.question, answer: q.answer })),
             }).save(masterDocumentFileName(clientName));
         } catch (err) {
             console.error("[master-document] PDF export failed", err);
@@ -2017,12 +2617,6 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
         setShowPlusModal(false);
         navigate(`/${newSlug}`);
     };
-
-    const editInput = (extra?: string) =>
-        cx(
-            "w-full rounded-lg border border-secondary bg-transparent px-2.5 py-1.5 text-sm text-primary transition duration-100 ease-linear outline-none placeholder:text-placeholder focus:border-brand focus:ring-1 focus:ring-brand",
-            extra,
-        );
 
     /* ── The journey timeline on Overview ── */
     /**
@@ -2225,12 +2819,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     }
     if (!hasAccess)
         return (
-            <DashboardAccessGate
-                allowedEmails={allowedEmails}
-                sharePassword={sharePassword}
-                onUnlock={unlockDashboard}
-                backgroundUrl={content.login_bg_url}
-            />
+            <DashboardAccessGate allowedEmails={allowedEmails} sharePassword={sharePassword} onUnlock={unlockDashboard} backgroundUrl={content.login_bg_url} />
         );
 
     return (
@@ -2392,58 +2981,60 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                         </button>
                                         {!isGroupCollapsed(group.phase) && (
                                             <div className="flex flex-col gap-1">
-                                                {group.items.filter((s) => isTeam || !s.teamOnly).map((s) => (
-                                                    <motion.div key={s.id} variants={{ hidden: { opacity: 0, x: -8 }, show: { opacity: 1, x: 0 } }}>
-                                                        <SectionNavItem
-                                                            icon={s.icon}
-                                                            label={s.label}
-                                                            current={activeSection === s.id}
-                                                            // Team can open anything that exists; a client can only
-                                                            // open what's been revealed to them.
-                                                            disabled={navBlocked(s)}
-                                                            indent
-                                                            badge={navBadge(s)}
-                                                            action={
-                                                                // Every row gets the eye while editing, so the whole
-                                                                // menu can be set up in one pass. On a row with
-                                                                // nothing behind it yet the toggle is an APPROVAL
-                                                                // rather than an immediate reveal — the client keeps
-                                                                // seeing "Soon" either way — so the tooltip says so
-                                                                // instead of implying a change they'd look for.
-                                                                !isLocked && isTeam && !s.teamOnly ? (
-                                                                    <button
-                                                                        type="button"
-                                                                        title={
-                                                                            navNotBuilt(s)
-                                                                                ? revealedToClient(s.id)
-                                                                                    ? "Approved for this client — appears as soon as it's ready"
-                                                                                    : "Approve for this client — will appear once it's ready"
-                                                                                : revealedToClient(s.id)
-                                                                                  ? "Hide from this client"
-                                                                                  : "Show to this client"
-                                                                        }
-                                                                        aria-label={
-                                                                            revealedToClient(s.id)
-                                                                                ? `Hide ${s.label} from this client`
-                                                                                : `Show ${s.label} to this client`
-                                                                        }
-                                                                        aria-pressed={revealedToClient(s.id)}
-                                                                        onClick={() => toggleClientVisible(s.id)}
-                                                                        className={cx(
-                                                                            "flex size-6 items-center justify-center rounded-md transition duration-100 ease-linear hover:bg-secondary",
-                                                                            revealedToClient(s.id)
-                                                                                ? "text-brand-secondary hover:text-brand-secondary_hover"
-                                                                                : "text-quaternary hover:text-primary",
-                                                                        )}
-                                                                    >
-                                                                        {revealedToClient(s.id) ? <EyeGlyph /> : <EyeOffGlyph />}
-                                                                    </button>
-                                                                ) : undefined
-                                                            }
-                                                            onClick={() => openNavItem(s.id)}
-                                                        />
-                                                    </motion.div>
-                                                ))}
+                                                {group.items
+                                                    .filter((s) => isTeam || !s.teamOnly)
+                                                    .map((s) => (
+                                                        <motion.div key={s.id} variants={{ hidden: { opacity: 0, x: -8 }, show: { opacity: 1, x: 0 } }}>
+                                                            <SectionNavItem
+                                                                icon={s.icon}
+                                                                label={s.label}
+                                                                current={activeSection === s.id}
+                                                                // Team can open anything that exists; a client can only
+                                                                // open what's been revealed to them.
+                                                                disabled={navBlocked(s)}
+                                                                indent
+                                                                badge={navBadge(s)}
+                                                                action={
+                                                                    // Every row gets the eye while editing, so the whole
+                                                                    // menu can be set up in one pass. On a row with
+                                                                    // nothing behind it yet the toggle is an APPROVAL
+                                                                    // rather than an immediate reveal — the client keeps
+                                                                    // seeing "Soon" either way — so the tooltip says so
+                                                                    // instead of implying a change they'd look for.
+                                                                    !isLocked && isTeam && !s.teamOnly ? (
+                                                                        <button
+                                                                            type="button"
+                                                                            title={
+                                                                                navNotBuilt(s)
+                                                                                    ? revealedToClient(s.id)
+                                                                                        ? "Approved for this client — appears as soon as it's ready"
+                                                                                        : "Approve for this client — will appear once it's ready"
+                                                                                    : revealedToClient(s.id)
+                                                                                      ? "Hide from this client"
+                                                                                      : "Show to this client"
+                                                                            }
+                                                                            aria-label={
+                                                                                revealedToClient(s.id)
+                                                                                    ? `Hide ${s.label} from this client`
+                                                                                    : `Show ${s.label} to this client`
+                                                                            }
+                                                                            aria-pressed={revealedToClient(s.id)}
+                                                                            onClick={() => toggleClientVisible(s.id)}
+                                                                            className={cx(
+                                                                                "flex size-6 items-center justify-center rounded-md transition duration-100 ease-linear hover:bg-secondary",
+                                                                                revealedToClient(s.id)
+                                                                                    ? "text-brand-secondary hover:text-brand-secondary_hover"
+                                                                                    : "text-quaternary hover:text-primary",
+                                                                            )}
+                                                                        >
+                                                                            {revealedToClient(s.id) ? <EyeGlyph /> : <EyeOffGlyph />}
+                                                                        </button>
+                                                                    ) : undefined
+                                                                }
+                                                                onClick={() => openNavItem(s.id)}
+                                                            />
+                                                        </motion.div>
+                                                    ))}
                                             </div>
                                         )}
                                     </div>
@@ -2506,7 +3097,10 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                             )}
                                         >
                                             {saveState === "saving" ? (
-                                                <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" />
+                                                <span
+                                                    className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent"
+                                                    aria-hidden="true"
+                                                />
                                             ) : saveState === "error" ? (
                                                 <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
                                             ) : isLocked ? (
@@ -2572,7 +3166,11 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                         <p
                                             className={cx(
                                                 "text-xs",
-                                                saveState === "error" ? "text-error-primary" : saveState === "saved" ? "text-success-primary" : "text-quaternary",
+                                                saveState === "error"
+                                                    ? "text-error-primary"
+                                                    : saveState === "saved"
+                                                      ? "text-success-primary"
+                                                      : "text-quaternary",
                                             )}
                                             role={saveState === "error" ? "alert" : undefined}
                                         >
@@ -2759,9 +3357,9 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                 {isTeam && !isLocked && !isTemplate && (
                                                     <div className="mt-8 rounded-xl bg-secondary p-5 ring-1 ring-secondary">
                                                         <p className="text-sm font-semibold text-primary">Who can open this dashboard</p>
-                                                        <p className="mt-1 text-sm text-tertiary text-pretty">
-                                                            Anyone at @hiddengem.media always has access. Add the client's email addresses here — they'll
-                                                            sign in with Google using one of them. An address that isn't listed can sign in but sees nothing.
+                                                        <p className="mt-1 text-sm text-pretty text-tertiary">
+                                                            Anyone at @hiddengem.media always has access. Add the client's email addresses here — they'll sign
+                                                            in with Google using one of them. An address that isn't listed can sign in but sees nothing.
                                                         </p>
                                                         <div className="mt-4 flex flex-col gap-2">
                                                             {allowedEmails.map((addr, i) => (
@@ -2787,14 +3385,19 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                             ))}
                                                         </div>
                                                         <div className="mt-3">
-                                                            <Button size="sm" color="secondary" iconLeading={Plus} onClick={() => updateAllowedEmails([...allowedEmails, ""])}>
+                                                            <Button
+                                                                size="sm"
+                                                                color="secondary"
+                                                                iconLeading={Plus}
+                                                                onClick={() => updateAllowedEmails([...allowedEmails, ""])}
+                                                            >
                                                                 Add an email
                                                             </Button>
                                                         </div>
 
                                                         <div className="mt-4 border-t border-secondary pt-4">
                                                             <p className="text-sm font-medium text-secondary">Shared password</p>
-                                                            <p className="mt-1 text-xs text-tertiary text-pretty">
+                                                            <p className="mt-1 text-xs text-pretty text-tertiary">
                                                                 The client types this alongside their email. Send it to them separately from the link.
                                                             </p>
                                                             <div className="mt-2 flex items-center gap-2">
@@ -2834,9 +3437,9 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
 
                                                         <div className="mt-4 border-t border-secondary pt-4">
                                                             <p className="text-sm font-medium text-secondary">Sign-in background</p>
-                                                            <p className="mt-1 text-xs text-tertiary text-pretty">
-                                                                Image or video URL shown behind this client's sign-in card, so each client can look
-                                                                different. Leave empty for the default leaf-shadow loop.
+                                                            <p className="mt-1 text-xs text-pretty text-tertiary">
+                                                                Image or video URL shown behind this client's sign-in card, so each client can look different.
+                                                                Leave empty for the default leaf-shadow loop.
                                                             </p>
                                                             <input
                                                                 type="text"
@@ -2940,17 +3543,24 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                                 )
                                                                             )}
                                                                         </div>
-                                                                        <p className="mt-1.5 text-sm text-tertiary text-pretty">{step.detail}</p>
+                                                                        <p className="mt-1.5 text-sm text-pretty text-tertiary">{step.detail}</p>
 
                                                                         {!step.done && step.progress && step.progress.total > 0 && (
                                                                             <div className="mt-3">
-                                                                                <ProgressBar value={Math.round((step.progress.value / step.progress.total) * 100)} />
+                                                                                <ProgressBar
+                                                                                    value={Math.round((step.progress.value / step.progress.total) * 100)}
+                                                                                />
                                                                             </div>
                                                                         )}
 
                                                                         <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
                                                                             {canJump && target && (
-                                                                                <Button size="sm" color="link-color" iconTrailing={ArrowRight} onClick={() => openNavItem(target)}>
+                                                                                <Button
+                                                                                    size="sm"
+                                                                                    color="link-color"
+                                                                                    iconTrailing={ArrowRight}
+                                                                                    onClick={() => openNavItem(target)}
+                                                                                >
                                                                                     Open
                                                                                 </Button>
                                                                             )}
@@ -2962,15 +3572,20 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                                 (step.requires && !journeySteps.find((x) => x.id === step.requires)?.done ? (
                                                                                     <span className="text-xs text-quaternary">
                                                                                         Available once{" "}
-                                                                                        {journeySteps.find((x) => x.id === step.requires)?.label ?? "the previous step"} is
-                                                                                        done
+                                                                                        {journeySteps.find((x) => x.id === step.requires)?.label ??
+                                                                                            "the previous step"}{" "}
+                                                                                        is done
                                                                                     </span>
                                                                                 ) : step.href === KICKOFF_CALENDLY ? (
                                                                                     // Booking opens over the dashboard instead of in a new
                                                                                     // tab. Sending a client to calendly.com mid-journey costs
                                                                                     // them their place in the list and lands them on a page
                                                                                     // with no way back here.
-                                                                                    <Button size="sm" iconTrailing={Calendar} onClick={() => setBookingOpen(true)}>
+                                                                                    <Button
+                                                                                        size="sm"
+                                                                                        iconTrailing={Calendar}
+                                                                                        onClick={() => setBookingOpen(true)}
+                                                                                    >
                                                                                         {step.hrefLabel ?? "Book your call"}
                                                                                     </Button>
                                                                                 ) : (
@@ -2990,7 +3605,9 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                             {!isLocked &&
                                                                                 isTeam &&
                                                                                 (step.auto ? (
-                                                                                    <span className="text-xs text-quaternary">Tracked from the form itself</span>
+                                                                                    <span className="text-xs text-quaternary">
+                                                                                        Tracked from the form itself
+                                                                                    </span>
                                                                                 ) : (
                                                                                     <Button
                                                                                         size="sm"
@@ -3395,11 +4012,13 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                 </Button>
                                                             )}
                                                             <span className="text-sm text-quaternary tabular-nums">
-                                                                {OVERVIEW_SECTIONS.length + 2} sections · {overviewFilled} of {OVERVIEW_COUNTED_FIELDS.length} fields filled
+                                                                {OVERVIEW_SECTIONS.length + 2} sections · {overviewFilled} of {OVERVIEW_COUNTED_FIELDS.length}{" "}
+                                                                fields filled
                                                             </span>
                                                             {overviewDoc.generated_at && (
                                                                 <span className="text-xs text-quaternary">
-                                                                    Drafted {new Date(overviewDoc.generated_at).toLocaleDateString()} — review before relying on it
+                                                                    Drafted {new Date(overviewDoc.generated_at).toLocaleDateString()} — review before relying on
+                                                                    it
                                                                 </span>
                                                             )}
                                                         </div>
@@ -3409,16 +4028,14 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                 {overviewError}
                                                             </p>
                                                         )}
-                                                        {isLocked && (
-                                                            <p className="mt-2 text-xs text-quaternary">
-                                                                Unlock the dashboard to edit these fields.
-                                                            </p>
-                                                        )}
+                                                        {isLocked && <p className="mt-2 text-xs text-quaternary">Unlock the dashboard to edit these fields.</p>}
 
                                                         <div className="mt-8 flex flex-col gap-10">
                                                             {OVERVIEW_SECTIONS.map((sec) => (
                                                                 <section key={sec.id}>
-                                                                    <p className="text-xs font-semibold tracking-wide text-brand-secondary uppercase">{sec.title}</p>
+                                                                    <p className="text-xs font-semibold tracking-wide text-brand-secondary uppercase">
+                                                                        {sec.title}
+                                                                    </p>
                                                                     <div className="mt-4 grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2">
                                                                         {sec.fields.map((f) => (
                                                                             <div key={String(f.key)} className={cx(!f.half && "sm:col-span-2")}>
@@ -3427,7 +4044,9 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                                     <p
                                                                                         className={cx(
                                                                                             "mt-1 text-md whitespace-pre-wrap",
-                                                                                            String(overviewDoc[f.key] ?? "").trim() ? "text-tertiary" : "text-quaternary italic",
+                                                                                            String(overviewDoc[f.key] ?? "").trim()
+                                                                                                ? "text-tertiary"
+                                                                                                : "text-quaternary italic",
                                                                                         )}
                                                                                     >
                                                                                         {String(overviewDoc[f.key] ?? "").trim() || "Not filled in"}
@@ -3437,14 +4056,22 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                                         rows={2}
                                                                                         placeholder={f.placeholder}
                                                                                         value={String(overviewDoc[f.key] ?? "")}
-                                                                                        onChange={(e) => patchOverviewDoc({ [f.key]: e.target.value } as Partial<OverviewDoc>)}
+                                                                                        onChange={(e) =>
+                                                                                            patchOverviewDoc({
+                                                                                                [f.key]: e.target.value,
+                                                                                            } as Partial<OverviewDoc>)
+                                                                                        }
                                                                                         className={cx(editInput(), "mt-1.5 resize-y")}
                                                                                     />
                                                                                 ) : (
                                                                                     <input
                                                                                         placeholder={f.placeholder}
                                                                                         value={String(overviewDoc[f.key] ?? "")}
-                                                                                        onChange={(e) => patchOverviewDoc({ [f.key]: e.target.value } as Partial<OverviewDoc>)}
+                                                                                        onChange={(e) =>
+                                                                                            patchOverviewDoc({
+                                                                                                [f.key]: e.target.value,
+                                                                                            } as Partial<OverviewDoc>)
+                                                                                        }
                                                                                         className={cx(editInput(), "mt-1.5")}
                                                                                     />
                                                                                 )}
@@ -3456,13 +4083,18 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                     {sec.id === "platforms" && (
                                                                         <div className="mt-10">
                                                                             <div className="flex items-center justify-between gap-3">
-                                                                                <p className="text-xs font-semibold tracking-wide text-brand-secondary uppercase">Properties</p>
+                                                                                <p className="text-xs font-semibold tracking-wide text-brand-secondary uppercase">
+                                                                                    Properties
+                                                                                </p>
                                                                                 {!isLocked && (
                                                                                     <button
                                                                                         type="button"
                                                                                         onClick={() =>
                                                                                             patchOverviewDoc({
-                                                                                                properties: [...overviewDoc.properties, { id: crypto.randomUUID(), name: "", link: "" }],
+                                                                                                properties: [
+                                                                                                    ...overviewDoc.properties,
+                                                                                                    { id: crypto.randomUUID(), name: "", link: "" },
+                                                                                                ],
                                                                                             })
                                                                                         }
                                                                                         className="text-sm font-semibold text-brand-secondary transition duration-100 ease-linear hover:underline"
@@ -3482,8 +4114,12 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                                         </span>
                                                                                         {isLocked ? (
                                                                                             <>
-                                                                                                <span className="truncate text-md text-tertiary">{prop.name || "—"}</span>
-                                                                                                <span className="truncate text-md text-tertiary">{prop.link || "—"}</span>
+                                                                                                <span className="truncate text-md text-tertiary">
+                                                                                                    {prop.name || "—"}
+                                                                                                </span>
+                                                                                                <span className="truncate text-md text-tertiary">
+                                                                                                    {prop.link || "—"}
+                                                                                                </span>
                                                                                                 <span />
                                                                                             </>
                                                                                         ) : (
@@ -3494,7 +4130,9 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                                                     onChange={(e) =>
                                                                                                         patchOverviewDoc({
                                                                                                             properties: overviewDoc.properties.map((x) =>
-                                                                                                                x.id === prop.id ? { ...x, name: e.target.value } : x,
+                                                                                                                x.id === prop.id
+                                                                                                                    ? { ...x, name: e.target.value }
+                                                                                                                    : x,
                                                                                                             ),
                                                                                                         })
                                                                                                     }
@@ -3506,7 +4144,9 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                                                     onChange={(e) =>
                                                                                                         patchOverviewDoc({
                                                                                                             properties: overviewDoc.properties.map((x) =>
-                                                                                                                x.id === prop.id ? { ...x, link: e.target.value } : x,
+                                                                                                                x.id === prop.id
+                                                                                                                    ? { ...x, link: e.target.value }
+                                                                                                                    : x,
                                                                                                             ),
                                                                                                         })
                                                                                                     }
@@ -3516,7 +4156,9 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                                                     type="button"
                                                                                                     onClick={() =>
                                                                                                         patchOverviewDoc({
-                                                                                                            properties: overviewDoc.properties.filter((x) => x.id !== prop.id),
+                                                                                                            properties: overviewDoc.properties.filter(
+                                                                                                                (x) => x.id !== prop.id,
+                                                                                                            ),
                                                                                                         })
                                                                                                     }
                                                                                                     title="Remove this property"
@@ -3542,7 +4184,9 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                             {/* Baseline — the numbers as they stood at kickoff, so growth has a zero point. */}
                                                             <section>
                                                                 <div className="flex flex-wrap items-center justify-between gap-3">
-                                                                    <p className="text-xs font-semibold tracking-wide text-brand-secondary uppercase">Baseline (snapshot)</p>
+                                                                    <p className="text-xs font-semibold tracking-wide text-brand-secondary uppercase">
+                                                                        Baseline (snapshot)
+                                                                    </p>
                                                                     <span className="text-xs text-quaternary">Recorded at kickoff</span>
                                                                 </div>
                                                                 <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -3557,7 +4201,9 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                                 <input
                                                                                     placeholder="—"
                                                                                     value={String(overviewDoc[f.key] ?? "")}
-                                                                                    onChange={(e) => patchOverviewDoc({ [f.key]: e.target.value } as Partial<OverviewDoc>)}
+                                                                                    onChange={(e) =>
+                                                                                        patchOverviewDoc({ [f.key]: e.target.value } as Partial<OverviewDoc>)
+                                                                                    }
                                                                                     className={cx(editInput(), "mt-1.5 tabular-nums")}
                                                                                 />
                                                                             )}
@@ -3610,7 +4256,12 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                         <p className="mt-1 text-md text-quaternary italic">Not added</p>
                                                                     ) : (
                                                                         <label className="mt-3 flex cursor-pointer items-center justify-center rounded-lg border border-dashed border-secondary px-4 py-6 text-sm text-quaternary transition duration-100 ease-linear hover:border-brand hover:text-tertiary">
-                                                                            <input type="file" accept="image/*" className="hidden" onChange={(e) => void onPickOverviewShot(e)} />
+                                                                            <input
+                                                                                type="file"
+                                                                                accept="image/*"
+                                                                                className="hidden"
+                                                                                onChange={(e) => void onPickOverviewShot(e)}
+                                                                            />
                                                                             Add an image — it's compressed before saving
                                                                         </label>
                                                                     )}
@@ -3623,7 +4274,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                 {activeSection === "foundation" && (
                                                     <Reveal>
                                                         <SectionEyebrow section={activeSection} />
-                                                        <SectionHeading>Master Document</SectionHeading>
+                                                        <SectionHeading>Master Brand Document</SectionHeading>
                                                         <p className="mt-3 text-md text-tertiary">
                                                             This is where it starts. Everyone — you, your team, and ours — keeps this updated. It's what your
                                                             Welcome Emails, chat widget, and every future AI feature read from, so the more complete it is, the
@@ -3658,147 +4309,972 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                 )}
                                                             </div>
                                                         )}
+                                                        {isLocked && (
+                                                            <p className="mt-2 text-xs text-quaternary">Unlock the dashboard to edit this document.</p>
+                                                        )}
 
-                                                        <div className="mt-6 flex flex-col gap-6">
-                                                            {(
-                                                                [
-                                                                    {
-                                                                        key: "propertyBasics",
-                                                                        label: "Property basics",
-                                                                        hint: "Name, type, location, vibe.",
-                                                                        placeholder:
-                                                                            "e.g. Oceanview Cottage — a 3-bed boutique rental on the Big Sur coast, rustic-luxury vibe.",
-                                                                    },
-                                                                    {
-                                                                        key: "persona",
-                                                                        label: "Ideal guest persona",
-                                                                        hint: "Who books, why they come, what they care about.",
-                                                                        placeholder:
-                                                                            "e.g. Couples celebrating an anniversary, mid-30s to 50s, want privacy + a view, not big groups.",
-                                                                    },
-                                                                    {
-                                                                        key: "toneOfVoice",
-                                                                        label: "Tone of voice",
-                                                                        hint: "How your brand talks.",
-                                                                        placeholder: "e.g. Warm and personal, a little playful — never corporate.",
-                                                                    },
-                                                                    {
-                                                                        key: "amenities",
-                                                                        label: "Amenities & house rules",
-                                                                        hint: "What's included, what's not allowed.",
-                                                                        placeholder:
-                                                                            "e.g. Hot tub, full kitchen, pet-friendly. No parties, quiet hours after 10pm.",
-                                                                    },
-                                                                    {
-                                                                        key: "localRecommendations",
-                                                                        label: "Local recommendations",
-                                                                        hint: "Food, activities, hidden gems.",
-                                                                        placeholder:
-                                                                            "e.g. Nepenthe for sunset dinner, McWay Falls trail, Big Sur Bakery for breakfast.",
-                                                                    },
-                                                                    {
-                                                                        key: "bookingLinks",
-                                                                        label: "Booking & upsell links",
-                                                                        hint: "Where guests book, and anything you'd like to upsell.",
-                                                                        placeholder:
-                                                                            "e.g. Book direct at oceanviewcottage.com/book — ask about our late-checkout add-on.",
-                                                                    },
-                                                                ] as const
-                                                            ).map((f) => (
-                                                                <div key={f.key}>
-                                                                    <p className="text-sm font-semibold text-primary">{f.label}</p>
-                                                                    <p className="mt-0.5 text-xs text-tertiary">{f.hint}</p>
-                                                                    {isLocked ? (
-                                                                        foundation[f.key] ? (
-                                                                            <p className="mt-2 rounded-xl bg-secondary px-4 py-3 text-sm whitespace-pre-wrap text-secondary">
-                                                                                {foundation[f.key]}
-                                                                            </p>
-                                                                        ) : (
-                                                                            <p className="mt-2 rounded-xl border border-dashed border-secondary px-4 py-3 text-sm text-quaternary italic">
-                                                                                Not filled in yet.
-                                                                            </p>
-                                                                        )
-                                                                    ) : (
-                                                                        <textarea
-                                                                            rows={2}
-                                                                            placeholder={f.placeholder}
-                                                                            value={foundation[f.key]}
-                                                                            onChange={(e) => patchFoundation({ [f.key]: e.target.value })}
-                                                                            className={cx(editInput(), "mt-2 resize-y")}
-                                                                        />
-                                                                    )}
-                                                                </div>
-                                                            ))}
-                                                        </div>
+                                                        {/* Rail beside the document on wide screens; above it on narrow ones, where a
+                                                            sticky column would eat the reading width. */}
+                                                        <div className="mt-8 flex flex-col gap-8 lg:flex-row lg:items-start lg:gap-10">
+                                                            <DocRail progress={foundationFilledMap} filledCount={foundationFilledCount} />
 
-                                                        {/* FAQ bank — client & AM can both add */}
-                                                        <div className="mt-8 border-t border-secondary pt-6">
-                                                            <div className="flex items-center gap-2">
-                                                                <HelpCircle className="size-4 text-fg-quaternary" aria-hidden="true" />
-                                                                <p className="text-sm font-semibold text-primary">FAQ bank</p>
-                                                            </div>
-                                                            <p className="mt-0.5 text-xs text-tertiary">
-                                                                Questions guests ask often — the chat widget answers straight from this list.
-                                                            </p>
+                                                            <div className="flex min-w-0 flex-1 flex-col gap-8">
+                                                                {/* ── 1. About the hosts ── */}
+                                                                <DocSection id="hosts" label="About the hosts">
+                                                                    <DocField
+                                                                        isLocked={isLocked}
+                                                                        rows={3}
+                                                                        value={foundation.hosts}
+                                                                        placeholder="Who they are, how they came to hosting, what they care about."
+                                                                        onChange={(v) => patchFoundation({ hosts: v })}
+                                                                    />
+                                                                </DocSection>
 
-                                                            <div className="mt-4 flex flex-col gap-3">
-                                                                {foundation.faqs.length === 0 && isLocked && (
-                                                                    <p className="rounded-xl border border-dashed border-secondary px-4 py-3 text-sm text-quaternary italic">
-                                                                        No FAQs yet.
+                                                                {/* ── 2. About the properties ── */}
+                                                                <DocSection id="properties" label="About the properties">
+                                                                    <p className="text-md text-tertiary">
+                                                                        If it's a micro resort or separate properties, what type of properties they have (e.g.
+                                                                        treehouses, cabins, domes), general amenities, shared resort amenities, etc.
                                                                     </p>
-                                                                )}
-                                                                {foundation.faqs.map((f, i) =>
-                                                                    isLocked ? (
-                                                                        <div key={f.id} className="rounded-xl p-4 ring-1 ring-secondary">
-                                                                            <p className="text-sm font-semibold text-primary">
-                                                                                {f.question || "Untitled question"}
-                                                                            </p>
-                                                                            <p className="mt-1 text-sm text-tertiary">{f.answer || "No answer yet."}</p>
-                                                                        </div>
-                                                                    ) : (
-                                                                        <div key={f.id} className="flex flex-col gap-1.5 rounded-xl p-4 ring-1 ring-secondary">
-                                                                            <div className="flex items-center gap-1.5">
-                                                                                <input
-                                                                                    type="text"
-                                                                                    placeholder="Question"
-                                                                                    value={f.question}
-                                                                                    onChange={(e) => updateFaq(i, { question: e.target.value })}
-                                                                                    className={editInput("font-semibold")}
-                                                                                />
-                                                                                <button
-                                                                                    type="button"
-                                                                                    title="Remove FAQ"
-                                                                                    onClick={() =>
-                                                                                        patchFoundation({ faqs: foundation.faqs.filter((_, j) => j !== i) })
-                                                                                    }
-                                                                                    className={removeButton}
-                                                                                >
-                                                                                    <Trash01 className="size-4" aria-hidden="true" />
-                                                                                </button>
-                                                                            </div>
-                                                                            <textarea
-                                                                                rows={2}
-                                                                                placeholder="Answer"
-                                                                                value={f.answer}
-                                                                                onChange={(e) => updateFaq(i, { answer: e.target.value })}
-                                                                                className={cx(editInput(), "resize-y text-xs")}
-                                                                            />
-                                                                        </div>
-                                                                    ),
-                                                                )}
-                                                                {!isLocked && (
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() =>
-                                                                            patchFoundation({
-                                                                                faqs: [...foundation.faqs, { id: uid(), question: "", answer: "" }],
-                                                                            })
+                                                                    <div className="mt-4 grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2">
+                                                                        <DocField
+                                                                            isLocked={isLocked}
+                                                                            label="Property type"
+                                                                            value={foundation.propertyType}
+                                                                            placeholder="e.g. treehouses, cabins, domes"
+                                                                            onChange={(v) => patchFoundation({ propertyType: v })}
+                                                                        />
+                                                                        <DocField
+                                                                            isLocked={isLocked}
+                                                                            label="Structure"
+                                                                            value={foundation.structure}
+                                                                            placeholder="Micro resort or separate properties"
+                                                                            onChange={(v) => patchFoundation({ structure: v })}
+                                                                        />
+                                                                        <DocField
+                                                                            isLocked={isLocked}
+                                                                            rows={2}
+                                                                            label="General amenities"
+                                                                            value={foundation.generalAmenities}
+                                                                            placeholder="What every stay includes"
+                                                                            onChange={(v) => patchFoundation({ generalAmenities: v })}
+                                                                        />
+                                                                        <DocField
+                                                                            isLocked={isLocked}
+                                                                            rows={2}
+                                                                            label="Shared resort amenities"
+                                                                            value={foundation.sharedAmenities}
+                                                                            placeholder="Anything guests share across the site"
+                                                                            onChange={(v) => patchFoundation({ sharedAmenities: v })}
+                                                                        />
+                                                                    </div>
+                                                                </DocSection>
+
+                                                                {/* ── 3. Location ── */}
+                                                                <DocSection id="location" label="Location">
+                                                                    <DocField
+                                                                        isLocked={isLocked}
+                                                                        label="Exact location"
+                                                                        value={foundation.exactLocation}
+                                                                        placeholder="Address or coordinates"
+                                                                        onChange={(v) => patchFoundation({ exactLocation: v })}
+                                                                    />
+                                                                    <div className="mt-5 grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2">
+                                                                        <DocField
+                                                                            isLocked={isLocked}
+                                                                            rows={2}
+                                                                            label="Proximity to popular cities"
+                                                                            value={foundation.proximityCities}
+                                                                            placeholder="City — drive time"
+                                                                            onChange={(v) => patchFoundation({ proximityCities: v })}
+                                                                        />
+                                                                        <DocField
+                                                                            isLocked={isLocked}
+                                                                            rows={2}
+                                                                            label="Proximity to airports"
+                                                                            value={foundation.proximityAirports}
+                                                                            placeholder="Airport code — drive time"
+                                                                            onChange={(v) => patchFoundation({ proximityAirports: v })}
+                                                                        />
+                                                                    </div>
+                                                                </DocSection>
+
+                                                                {/* ── 4. Target audience profile ── */}
+                                                                <DocSection
+                                                                    id="audience"
+                                                                    label="Target audience profile"
+                                                                    badge={isTeam ? <WorkflowBadge /> : undefined}
+                                                                >
+                                                                    <DocField
+                                                                        isLocked={isLocked}
+                                                                        rows={3}
+                                                                        value={foundation.targetAudience}
+                                                                        placeholder={
+                                                                            isTeam
+                                                                                ? "Paste the target audience profile from the workflow output."
+                                                                                : "Who your ideal guests are, as a group."
                                                                         }
-                                                                        className="flex items-center gap-2 rounded-lg px-2 py-1 text-sm font-medium text-tertiary transition duration-100 ease-linear hover:text-brand-secondary"
-                                                                    >
-                                                                        <Plus className="size-4" aria-hidden="true" />
-                                                                        Add FAQ
-                                                                    </button>
+                                                                        onChange={(v) => patchFoundation({ targetAudience: v })}
+                                                                    />
+                                                                </DocSection>
+
+                                                                {/* ── 5. Unique value proposition ── */}
+                                                                <DocSection
+                                                                    id="uvp"
+                                                                    label="Unique value proposition"
+                                                                    badge={isTeam ? <WorkflowBadge /> : undefined}
+                                                                >
+                                                                    <DocField
+                                                                        isLocked={isLocked}
+                                                                        rows={3}
+                                                                        value={foundation.uvp}
+                                                                        placeholder={
+                                                                            isTeam
+                                                                                ? "Paste the UVP from the workflow output."
+                                                                                : "What makes this stay worth choosing over any other."
+                                                                        }
+                                                                        onChange={(v) => patchFoundation({ uvp: v })}
+                                                                    />
+                                                                </DocSection>
+
+                                                                {/* ── 6. About the brand ── */}
+                                                                <DocSection id="brand" label="About the brand" badge={isTeam ? <WorkflowBadge /> : undefined}>
+                                                                    <DocField
+                                                                        isLocked={isLocked}
+                                                                        rows={2}
+                                                                        label="Brand voice"
+                                                                        value={foundation.brandVoice}
+                                                                        placeholder="How the brand sounds, and what it never sounds like."
+                                                                        onChange={(v) => patchFoundation({ brandVoice: v })}
+                                                                    />
+
+                                                                    <div className="mt-5">
+                                                                        <p className="text-sm font-medium text-secondary">Taglines</p>
+                                                                        <div className="mt-2 flex flex-col gap-2">
+                                                                            {foundation.taglines.map((t, i) => (
+                                                                                <div key={i} className="flex items-center gap-3">
+                                                                                    <span className="w-6 shrink-0 font-mono text-xs text-quaternary tabular-nums">
+                                                                                        {String(i + 1).padStart(2, "0")}
+                                                                                    </span>
+                                                                                    {isLocked ? (
+                                                                                        <span
+                                                                                            className={cx(
+                                                                                                "text-md",
+                                                                                                filled(t) ? "text-tertiary" : "text-quaternary italic",
+                                                                                            )}
+                                                                                        >
+                                                                                            {filled(t) ? t : "2–6 words"}
+                                                                                        </span>
+                                                                                    ) : (
+                                                                                        <input
+                                                                                            placeholder="2–6 words"
+                                                                                            value={t}
+                                                                                            onChange={(e) =>
+                                                                                                patchFoundation({
+                                                                                                    taglines: foundation.taglines.map((x, j) =>
+                                                                                                        j === i ? e.target.value : x,
+                                                                                                    ),
+                                                                                                })
+                                                                                            }
+                                                                                            className={editInput()}
+                                                                                        />
+                                                                                    )}
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+
+                                                                    <DocField
+                                                                        className="mt-5"
+                                                                        isLocked={isLocked}
+                                                                        rows={3}
+                                                                        label="Brand bio"
+                                                                        value={foundation.brandBio}
+                                                                        placeholder="The short paragraph that introduces the brand."
+                                                                        onChange={(v) => patchFoundation({ brandBio: v })}
+                                                                    />
+                                                                </DocSection>
+
+                                                                {/* ── 7. Personas ── */}
+                                                                <DocSection
+                                                                    id="personas"
+                                                                    label="Personas"
+                                                                    badge={isTeam ? <WorkflowBadge /> : undefined}
+                                                                    action={
+                                                                        !isLocked && (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() =>
+                                                                                    patchFoundation({
+                                                                                        personas: [
+                                                                                            ...foundation.personas,
+                                                                                            emptyPersona(
+                                                                                                foundation.personas.length === 0 ? "Primary" : "Secondary",
+                                                                                            ),
+                                                                                        ],
+                                                                                    })
+                                                                                }
+                                                                                className="text-sm font-semibold text-brand-secondary transition duration-100 ease-linear hover:underline"
+                                                                            >
+                                                                                + Add persona
+                                                                            </button>
+                                                                        )
+                                                                    }
+                                                                >
+                                                                    <div className="flex flex-col gap-4">
+                                                                        {foundation.personas.length === 0 && (
+                                                                            <p className="rounded-xl border border-dashed border-secondary px-4 py-3 text-sm text-quaternary italic">
+                                                                                No personas yet.
+                                                                            </p>
+                                                                        )}
+                                                                        {foundation.personas.map((p) => (
+                                                                            <div
+                                                                                key={p.id}
+                                                                                className="overflow-hidden rounded-2xl bg-primary ring-1 ring-secondary"
+                                                                            >
+                                                                                {/* Card head — who this persona is, and where they rank. */}
+                                                                                <div className="bg-secondary_subtle flex flex-wrap items-start justify-between gap-3 border-b border-secondary px-4 py-3">
+                                                                                    <div className="min-w-0 flex-1">
+                                                                                        {isLocked ? (
+                                                                                            <>
+                                                                                                <p
+                                                                                                    className={cx(
+                                                                                                        "text-md font-semibold",
+                                                                                                        filled(p.name)
+                                                                                                            ? "text-primary"
+                                                                                                            : "text-quaternary italic",
+                                                                                                    )}
+                                                                                                >
+                                                                                                    {filled(p.name) ? p.name : "Persona name"}
+                                                                                                </p>
+                                                                                                <p
+                                                                                                    className={cx(
+                                                                                                        "mt-0.5 text-sm",
+                                                                                                        filled(p.summary)
+                                                                                                            ? "text-tertiary"
+                                                                                                            : "text-quaternary italic",
+                                                                                                    )}
+                                                                                                >
+                                                                                                    {filled(p.summary)
+                                                                                                        ? p.summary
+                                                                                                        : "One-line summary of who they are"}
+                                                                                                </p>
+                                                                                            </>
+                                                                                        ) : (
+                                                                                            <div className="flex flex-col gap-1.5">
+                                                                                                <input
+                                                                                                    placeholder="Persona name"
+                                                                                                    value={p.name}
+                                                                                                    onChange={(e) =>
+                                                                                                        patchPersona(p.id, { name: e.target.value })
+                                                                                                    }
+                                                                                                    className={editInput("font-semibold")}
+                                                                                                />
+                                                                                                <input
+                                                                                                    placeholder="One-line summary of who they are"
+                                                                                                    value={p.summary}
+                                                                                                    onChange={(e) =>
+                                                                                                        patchPersona(p.id, { summary: e.target.value })
+                                                                                                    }
+                                                                                                    className={editInput()}
+                                                                                                />
+                                                                                            </div>
+                                                                                        )}
+                                                                                    </div>
+                                                                                    <div className="flex shrink-0 items-center gap-1.5">
+                                                                                        {isLocked ? (
+                                                                                            filled(p.rank) && (
+                                                                                                <Badge
+                                                                                                    color={
+                                                                                                        p.rank.trim().toLowerCase() === "primary"
+                                                                                                            ? "brand"
+                                                                                                            : "gray"
+                                                                                                    }
+                                                                                                    size="sm"
+                                                                                                    type="pill-color"
+                                                                                                >
+                                                                                                    {p.rank}
+                                                                                                </Badge>
+                                                                                            )
+                                                                                        ) : (
+                                                                                            <>
+                                                                                                <input
+                                                                                                    placeholder="Primary"
+                                                                                                    value={p.rank}
+                                                                                                    onChange={(e) =>
+                                                                                                        patchPersona(p.id, { rank: e.target.value })
+                                                                                                    }
+                                                                                                    className={editInput("w-28 text-center")}
+                                                                                                />
+                                                                                                <button
+                                                                                                    type="button"
+                                                                                                    title={`Remove ${p.name.trim() || "persona"}`}
+                                                                                                    onClick={() =>
+                                                                                                        patchFoundation({
+                                                                                                            personas: foundation.personas.filter(
+                                                                                                                (x) => x.id !== p.id,
+                                                                                                            ),
+                                                                                                        })
+                                                                                                    }
+                                                                                                    className="flex size-7 items-center justify-center rounded-lg text-fg-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-error-primary"
+                                                                                                >
+                                                                                                    <Trash01 className="size-3.5" aria-hidden="true" />
+                                                                                                </button>
+                                                                                            </>
+                                                                                        )}
+                                                                                    </div>
+                                                                                </div>
+
+                                                                                <div className="px-4 py-4">
+                                                                                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                                                                                        <DocStat
+                                                                                            label="Age"
+                                                                                            value={p.age}
+                                                                                            isLocked={isLocked}
+                                                                                            onChange={(v) => patchPersona(p.id, { age: v })}
+                                                                                        />
+                                                                                        <DocStat
+                                                                                            label="Relationship status"
+                                                                                            value={p.relationship}
+                                                                                            isLocked={isLocked}
+                                                                                            onChange={(v) => patchPersona(p.id, { relationship: v })}
+                                                                                        />
+                                                                                        <DocStat
+                                                                                            label="Location"
+                                                                                            value={p.location}
+                                                                                            isLocked={isLocked}
+                                                                                            onChange={(v) => patchPersona(p.id, { location: v })}
+                                                                                        />
+                                                                                    </div>
+
+                                                                                    <div className="mt-4 grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
+                                                                                        <DocField
+                                                                                            isLocked={isLocked}
+                                                                                            rows={2}
+                                                                                            label="Interests"
+                                                                                            value={p.interests}
+                                                                                            placeholder="What they follow, buy and care about"
+                                                                                            onChange={(v) => patchPersona(p.id, { interests: v })}
+                                                                                        />
+                                                                                        <DocField
+                                                                                            isLocked={isLocked}
+                                                                                            rows={2}
+                                                                                            label="Pain points"
+                                                                                            value={p.painPoints}
+                                                                                            placeholder="What makes travel hard for them today"
+                                                                                            onChange={(v) => patchPersona(p.id, { painPoints: v })}
+                                                                                        />
+                                                                                        <DocField
+                                                                                            className="sm:col-span-2"
+                                                                                            isLocked={isLocked}
+                                                                                            rows={2}
+                                                                                            label="What they're seeking"
+                                                                                            value={p.seeking}
+                                                                                            placeholder="The stay they are actually shopping for"
+                                                                                            onChange={(v) => patchPersona(p.id, { seeking: v })}
+                                                                                        />
+                                                                                        <DocField
+                                                                                            className="sm:col-span-2"
+                                                                                            isLocked={isLocked}
+                                                                                            rows={2}
+                                                                                            label="How they book"
+                                                                                            value={p.howTheyBook}
+                                                                                            placeholder="Where they discover, how far ahead, what tips the decision"
+                                                                                            onChange={(v) => patchPersona(p.id, { howTheyBook: v })}
+                                                                                        />
+                                                                                    </div>
+
+                                                                                    {/* Keywords — the search terms this persona actually types. */}
+                                                                                    <div className="mt-4">
+                                                                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                                                                            <p className="text-sm font-medium text-secondary">Keywords</p>
+                                                                                            <span className="text-xs text-quaternary">
+                                                                                                Search terms this persona uses
+                                                                                            </span>
+                                                                                        </div>
+                                                                                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                                                                                            {p.keywords.length === 0 && isLocked && (
+                                                                                                <span className="text-sm text-quaternary italic">
+                                                                                                    None yet.
+                                                                                                </span>
+                                                                                            )}
+                                                                                            {p.keywords.map((k, ki) =>
+                                                                                                isLocked ? (
+                                                                                                    filled(k) && (
+                                                                                                        <span
+                                                                                                            key={ki}
+                                                                                                            className="rounded-full px-3 py-1 text-sm text-tertiary ring-1 ring-secondary"
+                                                                                                        >
+                                                                                                            {k}
+                                                                                                        </span>
+                                                                                                    )
+                                                                                                ) : (
+                                                                                                    <span
+                                                                                                        key={ki}
+                                                                                                        className="flex items-center gap-1 rounded-full py-0.5 pr-1 pl-2 ring-1 ring-secondary"
+                                                                                                    >
+                                                                                                        <input
+                                                                                                            placeholder="keyword"
+                                                                                                            value={k}
+                                                                                                            onChange={(e) =>
+                                                                                                                patchPersona(p.id, {
+                                                                                                                    keywords: p.keywords.map((x, j) =>
+                                                                                                                        j === ki ? e.target.value : x,
+                                                                                                                    ),
+                                                                                                                })
+                                                                                                            }
+                                                                                                            className="w-28 border-0 bg-transparent p-0 text-sm text-primary outline-none placeholder:text-placeholder"
+                                                                                                        />
+                                                                                                        <button
+                                                                                                            type="button"
+                                                                                                            title="Remove keyword"
+                                                                                                            onClick={() =>
+                                                                                                                patchPersona(p.id, {
+                                                                                                                    keywords: p.keywords.filter(
+                                                                                                                        (_, j) => j !== ki,
+                                                                                                                    ),
+                                                                                                                })
+                                                                                                            }
+                                                                                                            className="flex size-5 items-center justify-center rounded-full text-fg-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-error-primary"
+                                                                                                        >
+                                                                                                            <XClose className="size-3" aria-hidden="true" />
+                                                                                                        </button>
+                                                                                                    </span>
+                                                                                                ),
+                                                                                            )}
+                                                                                            {!isLocked && (
+                                                                                                <button
+                                                                                                    type="button"
+                                                                                                    onClick={() =>
+                                                                                                        patchPersona(p.id, { keywords: [...p.keywords, ""] })
+                                                                                                    }
+                                                                                                    className="text-sm font-semibold text-brand-secondary transition duration-100 ease-linear hover:underline"
+                                                                                                >
+                                                                                                    + Add
+                                                                                                </button>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+
+                                                                    {/* The paragraph an AM reads out when presenting the personas back. */}
+                                                                    <div className="mt-5 border-l-2 border-brand pl-4">
+                                                                        <DocField
+                                                                            isLocked={isLocked}
+                                                                            rows={2}
+                                                                            label="Why the brand resonates with this audience"
+                                                                            value={foundation.personaResonance}
+                                                                            placeholder="The tension these personas share, and how the brand resolves it."
+                                                                            onChange={(v) => patchFoundation({ personaResonance: v })}
+                                                                        />
+                                                                    </div>
+                                                                </DocSection>
+
+                                                                {/* ── 8. Focus properties ── */}
+                                                                <DocSection
+                                                                    id="focus"
+                                                                    label="Focus properties"
+                                                                    action={
+                                                                        !isLocked && (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() =>
+                                                                                    patchFoundation({
+                                                                                        focusProperties: [...foundation.focusProperties, emptyFocusProperty()],
+                                                                                    })
+                                                                                }
+                                                                                className="text-sm font-semibold text-brand-secondary transition duration-100 ease-linear hover:underline"
+                                                                            >
+                                                                                + Add focus property
+                                                                            </button>
+                                                                        )
+                                                                    }
+                                                                >
+                                                                    <div className="flex flex-col gap-4">
+                                                                        {foundation.focusProperties.length === 0 && (
+                                                                            <p className="rounded-xl border border-dashed border-secondary px-4 py-3 text-sm text-quaternary italic">
+                                                                                No focus properties yet.
+                                                                            </p>
+                                                                        )}
+                                                                        {foundation.focusProperties.map((p, i) => (
+                                                                            <div
+                                                                                key={p.id}
+                                                                                className="overflow-hidden rounded-2xl bg-primary ring-1 ring-secondary"
+                                                                            >
+                                                                                <div className="bg-secondary_subtle flex items-center gap-3 border-b border-secondary px-4 py-3">
+                                                                                    <span className="font-mono text-xs text-quaternary tabular-nums">
+                                                                                        {String(i + 1).padStart(2, "0")}
+                                                                                    </span>
+                                                                                    {isLocked ? (
+                                                                                        <p
+                                                                                            className={cx(
+                                                                                                "text-md font-semibold",
+                                                                                                filled(p.name) ? "text-primary" : "text-quaternary italic",
+                                                                                            )}
+                                                                                        >
+                                                                                            {filled(p.name) ? p.name : "Property name"}
+                                                                                        </p>
+                                                                                    ) : (
+                                                                                        <>
+                                                                                            <input
+                                                                                                placeholder="Property name"
+                                                                                                value={p.name}
+                                                                                                onChange={(e) => patchFocus(p.id, { name: e.target.value })}
+                                                                                                className={editInput("font-semibold")}
+                                                                                            />
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                title={`Remove ${p.name.trim() || "property"}`}
+                                                                                                onClick={() =>
+                                                                                                    patchFoundation({
+                                                                                                        focusProperties: foundation.focusProperties.filter(
+                                                                                                            (x) => x.id !== p.id,
+                                                                                                        ),
+                                                                                                    })
+                                                                                                }
+                                                                                                className="flex size-7 shrink-0 items-center justify-center rounded-lg text-fg-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-error-primary"
+                                                                                            >
+                                                                                                <Trash01 className="size-3.5" aria-hidden="true" />
+                                                                                            </button>
+                                                                                        </>
+                                                                                    )}
+                                                                                </div>
+
+                                                                                <div className="px-4 py-4">
+                                                                                    <div className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
+                                                                                        <DocField
+                                                                                            isLocked={isLocked}
+                                                                                            label="Link to property listing"
+                                                                                            value={p.link}
+                                                                                            placeholder="https://"
+                                                                                            onChange={(v) => patchFocus(p.id, { link: v })}
+                                                                                        />
+                                                                                        <DocField
+                                                                                            isLocked={isLocked}
+                                                                                            label="Location"
+                                                                                            value={p.location}
+                                                                                            placeholder="Where this one sits"
+                                                                                            onChange={(v) => patchFocus(p.id, { location: v })}
+                                                                                        />
+                                                                                    </div>
+
+                                                                                    <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                                                                                        <DocStat
+                                                                                            label="Guests"
+                                                                                            value={p.guests}
+                                                                                            isLocked={isLocked}
+                                                                                            onChange={(v) => patchFocus(p.id, { guests: v })}
+                                                                                        />
+                                                                                        <DocStat
+                                                                                            label="Bedrooms"
+                                                                                            value={p.bedrooms}
+                                                                                            isLocked={isLocked}
+                                                                                            onChange={(v) => patchFocus(p.id, { bedrooms: v })}
+                                                                                        />
+                                                                                        <DocStat
+                                                                                            label="Beds"
+                                                                                            value={p.beds}
+                                                                                            isLocked={isLocked}
+                                                                                            onChange={(v) => patchFocus(p.id, { beds: v })}
+                                                                                        />
+                                                                                        <DocStat
+                                                                                            label="Bathrooms"
+                                                                                            value={p.bathrooms}
+                                                                                            isLocked={isLocked}
+                                                                                            onChange={(v) => patchFocus(p.id, { bathrooms: v })}
+                                                                                        />
+                                                                                    </div>
+
+                                                                                    <DocField
+                                                                                        className="mt-4"
+                                                                                        isLocked={isLocked}
+                                                                                        rows={3}
+                                                                                        label="Listing description"
+                                                                                        value={p.description}
+                                                                                        placeholder="Paste the live listing copy."
+                                                                                        onChange={(v) => patchFocus(p.id, { description: v })}
+                                                                                    />
+
+                                                                                    <div className="mt-4 grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
+                                                                                        <DocField
+                                                                                            isLocked={isLocked}
+                                                                                            rows={2}
+                                                                                            label="Features & amenities"
+                                                                                            value={p.features}
+                                                                                            placeholder="What sets this property apart"
+                                                                                            onChange={(v) => patchFocus(p.id, { features: v })}
+                                                                                        />
+                                                                                        <DocField
+                                                                                            isLocked={isLocked}
+                                                                                            rows={2}
+                                                                                            label="Terms & rules"
+                                                                                            value={p.terms}
+                                                                                            placeholder="Check-in, pets, quiet hours"
+                                                                                            onChange={(v) => patchFocus(p.id, { terms: v })}
+                                                                                        />
+                                                                                    </div>
+
+                                                                                    {/* Top reviews — trend evidence, not testimonials. */}
+                                                                                    <div className="mt-4">
+                                                                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                                                                            <p className="text-sm font-medium text-secondary">Top reviews</p>
+                                                                                            <span className="text-xs text-quaternary">
+                                                                                                3–5, look for trends
+                                                                                            </span>
+                                                                                        </div>
+                                                                                        <div className="mt-2 flex flex-col gap-2">
+                                                                                            {p.reviews.map((r, ri) => (
+                                                                                                <div
+                                                                                                    key={ri}
+                                                                                                    className="flex items-start gap-2 rounded-xl px-3 py-2 ring-1 ring-secondary"
+                                                                                                >
+                                                                                                    <span
+                                                                                                        className="font-mono text-md leading-none text-quaternary"
+                                                                                                        aria-hidden="true"
+                                                                                                    >
+                                                                                                        &ldquo;
+                                                                                                    </span>
+                                                                                                    {isLocked ? (
+                                                                                                        <span
+                                                                                                            className={cx(
+                                                                                                                "text-sm",
+                                                                                                                filled(r)
+                                                                                                                    ? "text-tertiary"
+                                                                                                                    : "text-quaternary italic",
+                                                                                                            )}
+                                                                                                        >
+                                                                                                            {filled(r)
+                                                                                                                ? r
+                                                                                                                : "Paste review, note the trend it supports"}
+                                                                                                        </span>
+                                                                                                    ) : (
+                                                                                                        <>
+                                                                                                            <textarea
+                                                                                                                rows={1}
+                                                                                                                placeholder="Paste review, note the trend it supports"
+                                                                                                                value={r}
+                                                                                                                onChange={(e) =>
+                                                                                                                    patchFocus(p.id, {
+                                                                                                                        reviews: p.reviews.map((x, j) =>
+                                                                                                                            j === ri ? e.target.value : x,
+                                                                                                                        ),
+                                                                                                                    })
+                                                                                                                }
+                                                                                                                className="w-full resize-y border-0 bg-transparent p-0 text-sm text-primary outline-none placeholder:text-placeholder"
+                                                                                                            />
+                                                                                                            <button
+                                                                                                                type="button"
+                                                                                                                title="Remove review"
+                                                                                                                onClick={() =>
+                                                                                                                    patchFocus(p.id, {
+                                                                                                                        reviews: p.reviews.filter(
+                                                                                                                            (_, j) => j !== ri,
+                                                                                                                        ),
+                                                                                                                    })
+                                                                                                                }
+                                                                                                                className="flex size-5 shrink-0 items-center justify-center rounded-full text-fg-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-error-primary"
+                                                                                                            >
+                                                                                                                <XClose className="size-3" aria-hidden="true" />
+                                                                                                            </button>
+                                                                                                        </>
+                                                                                                    )}
+                                                                                                </div>
+                                                                                            ))}
+                                                                                            {!isLocked && (
+                                                                                                <button
+                                                                                                    type="button"
+                                                                                                    onClick={() =>
+                                                                                                        patchFocus(p.id, { reviews: [...p.reviews, ""] })
+                                                                                                    }
+                                                                                                    className="self-start text-sm font-semibold text-brand-secondary transition duration-100 ease-linear hover:underline"
+                                                                                                >
+                                                                                                    + Add review
+                                                                                                </button>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </DocSection>
+
+                                                                {/* ── 9. Local favorites ── */}
+                                                                <DocSection id="favorites" label="Local favorites">
+                                                                    <div className="flex flex-col gap-6">
+                                                                        <FavoriteTable
+                                                                            title="Restaurants"
+                                                                            note="Short description, max 15 words"
+                                                                            rows={foundation.restaurants}
+                                                                            isLocked={isLocked}
+                                                                            onChange={patchFavorite("restaurants")}
+                                                                            onAdd={addFavorite("restaurants")}
+                                                                            onRemove={removeFavorite("restaurants")}
+                                                                        />
+                                                                        <FavoriteTable
+                                                                            title="Activities / attractions"
+                                                                            note="Short description, max 15 words"
+                                                                            rows={foundation.activities}
+                                                                            isLocked={isLocked}
+                                                                            onChange={patchFavorite("activities")}
+                                                                            onAdd={addFavorite("activities")}
+                                                                            onRemove={removeFavorite("activities")}
+                                                                        />
+                                                                    </div>
+                                                                </DocSection>
+
+                                                                {/* ── 10. Reviews ── */}
+                                                                <DocSection id="reviews" label="Reviews">
+                                                                    <p className="text-md text-tertiary">
+                                                                        Pull guest reviews and analyze them to identify recurring themes in what guests love
+                                                                        about their stays. The goal is to gain deeper insights into the brand's strengths and
+                                                                        use these findings to inform and enhance future marketing efforts.
+                                                                    </p>
+
+                                                                    <DocField
+                                                                        className="mt-4"
+                                                                        isLocked={isLocked}
+                                                                        rows={3}
+                                                                        label="Core brand pillars & key selling points"
+                                                                        value={foundation.corePillars}
+                                                                        placeholder="Top 5–7 praised amenities, features or design elements."
+                                                                        onChange={(v) => patchFoundation({ corePillars: v })}
+                                                                    />
+                                                                    <DocField
+                                                                        className="mt-4"
+                                                                        isLocked={isLocked}
+                                                                        rows={3}
+                                                                        label="Emotional & experiential themes"
+                                                                        value={foundation.emotionalThemes}
+                                                                        placeholder="Top 5–7 themes, plus the taglines they suggest."
+                                                                        onChange={(v) => patchFoundation({ emotionalThemes: v })}
+                                                                    />
+
+                                                                    {/* The working prompt is internal process, not something a client should be
+                                                                        handed — it tells whoever reads it to go and run the analysis. Team only. */}
+                                                                    {isTeam && (
+                                                                        <div className="mt-5 overflow-hidden rounded-2xl bg-primary ring-1 ring-secondary">
+                                                                            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-secondary px-4 py-3">
+                                                                                <div className="flex flex-wrap items-center gap-2.5">
+                                                                                    <p className="font-mono text-[11px] font-semibold tracking-[0.08em] text-quaternary uppercase">
+                                                                                        Working prompt
+                                                                                    </p>
+                                                                                    <BadgeWithDot color="warning" size="sm" type="pill-color">
+                                                                                        Delete once filled
+                                                                                    </BadgeWithDot>
+                                                                                </div>
+                                                                                <div className="flex items-center gap-3">
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={() => {
+                                                                                            void navigator.clipboard
+                                                                                                .writeText(REVIEW_WORKING_PROMPT)
+                                                                                                .then(() => {
+                                                                                                    setPromptCopied(true);
+                                                                                                    window.setTimeout(() => setPromptCopied(false), 1600);
+                                                                                                });
+                                                                                        }}
+                                                                                        className="text-sm font-semibold text-brand-secondary transition duration-100 ease-linear hover:underline"
+                                                                                    >
+                                                                                        {promptCopied ? "Copied" : "Copy"}
+                                                                                    </button>
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={() =>
+                                                                                            patchFoundation({ promptHidden: !foundation.promptHidden })
+                                                                                        }
+                                                                                        className="text-sm font-semibold text-tertiary transition duration-100 ease-linear hover:text-secondary"
+                                                                                    >
+                                                                                        {foundation.promptHidden ? "Show" : "Hide"}
+                                                                                    </button>
+                                                                                </div>
+                                                                            </div>
+                                                                            {!foundation.promptHidden && (
+                                                                                <div className="px-4 py-4">
+                                                                                    <pre className="font-mono text-xs leading-relaxed whitespace-pre-wrap text-secondary">
+                                                                                        {REVIEW_WORKING_PROMPT}
+                                                                                    </pre>
+                                                                                    <p className="mt-3 text-xs text-quaternary">
+                                                                                        Once complete, replace the two fields above with the insight from
+                                                                                        ChatGPT / Gemini.
+                                                                                    </p>
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    )}
+                                                                </DocSection>
+
+                                                                {/* ── 11. Website links ── */}
+                                                                <DocSection
+                                                                    id="links"
+                                                                    label="Website links"
+                                                                    action={
+                                                                        <a
+                                                                            href="https://www.xml-sitemaps.com"
+                                                                            target="_blank"
+                                                                            rel="noopener noreferrer"
+                                                                            className="text-sm font-semibold text-brand-secondary transition duration-100 ease-linear hover:underline"
+                                                                        >
+                                                                            xml-sitemaps.com
+                                                                        </a>
+                                                                    }
+                                                                >
+                                                                    <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_auto] items-center gap-3 border-b border-secondary pb-2">
+                                                                        <span className="text-xs font-medium text-quaternary">Page</span>
+                                                                        <span className="text-xs font-medium text-quaternary">URL</span>
+                                                                        <span />
+                                                                    </div>
+                                                                    {foundation.websiteLinks.length === 0 && (
+                                                                        <p className="mt-2 rounded-xl border border-dashed border-secondary px-4 py-3 text-sm text-quaternary italic">
+                                                                            No pages listed yet.
+                                                                        </p>
+                                                                    )}
+                                                                    {foundation.websiteLinks.map((l) => (
+                                                                        <div
+                                                                            key={l.id}
+                                                                            className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_auto] items-center gap-3 border-b border-secondary py-2.5"
+                                                                        >
+                                                                            {isLocked ? (
+                                                                                <>
+                                                                                    <span
+                                                                                        className={cx(
+                                                                                            "truncate text-md",
+                                                                                            filled(l.page) ? "text-primary" : "text-quaternary italic",
+                                                                                        )}
+                                                                                    >
+                                                                                        {filled(l.page) ? l.page : "Page name"}
+                                                                                    </span>
+                                                                                    {filled(l.url) ? (
+                                                                                        <a
+                                                                                            href={l.url}
+                                                                                            target="_blank"
+                                                                                            rel="noopener noreferrer"
+                                                                                            className="truncate text-md text-brand-secondary transition duration-100 ease-linear hover:underline"
+                                                                                        >
+                                                                                            {l.url}
+                                                                                        </a>
+                                                                                    ) : (
+                                                                                        <span className="text-md text-quaternary italic">https://</span>
+                                                                                    )}
+                                                                                    <span />
+                                                                                </>
+                                                                            ) : (
+                                                                                <>
+                                                                                    <input
+                                                                                        placeholder="Page name"
+                                                                                        value={l.page}
+                                                                                        onChange={(e) =>
+                                                                                            patchFoundation({
+                                                                                                websiteLinks: foundation.websiteLinks.map((x) =>
+                                                                                                    x.id === l.id ? { ...x, page: e.target.value } : x,
+                                                                                                ),
+                                                                                            })
+                                                                                        }
+                                                                                        className={editInput()}
+                                                                                    />
+                                                                                    <input
+                                                                                        placeholder="https://"
+                                                                                        value={l.url}
+                                                                                        onChange={(e) =>
+                                                                                            patchFoundation({
+                                                                                                websiteLinks: foundation.websiteLinks.map((x) =>
+                                                                                                    x.id === l.id ? { ...x, url: e.target.value } : x,
+                                                                                                ),
+                                                                                            })
+                                                                                        }
+                                                                                        className={editInput()}
+                                                                                    />
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        title={`Remove ${l.page.trim() || "row"}`}
+                                                                                        onClick={() =>
+                                                                                            patchFoundation({
+                                                                                                websiteLinks: foundation.websiteLinks.filter(
+                                                                                                    (x) => x.id !== l.id,
+                                                                                                ),
+                                                                                            })
+                                                                                        }
+                                                                                        className="flex size-7 items-center justify-center rounded-lg text-fg-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-error-primary"
+                                                                                    >
+                                                                                        <Trash01 className="size-3.5" aria-hidden="true" />
+                                                                                    </button>
+                                                                                </>
+                                                                            )}
+                                                                        </div>
+                                                                    ))}
+                                                                    <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                                                                        <p className="text-xs text-quaternary">
+                                                                            Paste the full sitemap export, one row per page.
+                                                                        </p>
+                                                                        {!isLocked && (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() =>
+                                                                                    patchFoundation({
+                                                                                        websiteLinks: [...foundation.websiteLinks, emptyWebsiteLink()],
+                                                                                    })
+                                                                                }
+                                                                                className="text-sm font-semibold text-brand-secondary transition duration-100 ease-linear hover:underline"
+                                                                            >
+                                                                                + Add row
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                </DocSection>
+
+                                                                {/* ── Answers from the previous Master Document ──
+                                                                    The redesign replaced six free-text fields and the FAQ bank with the
+                                                                    eleven sections above. Rows written before it still hold whatever the
+                                                                    client typed, and mergeContent keeps saving it, so it is shown here
+                                                                    read-only rather than left invisible in the JSON. Team-only: it's
+                                                                    migration debris, not part of the document. Disappears by itself once
+                                                                    an AM has moved the content up and cleared the old fields. */}
+                                                                {isTeam && (legacyFoundation.length > 0 || legacyFaqs.length > 0) && (
+                                                                    <section className="bg-secondary_subtle rounded-2xl p-5 ring-1 ring-secondary">
+                                                                        <div className="flex flex-wrap items-center gap-2.5">
+                                                                            <p className="font-mono text-[11px] font-semibold tracking-[0.08em] text-quaternary uppercase">
+                                                                                Earlier Master Document
+                                                                            </p>
+                                                                            <BadgeWithDot color="gray" size="sm" type="pill-color">
+                                                                                Team only
+                                                                            </BadgeWithDot>
+                                                                        </div>
+                                                                        <p className="mt-2 text-sm text-tertiary">
+                                                                            Answers this client gave against the previous version of this page. Move anything
+                                                                            worth keeping into the sections above — nothing here feeds the exports or the chat
+                                                                            widget.
+                                                                        </p>
+                                                                        <div className="mt-4 flex flex-col gap-4">
+                                                                            {legacyFoundation.map((f) => (
+                                                                                <div key={f.key}>
+                                                                                    <p className="text-sm font-medium text-secondary">{f.label}</p>
+                                                                                    <p className="mt-1 text-md whitespace-pre-wrap text-tertiary">{f.value}</p>
+                                                                                </div>
+                                                                            ))}
+                                                                            {legacyFaqs.length > 0 && (
+                                                                                <div>
+                                                                                    <p className="text-sm font-medium text-secondary">
+                                                                                        FAQ bank ({legacyFaqs.length})
+                                                                                    </p>
+                                                                                    <div className="mt-2 flex flex-col gap-2">
+                                                                                        {legacyFaqs.map((q) => (
+                                                                                            <div key={q.id}>
+                                                                                                <p className="text-sm font-semibold text-primary">
+                                                                                                    {q.question.trim() || "Untitled question"}
+                                                                                                </p>
+                                                                                                <p className="text-sm whitespace-pre-wrap text-tertiary">
+                                                                                                    {q.answer.trim() || "No answer given."}
+                                                                                                </p>
+                                                                                            </div>
+                                                                                        ))}
+                                                                                    </div>
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    </section>
                                                                 )}
                                                             </div>
                                                         </div>
@@ -4397,8 +5873,9 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                         <SectionEyebrow section={activeSection} />
                                                         <SectionHeading>Chat Widget</SectionHeading>
                                                         <p className="mt-3 text-md text-tertiary">
-                                                            An AI chat on your website that answers guest questions instantly, straight from your Master
-                                                            Document's FAQ bank — so no question goes unanswered while you're offline.
+                                                            An AI chat on your website that answers guest questions instantly, straight from your Master Brand
+                                                            Document — the properties, amenities, location and local favorites you've filled in there — so no
+                                                            question goes unanswered while you're offline.
                                                         </p>
 
                                                         <div className="mt-6 grid gap-4 sm:grid-cols-2">
@@ -4615,7 +6092,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                     <div className="flex max-h-full w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-primary shadow-2xl ring-1 ring-secondary">
                         <div className="flex items-start justify-between gap-3 border-b border-secondary px-6 py-4">
                             <div>
-                                <h3 className="text-md font-semibold text-primary">Master Document — ready for review</h3>
+                                <h3 className="text-md font-semibold text-primary">Master Brand Document — ready for review</h3>
                                 <p className="mt-0.5 text-sm text-tertiary">
                                     Compiled from {clientName.trim() || "the client"}'s answers. Review it, then copy or download for welcome emails, the chat
                                     widget, and onboarding.
@@ -4741,9 +6218,8 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                 <CheckCircle className="mt-0.5 size-5 shrink-0 text-fg-success-secondary" aria-hidden="true" />
                                 <div className="min-w-0">
                                     <p className="text-sm font-semibold text-primary">Booked — that's step 2 done.</p>
-                                    <p className="mt-0.5 text-sm text-tertiary text-pretty">
-                                        Next up is step 3, the Onboarding Call itself, with Dustin and your Account Manager. Check your email for
-                                        the invite.
+                                    <p className="mt-0.5 text-sm text-pretty text-tertiary">
+                                        Next up is step 3, the Onboarding Call itself, with Dustin and your Account Manager. Check your email for the invite.
                                     </p>
                                 </div>
                                 <Button size="sm" color="secondary" className="ml-auto shrink-0" onClick={() => setBookingOpen(false)}>

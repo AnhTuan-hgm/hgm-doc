@@ -4,9 +4,7 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
 if (import.meta.env.DEV && (!supabaseUrl || !supabaseAnonKey)) {
-    console.warn(
-        "[HGM Docs] Supabase env vars not set. Copy .env.example to .env.local and add your credentials.",
-    );
+    console.warn("[HGM Docs] Supabase env vars not set. Copy .env.example to .env.local and add your credentials.");
 }
 
 // Fall back to a syntactically-valid placeholder when env vars are missing (e.g. a
@@ -207,16 +205,78 @@ export interface DashboardContent {
     };
     links: { title: string; description: string; url: string }[];
     videos?: { id: string; title: string; url: string }[]; // Video guides (Loom link or uploaded mp4) — optional so older rows load unchanged
-    /** The Master Document — the Foundation feeding the funnel (persona, FAQs, tone, amenities).
-     * Optional so older dashboard rows (saved before this section existed) still load unchanged. */
+    /** The Master Brand Document — the Foundation feeding the funnel. Optional so older
+     * dashboard rows (saved before this section existed) still load unchanged.
+     *
+     * v2 (the eleven-section brand document) is the live shape. The v1 fields below it are
+     * DEPRECATED but still declared, and mergeContent still round-trips them: rows written
+     * before the redesign hold real client answers in those keys, and dropping them from the
+     * type would mean the next save silently wrote them out of existence. They are read-only
+     * now, surfaced to the team through the "Earlier Master Document" panel so nothing a
+     * client typed becomes invisible. Delete them only after the rows have been migrated. */
     foundation?: {
-        propertyBasics: string;
-        persona: string;
-        toneOfVoice: string;
-        amenities: string;
-        localRecommendations: string;
-        bookingLinks: string;
-        faqs: { id: string; question: string; answer: string }[];
+        /* ── v2 — Master Brand Document ── */
+        hosts: string;
+        propertyType: string;
+        structure: string;
+        generalAmenities: string;
+        sharedAmenities: string;
+        exactLocation: string;
+        proximityCities: string;
+        proximityAirports: string;
+        targetAudience: string;
+        uvp: string;
+        brandVoice: string;
+        /** Three tagline slots — fixed length so the numbered 01/02/03 rail stays stable. */
+        taglines: string[];
+        brandBio: string;
+        personas: {
+            id: string;
+            name: string;
+            summary: string;
+            /** "Primary" | "Secondary" | free text — an AM may rank more than two. */
+            rank: string;
+            age: string;
+            relationship: string;
+            location: string;
+            interests: string;
+            painPoints: string;
+            seeking: string;
+            howTheyBook: string;
+            keywords: string[];
+        }[];
+        /** The paragraph an AM reads out when presenting the personas back. */
+        personaResonance: string;
+        focusProperties: {
+            id: string;
+            name: string;
+            link: string;
+            location: string;
+            guests: string;
+            bedrooms: string;
+            beds: string;
+            bathrooms: string;
+            description: string;
+            features: string;
+            terms: string;
+            reviews: string[];
+        }[];
+        restaurants: { id: string; name: string; description: string }[];
+        activities: { id: string; name: string; description: string }[];
+        corePillars: string;
+        emotionalThemes: string;
+        /** The team collapses the ChatGPT/Gemini working prompt once the insight is pasted in. */
+        promptHidden: boolean;
+        websiteLinks: { id: string; page: string; url: string }[];
+
+        /* ── v1 — DEPRECATED, preserved for migration. See the note above. ── */
+        propertyBasics?: string;
+        persona?: string;
+        toneOfVoice?: string;
+        amenities?: string;
+        localRecommendations?: string;
+        bookingLinks?: string;
+        faqs?: { id: string; question: string; answer: string }[];
     };
     /** Side-menu sections this client is allowed to see (an allowlist of SectionId).
      *  The team always sees every section; a client only sees what an AM has revealed

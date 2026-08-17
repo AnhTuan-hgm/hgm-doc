@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 
 /**
- * Master Document → PDF, for the AM to download and share.
+ * Master Brand Document → PDF, for the AM to download and share.
  *
  * Lives in its own module so `client-dashboard-page.tsx` can reach it through a
  * dynamic `import()` — jsPDF is only fetched when someone actually clicks
@@ -21,17 +21,11 @@ export interface MasterDocSection {
     value: string;
 }
 
-export interface MasterDocFaq {
-    question: string;
-    answer: string;
-}
-
 export interface MasterDocPdfInput {
     clientName: string;
     clientWebsite: string;
     generatedOn: string;
     sections: MasterDocSection[];
-    faqs: MasterDocFaq[];
 }
 
 /** theme.css --color-brand-600 (rgb(0 102 222)) — the app's primary interactive blue. */
@@ -49,7 +43,7 @@ const CONTENT_W = PAGE_W - MARGIN * 2;
 const FOOTER_SPACE = 54;
 
 export function buildMasterDocumentPdf(input: MasterDocPdfInput): jsPDF {
-    const { clientName, clientWebsite, generatedOn, sections, faqs } = input;
+    const { clientName, clientWebsite, generatedOn, sections } = input;
     const name = clientName.trim() || "Client";
     const doc = new jsPDF({ unit: "pt", format: "letter" });
 
@@ -90,7 +84,7 @@ export function buildMasterDocumentPdf(input: MasterDocPdfInput): jsPDF {
     doc.setFont("helvetica", "bold");
     doc.setFontSize(8.5);
     doc.setTextColor(BRAND);
-    doc.text("FOUNDATION · MASTER DOCUMENT", MARGIN, y, { charSpace: 1.1 });
+    doc.text("BRAND FOUNDATION · MASTER BRAND DOCUMENT", MARGIN, y, { charSpace: 1.1 });
     y += 22;
 
     doc.setFont("helvetica", "bold");
@@ -138,28 +132,6 @@ export function buildMasterDocumentPdf(input: MasterDocPdfInput): jsPDF {
         y += 20;
     });
 
-    /* ── FAQ bank ── */
-    const faqBroke = ensure(52);
-    if (!faqBroke) dividerAbove();
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(12);
-    doc.setTextColor(INK);
-    doc.text(`${sections.length + 1}.  FAQ bank${faqs.length ? ` (${faqs.length})` : ""}`, MARGIN, y);
-    y += 16;
-
-    if (!faqs.length) {
-        writeWrapped("No FAQs yet.", 10, MUTED, "italic", 14.5);
-    } else {
-        faqs.forEach((q) => {
-            ensure(44);
-            writeWrapped(q.question.trim(), 10, INK, "bold", 14);
-            const answer = q.answer.trim();
-            writeWrapped(answer || "No answer yet.", 10, answer ? BODY : MUTED, answer ? "normal" : "italic", 14);
-            y += 10;
-        });
-    }
-
     /* ── Footers (after pagination is known) ── */
     const pages = doc.getNumberOfPages();
     for (let p = 1; p <= pages; p++) {
@@ -170,7 +142,7 @@ export function buildMasterDocumentPdf(input: MasterDocPdfInput): jsPDF {
         doc.setFont("helvetica", "normal");
         doc.setFontSize(8);
         doc.setTextColor(MUTED);
-        doc.text(`${name} · Master Document`, MARGIN, PAGE_H - MARGIN - 6);
+        doc.text(`${name} · Master Brand Document`, MARGIN, PAGE_H - MARGIN - 6);
         doc.text(`Page ${p} of ${pages}`, PAGE_W - MARGIN, PAGE_H - MARGIN - 6, { align: "right" });
     }
 
