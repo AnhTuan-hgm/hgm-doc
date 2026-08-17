@@ -21,7 +21,7 @@ Routes are registered as a flat list in `src/main.tsx` (not nested). There are t
 
 **Named routes** — templates and internal team pages: `/popup`, `/owner-guide(/:slug)`, `/chat-widget` (templates); `/dashboard`, `/roadmap` (the "Project Management" page), `/requests`, `/settings`, `/designsystem`, `/webteam/ai-website-setup` (team-internal). A `PAGES_WITHOUT_FLOATING_CHROME` array in `main.tsx` suppresses the global floating theme toggle on internal pages (their icon-rail chrome has its own).
 
-**Client slugs** — the catch-all `/:clientSlug` route goes to `src/pages/client-screen.tsx`, which dispatches on the slug suffix to a page component + Supabase table:
+**Client slugs** — the catch-all `/:clientSlug` route goes to `src/pages/client/client-screen.tsx`, which dispatches on the slug suffix to a page component + Supabase table:
 - `/{client}-leadcapture` → `PopupPage`, table `leadcapture_pages`
 - `/{client}-chatwidget` → `ChatWidgetScreen`, table `chatwidget_pages`
 - anything else (e.g. `/{client}-metapixel`) → `PixelPage`, table `client_pages`; the bare slug `metapixel` is the template and renders without a DB row
@@ -76,12 +76,25 @@ src/
 │   └── shared-assets/   # Reusable assets & illustrations
 ├── hooks/               # Custom React hooks
 ├── lib/                 # supabase.ts, db-sync.ts, db-logger.ts, requests.ts
-├── pages/               # Route components (client-screen.tsx fans out client slugs)
+├── pages/               # Route components, grouped by who may see them
+│   ├── client/          # Reached at a client's own slug (client-screen.tsx fans these out)
+│   ├── team/            # Internal tools behind the dashboard gate
+│   ├── overviews/       # Internal explainer docs (*-overview-screen.tsx)
+│   ├── templates/       # Shareable templates (template-screen, template-one-screen)
+│   ├── landing-screen.tsx   # `/` entry
+│   └── not-found.tsx        # fallback
 ├── providers/           # React context (theme-provider, router-provider)
 ├── styles/              # globals.css, theme.css (brand color vars), typography.css
 ├── types/               # TS type definitions
 └── utils/               # cx(), is-react-component(), …
 ```
+
+Import pages by their aliased path (`@/pages/team/dashboard-screen`), never
+relatively — a page can then change group without editing its neighbours.
+
+`reference/` at the repo root is team material (design mockups, SOP screenshots,
+design-tool exports) and is **not** read by the app; only `src/` is bundled and only
+`public/` is served. See [reference/README.md](reference/README.md).
 
 ## State & key files
 - Theme context: `src/providers/theme-provider.tsx`; router: `src/providers/router-provider.tsx`.

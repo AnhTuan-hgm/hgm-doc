@@ -40,7 +40,7 @@ Wrap up the working day: record what shipped on the Project Management page, get
 7. **Sign off.** Report: what was logged to the Timeline (roadmap AND every active project page), the deploy status + live URL, the new questions you added per page (if that page's previous set was fully answered), and anything left hanging for tomorrow (uncommitted files, failed checks, which pages still have unanswered questions). Play the completion sound.
 
 ## Notes
-- Timeline seed data lives in `src/pages/roadmap-screen.tsx` (`DEFAULT_DATA`) but real content is the Supabase row — always edit the row, not the seed.
+- Timeline seed data lives in `src/pages/team/roadmap-screen.tsx` (`DEFAULT_DATA`) but real content is the Supabase row — always edit the row, not the seed.
 - Never commit secrets; `.env.local` is gitignored.
 - Snapshot rows (`<slug>@<timestamp>`) are the version history for project pages — list them with `slug=like.<slug>@*`. To restore, copy a snapshot's `data` back onto the live slug (after snapshotting the current state first).
 - New questions should read like a decision, not a status check — grounded in what that specific page is building (e.g. chat-widget-overview questions are about the chat feature, not the email flow).
