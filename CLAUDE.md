@@ -78,6 +78,7 @@ src/
 ├── lib/                 # supabase.ts, db-sync.ts, db-logger.ts, requests.ts
 ├── pages/               # Route components, grouped by who may see them
 │   ├── client/          # Reached at a client's own slug (client-screen.tsx fans these out)
+│   │   └── dashboard/   # client-dashboard-page.tsx's model, nav, chrome & document fields
 │   ├── team/            # Internal tools behind the dashboard gate
 │   ├── overviews/       # Internal explainer docs (*-overview-screen.tsx)
 │   ├── templates/       # Shareable templates (template-screen, template-one-screen)
@@ -91,6 +92,24 @@ src/
 
 Import pages by their aliased path (`@/pages/team/dashboard-screen`), never
 relatively — a page can then change group without editing its neighbours.
+
+The client dashboard is the one page big enough to have its own folder. Put new
+shared constants, types and presentational pieces in `src/pages/client/dashboard/`
+rather than at the top of `client-dashboard-page.tsx`:
+
+| Module | Holds |
+| :-- | :-- |
+| `dashboard-model.ts` | Stored shapes, `TEMPLATE_CONTENT`, `mergeContent`, `SectionId`, pure helpers. No React. |
+| `overview-doc.ts` | The team-only Client Overview brief's field list. |
+| `master-brand-document.ts` | The eleven sections, completion model, working prompt, AM/PDF compiler. |
+| `dashboard-navigation.ts` | `NAV_GROUPS`, phases, `JOURNEY_STEPS`, team-only section set. |
+| `dashboard-chrome.tsx` | Sign-in gate, section headings, side-menu row, search bar. |
+| `master-brand-fields.tsx` | `DocField` / `DocRail` / … the document's own inputs. |
+| `onboarding-answers.tsx` | Submitted form answers and recording summaries. |
+
+`client-dashboard-page.tsx` itself is still ~4,700 lines of one component. That
+body has not been split — doing so needs real prop-threading, so treat it as a
+deliberate separate change rather than something to start mid-task.
 
 `reference/` at the repo root is team material (design mockups, SOP screenshots,
 design-tool exports) and is **not** read by the app; only `src/` is bundled and only
