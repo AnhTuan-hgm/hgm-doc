@@ -29,3 +29,11 @@ dist-ssr
 
 # Claude Code personal/local settings (shared settings.json IS committed)
 .claude/settings.local.json
+
+# Vendored agent skills pulled from GitHub. Reproduce with `npx skills add`
+# — skills-lock.json pins the source and hash, so these are build output, not
+# source. .claude/skills/supabase* are symlinks into .agents/skills/.
+# Hand-written project skills (dev, ship, startworking, wrapup, …) ARE committed.
+.agents/
+.claude/skills/supabase
+.claude/skills/supabase-postgres-best-practices
