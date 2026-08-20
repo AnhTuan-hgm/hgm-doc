@@ -7,6 +7,9 @@ import { Select } from "@/components/base/select/select";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowUpRight, Award01, BookOpen01, Briefcase01, Camera01, Check, ChevronDown, ClipboardCheck, Code02, Edit01, FilePlus02, FolderClosed, Grid01, Home02, Image01, LayoutAlt01, List, Lock01, LockUnlocked01, Mail01, MarkerPin01, MessageChatCircle, Plus, SearchSm, Share07, Star01, Trash01, Trophy01, Users01, XClose } from "@untitledui/icons";
 import { filterPrivateClients, supabase, type ChatWidgetPageData, type ClientPageData, type ClientRecord, type HostOnboardingPageData, type LeadCapturePageData, type OverviewCard, type OwnerGuideMeta, type OverviewTab } from "@/lib/supabase";
+// Aliased rather than reusing the slugify above: this must match the slug the dashboard's
+// own "+ New Page" wizard produces, so it uses the same function that wizard does.
+import { createDefaultContent, slugify as dashboardSlugify } from "@/pages/client/dashboard/dashboard-model";
 import { createBlankTemplateData, isReservedSlug, slugify } from "@/pages/templates/template-one-screen";
 import { useAuthUser } from "@/hooks/use-auth-user";
 import { useEditShortcuts } from "@/hooks/use-edit-shortcuts";
@@ -2190,8 +2193,54 @@ const ClientModal = ({
     const [handle, setHandle] = useState(initial?.handle ?? "");
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
+    /* Inline dashboard creation. Adding a client and giving them a dashboard used to be two
+       unconnected steps in two different screens, which is how a client ends up on the board
+       with no page — or with a page under a slightly different name. */
+    const [creatingPage, setCreatingPage] = useState(false);
+    const [pageBusy, setPageBusy] = useState(false);
+    const [pageError, setPageError] = useState("");
 
     const valid = name.trim().length > 0;
+    /** The slug the client's dashboard will live at — derived from the name, as the wizard does. */
+    const dashSlug = `${dashboardSlugify(name)}-dashboard`;
+
+    /**
+     * Create this client's dashboard and link it, without leaving the modal.
+     *
+     * INSERT, never upsert. A dashboard already at this address belongs to a real client, and
+     * overwriting it would replace their content with an empty template — so a collision is
+     * reported and the AM links to the existing page instead.
+     */
+    const createDashboardPage = async () => {
+        const base = dashboardSlugify(name);
+        if (!base) {
+            setPageError("Enter the client name first — the address comes from it.");
+            return;
+        }
+        setPageBusy(true);
+        setPageError("");
+        const { error: insErr } = await supabase.from("dashboard_pages").insert({
+            slug: `${base}-dashboard`,
+            client_name: name.trim(),
+            client_website: "",
+            data: createDefaultContent(base),
+        });
+        setPageBusy(false);
+        if (insErr) {
+            // 23505 = unique violation (slug taken); 42501 = RLS denied — dashboard_pages
+            // writes need a Supabase session, which the team-password unlock doesn't create.
+            setPageError(
+                insErr.code === "23505"
+                    ? `A dashboard already exists at /${base}-dashboard. Paste its link above rather than creating a second one.`
+                    : insErr.code === "42501"
+                      ? "Creating pages needs a Google sign-in — sign out and use your @hiddengem.media account."
+                      : "Couldn't create the dashboard. Check your connection and try again.",
+            );
+            return;
+        }
+        setLink(`/${base}-dashboard`);
+        setCreatingPage(false);
+    };
 
     const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -2409,6 +2458,43 @@ const ClientModal = ({
                         <label htmlFor="client-link" className="mb-1.5 block text-sm font-medium text-secondary">Dashboard / page link <span className="font-normal text-quaternary">(optional)</span></label>
                         <input id="client-link" type="text" value={link} onChange={(e) => setLink(e.target.value)} placeholder="/acme-dashboard or https://…"
                             className="w-full rounded-lg border border-secondary px-3 py-2 text-sm text-primary placeholder:text-placeholder outline-none transition duration-100 ease-linear focus:border-brand focus:ring-1 focus:ring-brand" />
+
+                        {!creatingPage ? (
+                            <button
+                                type="button"
+                                onClick={() => { setCreatingPage(true); setPageError(""); }}
+                                className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-brand-secondary transition duration-100 ease-linear hover:text-brand-secondary_hover"
+                            >
+                                <FilePlus02 className="size-3.5" aria-hidden="true" />
+                                Or create a new page
+                            </button>
+                        ) : (
+                            <div className="mt-2 flex flex-col gap-2 rounded-lg border border-secondary bg-secondary p-3">
+                                <p className="text-xs text-tertiary">
+                                    Creates {name.trim() || "this client"}&rsquo;s dashboard, ready for onboarding, and links it here.
+                                </p>
+                                {valid && <p className="text-[11px] text-quaternary">Will live at hgmportal.com/{dashSlug}</p>}
+                                {pageError && <p className="text-[11px] text-error-primary" role="alert">{pageError}</p>}
+                                <div className="flex gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => void createDashboardPage()}
+                                        disabled={!valid || pageBusy}
+                                        className="rounded-lg bg-brand-solid px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                        {pageBusy ? "Creating…" : "Create dashboard"}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => { setCreatingPage(false); setPageError(""); }}
+                                        disabled={pageBusy}
+                                        className="rounded-lg border border-secondary bg-primary px-3 py-1.5 text-xs font-semibold text-secondary transition hover:bg-secondary disabled:opacity-50"
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
 
