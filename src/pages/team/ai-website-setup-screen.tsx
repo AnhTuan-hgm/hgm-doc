@@ -593,7 +593,7 @@ const StepCard = ({
                             className="w-full resize-y rounded-lg border border-secondary bg-secondary px-3.5 py-3 font-mono text-[13.5px] leading-[22px] text-secondary outline-none focus:border-brand focus:bg-primary focus:ring-1 focus:ring-brand"
                         />
                     ) : step.command ? (
-                        <pre className="whitespace-pre-wrap rounded-lg border border-secondary bg-secondary px-3.5 py-3 font-mono text-[13.5px] leading-[22px] text-secondary">{step.command}</pre>
+                        <pre className="whitespace-pre-wrap break-words rounded-lg border border-secondary bg-secondary px-3.5 py-3 font-mono text-[13.5px] leading-[22px] text-secondary">{step.command}</pre>
                     ) : (
                         <span className="text-sm text-placeholder">—</span>
                     )}

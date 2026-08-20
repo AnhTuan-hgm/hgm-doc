@@ -32,6 +32,13 @@ html {
     scroll-behavior: smooth;
 }
 
+/* Long unbroken strings (URLs, tokens) in wrapped pre/code blocks break instead of
+   spilling past the container. Only applies when a line would otherwise overflow. */
+pre,
+code {
+    overflow-wrap: break-word;
+}
+
 /* Smooth scrolling on every scroll container (nested overflow areas), not just the page root. */
 :where(*) {
     scroll-behavior: smooth;

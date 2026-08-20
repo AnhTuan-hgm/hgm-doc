@@ -28,8 +28,10 @@ export const isReservedSlug = (slug: string) =>
 
 type LensPos = { x: number; y: number };
 type Step = { id: string; heading: string; tools: string[]; command: string; note?: string; image: string; lensPos?: LensPos };
-/** `parentId` nests a stage as a sub menu under another stage; absent = top-level menu (old docs stay flat). */
-type Stage = { id: string; name: string; steps: Step[]; parentId?: string | null };
+/** `parentId` nests a stage as a sub menu under another stage; absent = top-level menu (old docs stay flat).
+ *  `hidden` hides the menu from viewers (locked mode) — same eye-icon pattern as owner-guide steps:
+ *  hide instead of delete, restorable, and viewer numbering skips it. */
+type Stage = { id: string; name: string; steps: Step[]; parentId?: string | null; hidden?: boolean };
 /** Doc-level open question — same shape as the overview pages' QA (answered = resolved). */
 type QA = { id: string; question: string; answer: string; video?: string };
 type SOPState = { stages: Stage[]; selectedId: string | null; locked: boolean; questions?: QA[] };
@@ -591,7 +593,7 @@ const StepCard = ({
                             className="w-full resize-y rounded-lg border border-secondary bg-secondary px-3.5 py-3 font-mono text-[13.5px] leading-[22px] text-secondary outline-none focus:border-brand focus:bg-primary focus:ring-1 focus:ring-brand"
                         />
                     ) : step.command ? (
-                        <pre className="whitespace-pre-wrap rounded-lg border border-secondary bg-secondary px-3.5 py-3 font-mono text-[13.5px] leading-[22px] text-secondary">{step.command}</pre>
+                        <pre className="whitespace-pre-wrap break-words rounded-lg border border-secondary bg-secondary px-3.5 py-3 font-mono text-[13.5px] leading-[22px] text-secondary">{step.command}</pre>
                     ) : (
                         <span className="text-sm text-placeholder">—</span>
                     )}
@@ -662,7 +664,7 @@ const StepCard = ({
 /* ── Sidebar ─────────────────────────────────────────────────────── */
 
 /** One sidebar row — module scope so re-renders don't remount it (and replay the stagger animation). */
-const StageRow = ({ stage, num, sub, active, locked, editing, onSelect, onMoveStage, onDeleteStage }: {
+const StageRow = ({ stage, num, sub, active, locked, editing, onSelect, onMoveStage, onDeleteStage, onToggleHidden }: {
     stage: Stage;
     num: string;
     sub: boolean;
@@ -672,6 +674,7 @@ const StageRow = ({ stage, num, sub, active, locked, editing, onSelect, onMoveSt
     onSelect: (id: string) => void;
     onMoveStage: (id: string, dir: -1 | 1) => void;
     onDeleteStage: (id: string) => void;
+    onToggleHidden: (id: string) => void;
 }) => (
     <motion.div
         variants={{ hidden: { opacity: 0, x: -10 }, show: { opacity: 1, x: 0, transition: { duration: 0.3, ease: [0.22, 1, 0.36, 1] } } }}
@@ -680,6 +683,7 @@ const StageRow = ({ stage, num, sub, active, locked, editing, onSelect, onMoveSt
             "relative flex cursor-pointer items-center gap-[11px] rounded-[9px] px-3 pl-[13px] transition-colors duration-100 ease-linear",
             sub ? "ml-[26px] py-[7px]" : "py-[9px]",
             active ? "bg-brand-50 dark:bg-brand-950/40" : "hover:bg-secondary hover:text-primary",
+            stage.hidden && "opacity-50",
         )}
     >
         {/* active bar */}
@@ -723,6 +727,19 @@ const StageRow = ({ stage, num, sub, active, locked, editing, onSelect, onMoveSt
                 <button type="button" title="Move down" onClick={() => onMoveStage(stage.id, 1)}
                     className="flex size-[22px] items-center justify-center rounded-md text-quaternary transition duration-100 hover:bg-secondary hover:text-primary">
                     <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
+                </button>
+                <button type="button" title={stage.hidden ? "Show menu (hidden from viewers)" : "Hide menu from viewers"} onClick={() => onToggleHidden(stage.id)}
+                    className={cx(
+                        "flex size-[22px] items-center justify-center rounded-md transition duration-100 hover:bg-secondary hover:text-primary",
+                        stage.hidden ? "text-brand-secondary" : "text-quaternary",
+                    )}>
+                    {stage.hidden ? (
+                        /* eye-off */
+                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19M14.12 14.12a3 3 0 1 1-4.24-4.24" /><path d="M1 1l22 22" /></svg>
+                    ) : (
+                        /* eye */
+                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
+                    )}
                 </button>
                 <button type="button" title={sub ? "Delete sub menu" : "Delete menu"} onClick={() => onDeleteStage(stage.id)}
                     className="flex size-[22px] items-center justify-center rounded-md text-quaternary transition duration-100 hover:bg-error-primary hover:text-fg-error-primary">
@@ -786,7 +803,7 @@ const QuestionCard = ({ q, editing, resolved, onChange, onRemove }: {
 
 const Sidebar = ({
     stages, selectedId, locked, editing,
-    onSelect, onAddStage, onAddSubStage, onDeleteStage, onMoveStage, onCollapse,
+    onSelect, onAddStage, onAddSubStage, onDeleteStage, onMoveStage, onToggleHidden, onCollapse,
 }: {
     stages: Stage[];
     selectedId: string | null;
@@ -797,9 +814,10 @@ const Sidebar = ({
     onAddSubStage: () => void;
     onDeleteStage: (id: string) => void;
     onMoveStage: (id: string, dir: -1 | 1) => void;
+    onToggleHidden: (id: string) => void;
     onCollapse?: () => void;
 }) => {
-    const rowProps = { locked, editing, onSelect, onMoveStage, onDeleteStage };
+    const rowProps = { locked, editing, onSelect, onMoveStage, onDeleteStage, onToggleHidden };
     return (
     <aside className="flex h-full w-[300px] shrink-0 flex-col border-r border-secondary bg-primary">
         {/* header */}
@@ -930,8 +948,14 @@ export const TemplateOneScreen = ({
     }, [state]);
     const editing = !locked;
 
-    const sel = stages.find((s) => s.id === selectedId) ?? stages[0] ?? null;
-    const selNum = sel ? stageNum(stages, sel) : ""; // "3" for menus, "2.1" for sub menus
+    // Viewers never see hidden menus (a sub menu also disappears with its hidden parent);
+    // while editing, everything shows — hidden rows just render dimmed with the eye-off icon.
+    // Numbering comes from the visible list, so viewer numbering skips hidden menus cleanly.
+    const visibleStages = editing
+        ? stages
+        : stages.filter((s) => !s.hidden && !(s.parentId && stages.find((p) => p.id === s.parentId)?.hidden));
+    const sel = visibleStages.find((s) => s.id === selectedId) ?? visibleStages[0] ?? null;
+    const selNum = sel ? stageNum(visibleStages, sel) : ""; // "3" for menus, "2.1" for sub menus
 
     const update = (mutator: (draft: SOPState) => SOPState | void) => {
         setState((prev) => {
@@ -956,6 +980,11 @@ export const TemplateOneScreen = ({
         mainRef.current?.scrollTo({ top: 0, behavior: "smooth" });
     };
     const handleToggleLock = () => update((d) => { d.locked = !d.locked; });
+    const handleToggleHidden = (id: string) =>
+        update((d) => {
+            const s = d.stages.find((x) => x.id === id);
+            if (s) s.hidden = !s.hidden;
+        });
 
     // Shift+E toggles edit mode; Shift+S saves immediately and locks — same
     // shortcuts as /roadmap, /chat-widget-overview, etc. (Content also
@@ -1134,7 +1163,7 @@ export const TemplateOneScreen = ({
             <div className="flex min-h-0 flex-1">
             {!navCollapsed && (
             <Sidebar
-                stages={stages}
+                stages={visibleStages}
                 selectedId={selectedId}
                 locked={locked}
                 editing={editing}
@@ -1143,6 +1172,7 @@ export const TemplateOneScreen = ({
                 onAddSubStage={handleAddSubStage}
                 onDeleteStage={handleDeleteStage}
                 onMoveStage={handleMoveStage}
+                onToggleHidden={handleToggleHidden}
                 onCollapse={toggleNav}
             />
             )}
