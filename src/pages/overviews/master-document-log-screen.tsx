@@ -54,11 +54,9 @@ function seed(): PageData {
             { id: uid(), label: "M1 · Eleven-section document live on every dashboard — completion model, AM review modal, PDF export", status: "done" },
             { id: uid(), label: "M2 · Auto-draft from the client's own material — the seven-call pipeline with live progress", status: "done" },
             { id: uid(), label: "M3 · Copy document — rich-text copy that pastes into Google Docs with real headings", status: "done" },
-            { id: uid(), label: "M4 · Recorded answers join the sources — transcripts of spoken answers feed the draft", status: "next" },
+            { id: uid(), label: "M4 · Recorded answers join the sources — /log-script transcripts (Deepgram) feed the draft automatically", status: "done" },
         ],
-        waiting: [
-            { id: uid(), text: "Deepgram API key — recorded client answers can't be transcribed into the draft sources until it's set" },
-        ],
+        waiting: [],
         stages: [
             { label: "Client's material", detail: "Onboarding + Brand Vision forms, recordings, their website" },
             { label: "AM clicks Draft", detail: "Team-only, on an unlocked dashboard" },
@@ -85,7 +83,7 @@ function seed(): PageData {
             "\"Generate for AM review\" is a deterministic compile of what's in the boxes — no AI involved — so what the AM reviews is exactly what's stored.",
         ],
         todos: [
-            { id: uid(), text: "Set the Deepgram key and wire recorded-answer transcripts into the draft sources", done: false },
+            { id: uid(), text: "Run real client recordings through /log-script — each finished transcript automatically joins that client's draft sources", done: false },
             { id: uid(), text: "Add missing website URLs on existing client dashboards, then re-run their drafts (the property sections depend on it)", done: false },
         ],
         questions: [
@@ -106,6 +104,13 @@ function seed(): PageData {
                 date: "2026-08-12",
                 title: "PDF export for AMs",
                 description: "First shareable export of the Master Document, built client-side with jsPDF (loaded on demand so it costs nothing until clicked).",
+            },
+            {
+                id: uid(),
+                date: "2026-08-15",
+                title: "Recording summaries live (/log-script)",
+                description:
+                    "Deepgram (nova-3, diarized) transcribes a client's recorded answer from a signed URL, Claude summarises it, and the transcript lands in script_logs — the same table the Master Document draft reads its spoken-answer sources from.",
             },
             {
                 id: uid(),
