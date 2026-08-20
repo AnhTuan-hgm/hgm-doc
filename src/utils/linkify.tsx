@@ -16,10 +16,10 @@ const LinkPreviewModal = ({ url, onClose }: { url: string; onClose: () => void }
 
     return createPortal(
         <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 py-6"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-2"
             onClick={(e) => e.target === e.currentTarget && onClose()}
         >
-            <div className="flex h-[min(88vh,960px)] w-[min(1120px,94vw)] flex-col overflow-hidden rounded-2xl bg-primary shadow-2xl ring-1 ring-secondary">
+            <div className="flex h-[94vh] w-[98vw] flex-col overflow-hidden rounded-2xl bg-primary shadow-2xl ring-1 ring-secondary">
                 <div className="flex items-center gap-3 border-b border-secondary px-4 py-2.5">
                     <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium text-primary">{url}</p>
