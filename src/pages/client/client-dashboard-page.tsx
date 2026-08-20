@@ -497,6 +497,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     const [pdfBusy, setPdfBusy] = useState(false);
     const [pdfError, setPdfError] = useState(false);
     const [masterDocCopied, setMasterDocCopied] = useState(false);
+    const [headerDocCopied, setHeaderDocCopied] = useState(false);
     /** "Copied" flash on the Reviews working prompt (team-only block). */
     const [promptCopied, setPromptCopied] = useState(false);
     /* ── Master Document drafting (team-only) ──
@@ -963,10 +964,45 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     };
 
     /**
+     * Copy the whole document from the section header, as rich text + plain text.
+     *
+     * The HTML flavor is what makes pasting into a Google Doc give real headings
+     * instead of literal "##" markdown; plain text rides along for editors that
+     * only take text. Compiles on demand — `masterDoc` only exists while the
+     * review modal is open.
+     */
+    const copyMasterDocForDocs = async () => {
+        const compiled = compileMasterDocument(clientName, clientWebsite, foundation);
+        const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        const html = [
+            `<h1>Master Brand Document — ${esc(clientName.trim() || "Client")}</h1>`,
+            `<p>${esc([clientWebsite.trim() && `Website: ${clientWebsite.trim()}`, `Generated: ${compiled.generatedOn}`].filter(Boolean).join("  ·  "))}</p>`,
+            ...compiled.sections.map(
+                (s, i) => `<h2>${i + 1}. ${esc(s.label)}</h2><p>${esc(s.value.trim() || "Not provided yet.").replace(/\n/g, "<br>")}</p>`,
+            ),
+        ].join("");
+        try {
+            await navigator.clipboard.write([
+                new ClipboardItem({
+                    "text/html": new Blob([html], { type: "text/html" }),
+                    "text/plain": new Blob([compiled.doc], { type: "text/plain" }),
+                }),
+            ]);
+        } catch {
+            // Older browsers without ClipboardItem: plain text still beats nothing.
+            try {
+                await navigator.clipboard.writeText(compiled.doc);
+            } catch {
+                return;
+            }
+        }
+        setHeaderDocCopied(true);
+        setTimeout(() => setHeaderDocCopied(false), 1600);
+    };
+
+    /**
      * Download the Master Document as a PDF for the AM to share.
      *
-     * Compiles on demand rather than reading `masterDoc` — that is only populated
-     * while the review modal is open, and this also runs from the section header.
      * jsPDF arrives via dynamic import so it costs nothing until clicked.
      */
     const downloadMasterDocPdf = async () => {
@@ -2858,18 +2894,11 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                 <Button
                                                                     size="sm"
                                                                     color="secondary"
-                                                                    iconLeading={Download01}
-                                                                    isLoading={pdfBusy}
-                                                                    showTextWhileLoading
-                                                                    onClick={() => void downloadMasterDocPdf()}
+                                                                    iconLeading={headerDocCopied ? Check : Copy01}
+                                                                    onClick={() => void copyMasterDocForDocs()}
                                                                 >
-                                                                    {pdfBusy ? "Preparing PDF…" : "Download PDF"}
+                                                                    {headerDocCopied ? "Copied!" : "Copy document"}
                                                                 </Button>
-                                                                {pdfError && (
-                                                                    <span className="text-sm text-error-primary" role="alert">
-                                                                        Couldn't build the PDF. Please try again.
-                                                                    </span>
-                                                                )}
                                                             </div>
                                                         )}
                                                         {/* What landed, as it lands. A run is ~7 calls over about a minute, so the
@@ -4886,6 +4915,11 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                         </pre>
 
                         <div className="flex flex-wrap items-center justify-end gap-3 border-t border-secondary px-6 py-4">
+                            {pdfError && (
+                                <span className="text-sm text-error-primary" role="alert">
+                                    Couldn't build the PDF. Please try again.
+                                </span>
+                            )}
                             <Button size="sm" color="secondary" iconLeading={Download01} onClick={downloadMasterDoc}>
                                 Download .md
                             </Button>

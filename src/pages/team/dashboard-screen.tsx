@@ -2169,6 +2169,12 @@ const personItems = (roster: string[], current: string) => {
     return [{ id: NONE_KEY, label: "None" }, ...names.map((n) => ({ id: n, label: n, avatarUrl: teamPhoto(n) }))];
 };
 
+/** ABC-DEF-HGMS — the format the team shares client passwords in. */
+const genSharePassword = () => {
+    const grp = () => Array.from({ length: 3 }, () => "ABCDEFGHJKMNPQRSTUVWXYZ"[Math.floor(Math.random() * 23)]).join("");
+    return `${grp()}-${grp()}-HGMS`;
+};
+
 const ClientModal = ({
     initial,
     onClose,
@@ -2199,6 +2205,11 @@ const ClientModal = ({
     const [creatingPage, setCreatingPage] = useState(false);
     const [pageBusy, setPageBusy] = useState(false);
     const [pageError, setPageError] = useState("");
+    /* Sign-in details for the new dashboard, set at creation so the page is never live
+       unprotected. The password follows the team's ABC-DEF-HGMS format; the alphabet
+       drops I/L/O so a read-aloud password can't be mistyped. */
+    const [pageEmail, setPageEmail] = useState("");
+    const [pagePassword, setPagePassword] = useState(genSharePassword);
 
     const valid = name.trim().length > 0;
     /** The slug the client's dashboard will live at — derived from the name, as the wizard does. */
@@ -2223,7 +2234,14 @@ const ClientModal = ({
             slug: `${base}-dashboard`,
             client_name: name.trim(),
             client_website: "",
-            data: createDefaultContent(base),
+            data: {
+                ...createDefaultContent(base),
+                // The sign-in gate arms itself only when BOTH are present, matching the
+                // dashboard's own access panel — an email without a password (or vice
+                // versa) is stored but leaves the page open until the pair is complete.
+                allowed_emails: pageEmail.trim() ? [pageEmail.trim()] : [],
+                share_password: pagePassword.trim(),
+            },
         });
         setPageBusy(false);
         if (insErr) {
@@ -2474,6 +2492,35 @@ const ClientModal = ({
                                     Creates {name.trim() || "this client"}&rsquo;s dashboard, ready for onboarding, and links it here.
                                 </p>
                                 {valid && <p className="text-[11px] text-quaternary">Will live at hgmportal.com/{dashSlug}</p>}
+                                <input
+                                    type="email"
+                                    value={pageEmail}
+                                    onChange={(e) => setPageEmail(e.target.value)}
+                                    placeholder="Client sign-in email — e.g. info@client.com"
+                                    aria-label="Client sign-in email"
+                                    className="w-full rounded-lg border border-secondary bg-primary px-3 py-1.5 text-xs text-primary placeholder:text-placeholder outline-none transition duration-100 ease-linear focus:border-brand focus:ring-1 focus:ring-brand"
+                                />
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="text"
+                                        value={pagePassword}
+                                        onChange={(e) => setPagePassword(e.target.value)}
+                                        placeholder="Shared password"
+                                        aria-label="Shared password"
+                                        className="min-w-0 flex-1 rounded-lg border border-secondary bg-primary px-3 py-1.5 font-mono text-xs text-primary placeholder:text-placeholder outline-none transition duration-100 ease-linear focus:border-brand focus:ring-1 focus:ring-brand"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setPagePassword(genSharePassword())}
+                                        className="shrink-0 text-xs font-semibold text-brand-secondary transition duration-100 ease-linear hover:text-brand-secondary_hover"
+                                    >
+                                        Regenerate
+                                    </button>
+                                </div>
+                                <p className="text-[11px] text-quaternary">
+                                    The page locks to this email + password from day one. Leave the email empty to keep it open — access can
+                                    be set later on the dashboard itself.
+                                </p>
                                 {pageError && <p className="text-[11px] text-error-primary" role="alert">{pageError}</p>}
                                 <div className="flex gap-2">
                                     <button
