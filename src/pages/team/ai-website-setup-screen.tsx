@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { AppShell, CollapsedTopBar, IconRail, NavCollapseButton, RailBottom, useNavCollapsed } from "@/components/application/icon-rail";
 import { VideoAttach, VideoEmbed } from "@/components/application/video-block";
-import { linkify } from "@/utils/linkify";
+import { Linkified } from "@/utils/linkify";
 import { supabase } from "@/lib/supabase";
 import { compressImageFile } from "@/utils/compress-image";
 import { cx } from "@/utils/cx";
@@ -595,7 +595,7 @@ const StepCard = ({
                             className="w-full resize-y rounded-lg border border-secondary bg-secondary px-3.5 py-3 font-mono text-[13.5px] leading-[22px] text-secondary outline-none focus:border-brand focus:bg-primary focus:ring-1 focus:ring-brand"
                         />
                     ) : step.command ? (
-                        <pre className="whitespace-pre-wrap break-words rounded-lg border border-secondary bg-secondary px-3.5 py-3 font-mono text-[13.5px] leading-[22px] text-secondary">{linkify(step.command)}</pre>
+                        <pre className="whitespace-pre-wrap break-words rounded-lg border border-secondary bg-secondary px-3.5 py-3 font-mono text-[13.5px] leading-[22px] text-secondary"><Linkified text={step.command} /></pre>
                     ) : (
                         <span className="text-sm text-placeholder">—</span>
                     )}
@@ -614,7 +614,7 @@ const StepCard = ({
                                 className="w-full resize-y border-0 bg-transparent px-0 py-0 text-[13.5px] leading-[22px] text-secondary outline-none placeholder:text-placeholder"
                             />
                         ) : (
-                            <p className="text-[13.5px] leading-[22px] text-secondary">{linkify(step.note ?? "")}</p>
+                            <p className="text-[13.5px] leading-[22px] text-secondary"><Linkified text={step.note ?? ""} /></p>
                         )}
                     </div>
                 )}
