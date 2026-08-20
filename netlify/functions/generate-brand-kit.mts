@@ -1,4 +1,4 @@
-import { lookup } from "node:dns/promises";
+import { ASSET_CAP, PAGE_CAP, assertPublicUrl, asText, grab } from "../lib/client-sources.mts";
 
 /**
  * Reads a client's own website and returns a first-draft Brand Kit — palette, fonts and
@@ -15,69 +15,13 @@ import { lookup } from "node:dns/promises";
  * it into unsaved state so the AM sees it before anything is saved.
  *
  * This function fetches a URL a person typed, from inside our own network, which is the
- * textbook SSRF shape. assertPublicUrl below is not optional: without it "http://169.254.169.254/"
- * turns this endpoint into a reader for the cloud metadata service.
+ * textbook SSRF shape. The assertPublicUrl guard it imports is not optional: without it
+ * "http://169.254.169.254/" turns this endpoint into a reader for the cloud metadata
+ * service. That guard and the capped fetcher live in netlify/lib/client-sources.mts so this
+ * function and the Master Document drafter cannot drift apart on them.
  */
 
-const UA = "Mozilla/5.0 (compatible; HiddenGemBrandKit/1.0; +https://hgmportal.com)";
-const PAGE_CAP = 1_500_000; // bytes of HTML/CSS we will read
-const ASSET_CAP = 600_000; // bytes for a logo file
-const FETCH_MS = 7000;
 const MAX_COLORS = 6;
-
-/* ── SSRF guard ─────────────────────────────────────────────────────────── */
-
-const PRIVATE_V4 = [/^127\./, /^10\./, /^192\.168\./, /^169\.254\./, /^0\./, /^172\.(1[6-9]|2\d|3[01])\./];
-const isPrivateIp = (ip: string) => PRIVATE_V4.some((r) => r.test(ip)) || /^(::1|::$|fe[89ab]|fc|fd)/i.test(ip);
-
-/** Reject anything that isn't a public http(s) host, checking the RESOLVED ip, not the name. */
-async function assertPublicUrl(raw: string): Promise<URL> {
-    let u: URL;
-    try {
-        // Only bare hosts get a scheme bolted on. Prepending onto anything that already has
-        // one turned "file:///etc/passwd" into "https://file///etc/passwd", which was still
-        // rejected but by the DNS check — leaving the protocol guard below unreachable.
-        const hasScheme = /^[a-z][a-z0-9+.-]*:/i.test(raw);
-        u = new URL(hasScheme ? raw : `https://${raw}`);
-    } catch {
-        throw new Error("That doesn't look like a website address.");
-    }
-    if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error("Only http and https addresses work.");
-    const host = u.hostname.toLowerCase();
-    if (host === "localhost" || /\.(localhost|local|internal|home|lan)$/.test(host)) {
-        throw new Error("That address is on a private network.");
-    }
-    let address: string;
-    try {
-        ({ address } = await lookup(host));
-    } catch {
-        throw new Error("Couldn't find that domain — check the spelling.");
-    }
-    if (isPrivateIp(address)) throw new Error("That address resolves to a private network.");
-    return u;
-}
-
-/* ── fetching ───────────────────────────────────────────────────────────── */
-
-async function grab(url: string, cap: number): Promise<{ body: ArrayBuffer; type: string } | null> {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), FETCH_MS);
-    try {
-        const res = await fetch(url, { signal: ctrl.signal, redirect: "follow", headers: { "user-agent": UA } });
-        if (!res.ok) return null;
-        const declared = Number(res.headers.get("content-length") ?? 0);
-        if (declared > cap) return null;
-        const body = await res.arrayBuffer();
-        if (body.byteLength > cap) return null;
-        return { body, type: (res.headers.get("content-type") ?? "").toLowerCase() };
-    } catch {
-        return null;
-    } finally {
-        clearTimeout(timer);
-    }
-}
-
-const asText = (b: ArrayBuffer) => new TextDecoder("utf-8", { fatal: false }).decode(b);
 
 /* ── colours ────────────────────────────────────────────────────────────── */
 

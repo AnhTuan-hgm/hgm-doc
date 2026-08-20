@@ -249,6 +249,160 @@ export type SectionId =
  */
 export const DEFAULT_CLIENT_VISIBLE: SectionId[] = ["intake", "onboarding"];
 
+/* ── Merging a drafted Master Document ───────────────────────────────────── */
+
+/** The plain text fields of the Master Document, in section order. */
+const DRAFT_TEXT_KEYS = [
+    "hosts",
+    "propertyType",
+    "structure",
+    "generalAmenities",
+    "sharedAmenities",
+    "exactLocation",
+    "proximityCities",
+    "proximityAirports",
+    "targetAudience",
+    "uvp",
+    "brandVoice",
+    "brandBio",
+    "personaResonance",
+    "corePillars",
+    "emotionalThemes",
+] as const satisfies readonly (keyof Foundation)[];
+
+const str = (v: unknown) => String(v ?? "").trim();
+const strList = (v: unknown) => (Array.isArray(v) ? v.map(str).filter(Boolean) : []);
+
+/**
+ * Merge one drafted row list into an existing one.
+ *
+ * Rows a person filled in are kept EXACTLY as they are and win any collision. Empty rows
+ * carry no information, so they're dropped in favour of drafted ones rather than being
+ * preserved as blanks. Drafted rows whose key already exists are skipped, so re-running a
+ * draft doesn't stack duplicates.
+ */
+const mergeRows = <T>(current: T[], drafted: T[], isFilled: (r: T) => boolean, key: (r: T) => string): T[] | null => {
+    if (!drafted.length) return null;
+    const keep = current.filter(isFilled);
+    const taken = new Set(keep.map((r) => key(r).toLowerCase()).filter(Boolean));
+    const fresh = drafted.filter((r) => {
+        const k = key(r).toLowerCase();
+        if (!k || taken.has(k)) return false;
+        taken.add(k);
+        return true;
+    });
+    if (!fresh.length) return null;
+    return [...keep, ...fresh];
+};
+
+/**
+ * Turn a drafted Master Document into a patch that can only ADD.
+ *
+ * The one rule: a draft never changes or erases something a person wrote. Every text field
+ * is skipped when it already has content, and every row list keeps its filled rows. That is
+ * what makes the Draft button safe to press twice — the second run is a no-op on everything
+ * the first run produced and the AM then edited.
+ *
+ * It exists as a pure function so the guarantee is checkable in one place rather than
+ * spread through the page's click handler. See the sibling Overview draft, which spreads the
+ * model's reply straight into state and blanks fields for exactly this reason.
+ *
+ * Unknown keys are ignored: the drafting function's schema and this document can drift, and
+ * when they do the extra keys should vanish here rather than be saved into a client's row.
+ */
+export const mergeFoundationDraft = (current: Foundation, draft: Record<string, unknown>): Partial<Foundation> => {
+    const patch: Record<string, unknown> = {};
+
+    for (const k of DRAFT_TEXT_KEYS) {
+        const v = str(draft[k]);
+        if (v && !filled(current[k])) patch[k] = v;
+    }
+
+    if (!current.taglines.some(filled)) {
+        const taglines = strList(draft.taglines);
+        if (taglines.length) patch.taglines = taglines;
+    }
+
+    if (Array.isArray(draft.personas)) {
+        const drafted: Persona[] = (draft.personas as Record<string, unknown>[]).map((p) => ({
+            ...emptyPersona(str(p.rank) || "Primary"),
+            name: str(p.name),
+            summary: str(p.summary),
+            age: str(p.age),
+            relationship: str(p.relationship),
+            location: str(p.location),
+            interests: str(p.interests),
+            painPoints: str(p.painPoints),
+            seeking: str(p.seeking),
+            howTheyBook: str(p.howTheyBook),
+            keywords: strList(p.keywords),
+        }));
+        const merged = mergeRows(
+            current.personas,
+            drafted,
+            (p) => filled(p.name) || filled(p.summary),
+            (p) => p.name,
+        );
+        if (merged) patch.personas = merged;
+    }
+
+    if (Array.isArray(draft.focusProperties)) {
+        const drafted: FocusProperty[] = (draft.focusProperties as Record<string, unknown>[]).map((p) => ({
+            ...emptyFocusProperty(),
+            name: str(p.name),
+            link: str(p.link),
+            location: str(p.location),
+            guests: str(p.guests),
+            bedrooms: str(p.bedrooms),
+            beds: str(p.beds),
+            bathrooms: str(p.bathrooms),
+            description: str(p.description),
+            features: str(p.features),
+            terms: str(p.terms),
+            reviews: strList(p.reviews),
+        }));
+        const merged = mergeRows(
+            current.focusProperties,
+            drafted,
+            (p) => filled(p.name) || filled(p.link),
+            (p) => p.name,
+        );
+        if (merged) patch.focusProperties = merged;
+    }
+
+    for (const list of ["restaurants", "activities"] as const) {
+        if (!Array.isArray(draft[list])) continue;
+        const drafted: LocalFavorite[] = (draft[list] as Record<string, unknown>[]).map((r) => ({
+            ...emptyFavorite(),
+            name: str(r.name),
+            description: str(r.description),
+        }));
+        const merged = mergeRows(
+            current[list],
+            drafted,
+            (r) => filled(r.name),
+            (r) => r.name,
+        );
+        if (merged) patch[list] = merged;
+    }
+
+    if (Array.isArray(draft.websiteLinks)) {
+        const drafted: WebsiteLink[] = (draft.websiteLinks as Record<string, unknown>[]).map((l) => ({
+            ...emptyWebsiteLink(str(l.page)),
+            url: str(l.url),
+        }));
+        const merged = mergeRows(
+            current.websiteLinks,
+            drafted,
+            (l) => filled(l.page) || filled(l.url),
+            (l) => l.url,
+        );
+        if (merged) patch.websiteLinks = merged;
+    }
+
+    return patch as Partial<Foundation>;
+};
+
 /* Eye / eye-off, matching the owner guide's per-client step toggle so the gesture reads
    the same in both places. Inline SVG for the same reason it is there: these are 13px
    controls inside a dense row, not icon-set sizes. */

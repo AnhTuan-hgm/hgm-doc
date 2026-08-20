@@ -85,6 +85,7 @@ import {
     emptyWebsiteLink,
     filled,
     mergeContent,
+    mergeFoundationDraft,
     normEmail,
     slugify,
     statusColor,
@@ -498,6 +499,17 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     const [masterDocCopied, setMasterDocCopied] = useState(false);
     /** "Copied" flash on the Reviews working prompt (team-only block). */
     const [promptCopied, setPromptCopied] = useState(false);
+    /* ── Master Document drafting (team-only) ──
+       `masterDraftStep` is the label of the group being drafted, shown live: the run takes
+       around a minute across seven model calls, and a single spinner for that long reads as
+       a hang. `masterDraftDone` collects what landed so the AM can see it was partial when
+       a group fails, rather than being told only about the failure. */
+    const [masterDraftStep, setMasterDraftStep] = useState("");
+    const [masterDraftDone, setMasterDraftDone] = useState<string[]>([]);
+    const [masterDraftError, setMasterDraftError] = useState("");
+    /** Guest reviews the AM pastes in. Not persisted — it's raw input to the draft, and
+     *  the useful output of it lives in the two Reviews fields. */
+    const [reviewsPaste, setReviewsPaste] = useState("");
     /* ── Brand Kit from the client's own website (team-only) ── */
     const [brandKitUrl, setBrandKitUrl] = useState("");
     const [brandKitBusy, setBrandKitBusy] = useState(false);
@@ -968,6 +980,128 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
             setTimeout(() => setPdfError(false), 3200);
         } finally {
             setPdfBusy(false);
+        }
+    };
+
+    /**
+     * Draft the whole Master Brand Document from the client's own material.
+     *
+     * Seven model calls plus one website read, run one at a time. Each is a separate request
+     * because the document is ~66 fields and a single call for all of them exceeds the ~10s
+     * a synchronous Netlify function gets — see generate-master-section.mts for why that
+     * beat making it a background function.
+     *
+     * Sequential rather than parallel on purpose: the groups are cheap individually, the AM
+     * watches them tick past, and a burst of seven concurrent Opus calls is the kind of thing
+     * that trips a rate limit at exactly the wrong moment.
+     *
+     * Nothing is saved. Every group merges through mergeFoundationDraft, which can only fill
+     * empty boxes, so this is safe to run on a half-finished document and safe to re-run.
+     */
+    const draftMasterDocument = async () => {
+        if (!slug || isTemplate || masterDraftStep) return;
+        setMasterDraftError("");
+        setMasterDraftDone([]);
+
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token;
+        if (!token) {
+            setMasterDraftError("Your sign-in has expired — reload the page and sign in again.");
+            return;
+        }
+
+        /** One request. Returns null and records the reason when the group fails. */
+        const run = async (group: string, extra: Record<string, unknown> = {}): Promise<Record<string, unknown> | null> => {
+            const res = await fetch("/.netlify/functions/generate-master-section", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ slug, group, ...extra }),
+            });
+            /* Read as text and parse by hand, same as the Overview draft: res.json() throws
+               "Unexpected end of JSON input" when the reply isn't JSON, and that string is
+               then the entire explanation an AM gets. The two ways it happens are nothing
+               listening on the dev functions port, and Netlify returning an HTML error page. */
+            const body = await res.text();
+            let json: Record<string, unknown> | null = null;
+            try {
+                json = body ? JSON.parse(body) : null;
+            } catch {
+                json = null;
+            }
+            if (!json) {
+                throw new Error(
+                    res.status === 404 || res.status === 502
+                        ? "No functions server on :9999 — run `netlify functions:serve --port 9999` alongside the dev server."
+                        : `The server didn't send a usable reply (${res.status}).`,
+                );
+            }
+            if (!res.ok || json.error) throw new Error(String(json.error || `Request failed (${res.status})`));
+            return json;
+        };
+
+        try {
+            // The website first, once: its text feeds two of the groups below, and the links
+            // it finds are the ONLY source of URLs anywhere in the document.
+            setMasterDraftStep("Reading their website");
+            let siteText = "";
+            let allowedLinks: string[] = [];
+            let siteLinks: { page: string; url: string }[] = [];
+            try {
+                const site = await run("site");
+                siteText = String(site?.siteText ?? "");
+                siteLinks = (site?.links as { page: string; url: string }[] | undefined) ?? [];
+                allowedLinks = siteLinks.map((l) => l.url);
+                // Section 11 is pure extraction — the sitemap table is what the crawl found,
+                // with no model in the loop to invent a page that doesn't exist.
+                if (siteLinks.length) patchFoundation(mergeFoundationDraft(foundation, { websiteLinks: siteLinks }));
+                setMasterDraftDone((d) => [...d, "Website links"]);
+            } catch (err) {
+                // A site we can't read shouldn't stop the seven sections that don't need it.
+                console.warn("[master draft] website read failed", err);
+                setMasterDraftError(err instanceof Error ? `${err.message} Drafting continued without the website.` : "");
+            }
+
+            const groups: { group: string; label: string; extra?: Record<string, unknown> }[] = [
+                { group: "hosts", label: "Hosts & location" },
+                { group: "properties", label: "The properties", extra: { siteText } },
+                { group: "brand", label: "Audience, UVP & brand" },
+                { group: "personas", label: "Personas" },
+                { group: "focus", label: "Focus properties", extra: { siteText, allowedLinks } },
+                { group: "favorites", label: "Local favorites" },
+                { group: "reviews", label: "Reviews", extra: { reviewsText: reviewsPaste } },
+            ];
+
+            const failed: string[] = [];
+            for (const g of groups) {
+                // Groups whose only source is missing are skipped quietly rather than
+                // reported as failures — no website on file and no pasted reviews are both
+                // ordinary states, not errors.
+                if (g.group === "reviews" && !reviewsPaste.trim()) continue;
+                if ((g.group === "properties" || g.group === "focus") && !siteText) continue;
+
+                setMasterDraftStep(g.label);
+                try {
+                    const out = await run(g.group, g.extra);
+                    const fields = (out?.fields as Record<string, unknown> | undefined) ?? {};
+                    // Merged per group, not batched at the end: a later failure then leaves
+                    // the earlier sections in place instead of discarding the whole run.
+                    setContent((c) => {
+                        const current = { ...DEFAULT_FOUNDATION, ...c.foundation };
+                        return { ...c, foundation: { ...current, ...mergeFoundationDraft(current, fields) } };
+                    });
+                    setMasterDraftDone((d) => [...d, g.label]);
+                } catch (err) {
+                    console.error(`[master draft] ${g.group} failed`, err);
+                    failed.push(g.label);
+                }
+            }
+
+            if (failed.length) setMasterDraftError(`Couldn't draft: ${failed.join(", ")}. Everything else landed — try again for the rest.`);
+        } catch (err) {
+            console.error("[master draft] failed", err);
+            setMasterDraftError(err instanceof Error ? err.message : "Couldn't draft the document.");
+        } finally {
+            setMasterDraftStep("");
         }
     };
 
@@ -2689,9 +2823,23 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                             smarter everything downstream gets.
                                                         </p>
 
-                                                        {/* Team-only: compile the answers into the AM-ready doc, or export it. */}
+                                                        {/* Team-only: draft it from the client's own material, compile it for review,
+                                                            or export it. */}
                                                         {isTeam && (
                                                             <div className="mt-4 flex flex-wrap items-center gap-3">
+                                                                {!isTemplate && (
+                                                                    <Button
+                                                                        size="sm"
+                                                                        color="primary"
+                                                                        iconLeading={Stars02}
+                                                                        isDisabled={isLocked}
+                                                                        isLoading={!!masterDraftStep}
+                                                                        showTextWhileLoading
+                                                                        onClick={() => void draftMasterDocument()}
+                                                                    >
+                                                                        {masterDraftStep ? `${masterDraftStep}…` : "Draft from forms & website"}
+                                                                    </Button>
+                                                                )}
                                                                 <Button
                                                                     size="sm"
                                                                     color="secondary"
@@ -2716,6 +2864,26 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                     </span>
                                                                 )}
                                                             </div>
+                                                        )}
+                                                        {/* What landed, as it lands. A run is ~7 calls over about a minute, so the
+                                                            AM needs to see progress rather than one long spinner. */}
+                                                        {isTeam && masterDraftDone.length > 0 && (
+                                                            <p className="mt-2 flex items-start gap-1.5 text-sm text-success-primary">
+                                                                <Check className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                                                                Drafted {masterDraftDone.join(", ")}. Review it, then Save changes — nothing is saved yet.
+                                                            </p>
+                                                        )}
+                                                        {isTeam && masterDraftError && (
+                                                            <p className="mt-2 flex items-start gap-1.5 text-sm text-error-primary" role="alert">
+                                                                <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                                                                {masterDraftError}
+                                                            </p>
+                                                        )}
+                                                        {isTeam && !isTemplate && isLocked && (
+                                                            <p className="mt-2 text-xs text-quaternary">
+                                                                Unlock the dashboard to draft — a draft fills empty boxes and never changes what's already
+                                                                written.
+                                                            </p>
                                                         )}
                                                         {isLocked && (
                                                             <p className="mt-2 text-xs text-quaternary">Unlock the dashboard to edit this document.</p>
@@ -3460,6 +3628,41 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                         placeholder="Top 5–7 themes, plus the taglines they suggest."
                                                                         onChange={(v) => patchFoundation({ emotionalThemes: v })}
                                                                     />
+
+                                                                    {/* Paste the reviews and the Draft button fills the two fields above, which
+                                                                        replaces the copy-into-ChatGPT-and-paste-back round trip the working
+                                                                        prompt below describes. Team only, and deliberately not persisted: the
+                                                                        raw reviews are somebody else's copy, and the useful distillation of
+                                                                        them is the two fields. Airbnb is not fetched for these — it serves
+                                                                        bot-protection to datacenter IPs, so pasting is the reliable route. */}
+                                                                    {isTeam && !isTemplate && !isLocked && (
+                                                                        <div className="mt-5 rounded-2xl bg-primary p-4 ring-1 ring-secondary">
+                                                                            <label
+                                                                                htmlFor="reviews-paste"
+                                                                                className="text-sm font-medium text-secondary"
+                                                                            >
+                                                                                Paste guest reviews
+                                                                            </label>
+                                                                            <p className="mt-1 text-xs text-tertiary">
+                                                                                30 or more works best. Drafting reads these to fill both fields above — their
+                                                                                Airbnb profile link is in the onboarding form.
+                                                                            </p>
+                                                                            <textarea
+                                                                                id="reviews-paste"
+                                                                                rows={4}
+                                                                                value={reviewsPaste}
+                                                                                onChange={(e) => setReviewsPaste(e.target.value)}
+                                                                                placeholder="Paste the review text here — one after another is fine."
+                                                                                className={cx(editInput(), "mt-2.5 resize-y font-mono text-[12px]")}
+                                                                            />
+                                                                            {reviewsPaste.trim() && (
+                                                                                <p className="mt-1.5 text-xs text-quaternary tabular-nums">
+                                                                                    {reviewsPaste.trim().length.toLocaleString()} characters pasted — not saved,
+                                                                                    only used for drafting.
+                                                                                </p>
+                                                                            )}
+                                                                        </div>
+                                                                    )}
 
                                                                     {/* The working prompt is internal process, not something a client should be
                                                                         handed — it tells whoever reads it to go and run the analysis. Team only. */}

@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@supabase/supabase-js";
+import { NOT_CONFIGURED, blankIfPlaceholder, isDashboardSlug, readClientSources, readEnv, sourceBlocks } from "../lib/client-sources.mts";
 
 /**
  * Drafts a client's Overview Document from what they have already told us.
@@ -70,33 +71,11 @@ Handles keep their @. URLs stay as the client gave them.
 
 A key ending in "__user" is the account NAME the client uses on that platform — "instagramLogin__user" is their Instagram account name, "tiktokLogin__user" their TikTok one. Use those to fill the matching platform fields. Passwords are deliberately not given to you; never ask for one, never guess one, and never put one in a field.`;
 
-/**
- * Turn a stand-in for "I don't know" into an actual empty field.
- *
- * The prompt asks for an empty string when the source material doesn't cover a field, and
- * mostly that is what comes back — but the first real run returned the literal `<UNKNOWN>`
- * for client_name, which then renders as the value of that field instead of "Not filled in".
- * A prompt can't be relied on to never do this, so the check lives here.
- *
- * Deliberately whole-value only: a field reading exactly "unknown" carries nothing, while a
- * sentence that merely contains the word ("their target market is unknown to them") is real
- * content an account manager should see.
- */
-const PLACEHOLDER = /^[<\[(]?\s*(unknown|n\/?a|none|null|tbd|not\s+(stated|provided|given|specified|mentioned|available|filled(\s+in)?)|[-–—?])\s*[>\])]?[.]?$/i;
-const blankIfPlaceholder = (v: string) => {
-    const t = v.trim();
-    return PLACEHOLDER.test(t) ? "" : t;
-};
-
 export default async (req: Request) => {
     if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
 
-    const supabaseUrl = process.env.VITE_SUPABASE_URL;
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
-    if (!supabaseUrl || !serviceKey || !apiKey) {
-        return Response.json({ error: "Not configured — ask the web team to check the Netlify environment variables." }, { status: 500 });
-    }
+    const env = readEnv();
+    if (!env) return Response.json({ error: NOT_CONFIGURED }, { status: 500 });
 
     let slug: string;
     try {
@@ -105,79 +84,22 @@ export default async (req: Request) => {
     } catch {
         return Response.json({ error: "Bad request." }, { status: 400 });
     }
-    if (!slug || slug.length > 120 || !/^[a-z0-9-]+-dashboard$/.test(slug)) {
-        return Response.json({ error: "Bad slug." }, { status: 400 });
-    }
+    if (!isDashboardSlug(slug)) return Response.json({ error: "Bad slug." }, { status: 400 });
 
-    // "acme-dashboard" → "acme", which is how the form pages and recording folders are named.
-    const base = slug.replace(/-dashboard$/, "");
-    const supabaseAdmin = createClient(supabaseUrl, serviceKey);
+    const supabaseAdmin = createClient(env.supabaseUrl, env.serviceKey);
+    const sources = await readClientSources(supabaseAdmin, slug);
 
-    const [dash, intake, brandVision, transcripts] = await Promise.all([
-        supabaseAdmin.from("dashboard_pages").select("client_name,client_website").eq("slug", slug).maybeSingle(),
-        supabaseAdmin.from("client_onboarding_pages").select("data").eq("slug", `${base}-onboarding`).maybeSingle(),
-        supabaseAdmin.from("host_onboarding_pages").select("data").eq("slug", `${base}-hostonboarding`).maybeSingle(),
-        supabaseAdmin
-            .from("script_logs")
-            .select("source_label,transcript")
-            .in("client_slug", [`${base}-onboarding`, `${base}-hostonboarding`])
-            .eq("status", "done"),
-    ]);
-
-    const intakeAnswers = (intake.data?.data as Record<string, unknown> | undefined) ?? {};
-    const visionAnswers = (brandVision.data?.data as Record<string, unknown> | undefined) ?? {};
-    const spoken = (transcripts.data ?? []).filter((t) => (t.transcript ?? "").trim());
-
-    /**
-     * Which answers get sent to the model.
-     *
-     * PASSWORDS ARE EXCLUDED. The Onboarding Form's Account Setup section collects real
-     * logins — Instagram, TikTok, PriceLabs, StayFi, the client's PMS and their domain host —
-     * as `<field>__user` and `<field>__pass`. The team keeps the secrets in their password
-     * manager; this app only takes them in. No field in the Overview Document or the Master
-     * Brand Document is improved by knowing a password, which is what makes sending one a
-     * pure loss: third-party exposure that buys nothing.
-     *
-     * ACCOUNT NAMES ARE KEPT. `<field>__user` is what the client is called on that platform,
-     * and for the social accounts it IS the public handle the brief is asking for. A name
-     * without its password isn't a credential, and excluding it blocked the one thing the
-     * Platforms section exists to record.
-     *
-     * Media POINTERS are excluded too — "targetGuest__media": "acme/targetGuest-123.webm"
-     * tells the model nothing and invites it to treat a filename as content. The transcripts
-     * below are the readable form of those, and go in separately with their question label.
-     */
-    const isCredential = (k: string) => /__pass$/.test(k) || /pass(word)?|secret|credential/i.test(k);
-    const readable = (o: Record<string, unknown>) =>
-        Object.entries(o)
-            .filter(
-                ([k, v]) =>
-                    !k.endsWith("__media") && !k.endsWith("__mediaKind") && !isCredential(k) && typeof v !== "object" && String(v ?? "").trim(),
-            )
-            .map(([k, v]) => `${k}: ${String(v).trim()}`)
-            .join("\n");
-
-    const intakeText = readable(intakeAnswers);
-    const visionText = readable(visionAnswers);
-    const spokenText = spoken.map((t) => `[${t.source_label || "recorded answer"}]\n${t.transcript}`).join("\n\n");
-
-    if (!intakeText && !visionText && !spokenText) {
+    if (!sources.hasAny) {
         return Response.json(
             { error: "There's nothing to draft from yet — this client hasn't submitted either form." },
             { status: 400 },
         );
     }
 
-    const parts = [
-        dash.data?.client_name ? `Business on file: ${dash.data.client_name}` : "",
-        dash.data?.client_website ? `Website on file: ${dash.data.client_website}` : "",
-        intakeText ? `--- ONBOARDING FORM ---\n${intakeText}` : "",
-        visionText ? `--- BRAND VISION FORM ---\n${visionText}` : "",
-        spokenText ? `--- RECORDED ANSWERS (transcribed) ---\n${spokenText}` : "",
-    ].filter(Boolean);
+    const parts = [sourceBlocks(sources)];
 
     try {
-        const anthropic = new Anthropic({ apiKey });
+        const anthropic = new Anthropic({ apiKey: env.apiKey });
         const message = await anthropic.messages.create({
             model: MODEL,
             max_tokens: 4096,
@@ -198,7 +120,7 @@ export default async (req: Request) => {
         const raw = block.input as Record<string, unknown>;
         const doc = Object.fromEntries(Object.keys(FIELDS).map((k) => [k, blankIfPlaceholder(String(raw[k] ?? ""))]));
 
-        return Response.json({ doc, sources: { intake: !!intakeText, brandVision: !!visionText, recordings: spoken.length } });
+        return Response.json({ doc, sources: { intake: !!sources.intakeText, brandVision: !!sources.visionText, recordings: !!sources.spokenText } });
     } catch (err) {
         console.error("[generate-overview]", err);
         return Response.json({ error: "Couldn't draft the document — try again in a moment." }, { status: 502 });
