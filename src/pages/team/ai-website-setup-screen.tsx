@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { AppShell, CollapsedTopBar, IconRail, NavCollapseButton, RailBottom, useNavCollapsed } from "@/components/application/icon-rail";
+import { VideoAttach, VideoEmbed } from "@/components/application/video-block";
+import { linkify } from "@/utils/linkify";
 import { supabase } from "@/lib/supabase";
 import { compressImageFile } from "@/utils/compress-image";
 import { cx } from "@/utils/cx";
@@ -10,7 +12,7 @@ const SOP_SLUG = "ai-website-setup";
 /* ── Types ───────────────────────────────────────────────────────── */
 
 type LensPos = { x: number; y: number };
-type Step = { id: string; heading: string; tools: string[]; command: string; note?: string; image: string; lensPos?: LensPos };
+type Step = { id: string; heading: string; tools: string[]; command: string; note?: string; video?: string; image: string; lensPos?: LensPos };
 type Stage = { id: string; name: string; steps: Step[] };
 type SOPState = { stages: Stage[]; selectedId: string | null; locked: boolean };
 
@@ -581,7 +583,7 @@ const StepCard = ({
                 {/* command */}
                 <div className="mt-3.5 flex flex-col gap-1.5 px-5 pl-[69px]">
                     <div className="flex items-center justify-between">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-quaternary">Command / Prompt</p>
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-quaternary">Instructions</p>
                         {step.command && <CopyButton text={step.command} />}
                     </div>
                     {editing ? (
@@ -593,7 +595,7 @@ const StepCard = ({
                             className="w-full resize-y rounded-lg border border-secondary bg-secondary px-3.5 py-3 font-mono text-[13.5px] leading-[22px] text-secondary outline-none focus:border-brand focus:bg-primary focus:ring-1 focus:ring-brand"
                         />
                     ) : step.command ? (
-                        <pre className="whitespace-pre-wrap break-words rounded-lg border border-secondary bg-secondary px-3.5 py-3 font-mono text-[13.5px] leading-[22px] text-secondary">{step.command}</pre>
+                        <pre className="whitespace-pre-wrap break-words rounded-lg border border-secondary bg-secondary px-3.5 py-3 font-mono text-[13.5px] leading-[22px] text-secondary">{linkify(step.command)}</pre>
                     ) : (
                         <span className="text-sm text-placeholder">—</span>
                     )}
@@ -612,7 +614,19 @@ const StepCard = ({
                                 className="w-full resize-y border-0 bg-transparent px-0 py-0 text-[13.5px] leading-[22px] text-secondary outline-none placeholder:text-placeholder"
                             />
                         ) : (
-                            <p className="text-[13.5px] leading-[22px] text-secondary">{step.note}</p>
+                            <p className="text-[13.5px] leading-[22px] text-secondary">{linkify(step.note ?? "")}</p>
+                        )}
+                    </div>
+                )}
+
+                {/* video — Loom / YouTube / uploaded; hidden entirely when empty, like the note */}
+                {(editing || !!step.video) && (
+                    <div className="mt-3.5 flex flex-col gap-1.5 px-5 pl-[69px]">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-quaternary">Video</p>
+                        {editing ? (
+                            <VideoAttach value={step.video || undefined} onChange={(v) => onUpdate(step.id, "video", v ?? "")} />
+                        ) : (
+                            <VideoEmbed url={step.video!} />
                         )}
                     </div>
                 )}

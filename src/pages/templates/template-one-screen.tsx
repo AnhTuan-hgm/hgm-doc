@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { AppShell, CollapsedTopBar, HeaderAvatar, IconRail, NavCollapseButton, RailBottom, useNavCollapsed } from "@/components/application/icon-rail";
 import { VideoAttach, VideoEmbed } from "@/components/application/video-block";
+import { linkify } from "@/utils/linkify";
 import { useAuthUser } from "@/hooks/use-auth-user";
 import { useEditShortcuts } from "@/hooks/use-edit-shortcuts";
 import { supabase } from "@/lib/supabase";
@@ -27,7 +28,7 @@ export const isReservedSlug = (slug: string) =>
 /* ── Types ───────────────────────────────────────────────────────── */
 
 type LensPos = { x: number; y: number };
-type Step = { id: string; heading: string; tools: string[]; command: string; note?: string; image: string; lensPos?: LensPos };
+type Step = { id: string; heading: string; tools: string[]; command: string; note?: string; video?: string; image: string; lensPos?: LensPos };
 /** `parentId` nests a stage as a sub menu under another stage; absent = top-level menu (old docs stay flat).
  *  `hidden` hides the menu from viewers (locked mode) — same eye-icon pattern as owner-guide steps:
  *  hide instead of delete, restorable, and viewer numbering skips it. */
@@ -52,47 +53,6 @@ function stageNum(stages: Stage[], stage: Stage): string {
 
 const storageKey = (slug: string) => `hgm_template1_${slug}`;
 
-/* ── Tools ───────────────────────────────────────────────────────── */
-
-type ToolDef = { name: string; color: string; bg: string; border: string; Icon: () => React.ReactElement };
-
-const TOOLS: ToolDef[] = [
-    {
-        name: "Git", color: "#D92D20", bg: "#FEF3F2", border: "rgba(217,45,32,0.30)",
-        Icon: () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="6" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="6" r="3" /><path d="M18 9a6 6 0 01-6 6H6" /></svg>,
-    },
-    {
-        name: "VS Code", color: "#2563EB", bg: "#EFF6FF", border: "rgba(37,99,235,0.30)",
-        Icon: () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6" /></svg>,
-    },
-    {
-        name: "Claude", color: "#D97757", bg: "#FAF0EB", border: "rgba(217,119,87,0.32)",
-        Icon: () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2.5v19M2.5 12h19M5.4 5.4l13.2 13.2M18.6 5.4L5.4 18.6" /></svg>,
-    },
-    {
-        name: "Netlify", color: "#16A34A", bg: "#ECFDF3", border: "rgba(22,163,74,0.30)",
-        Icon: () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a15 15 0 010 18a15 15 0 010-18" /></svg>,
-    },
-    {
-        name: "Supabase", color: "#7F56D9", bg: "#F9F5FF", border: "rgba(127,86,217,0.30)",
-        Icon: () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6" /></svg>,
-    },
-    {
-        name: "Stripe", color: "#635BFF", bg: "#F0EFFF", border: "rgba(99,91,255,0.30)",
-        Icon: () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2 10h20" /></svg>,
-    },
-    {
-        name: "Terminal", color: "#0EA5E9", bg: "#F0F9FF", border: "rgba(14,165,233,0.30)",
-        Icon: () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 17l6-6-6-6M12 19h8" /></svg>,
-    },
-    {
-        name: "GitHub", color: "#171717", bg: "#F5F5F5", border: "rgba(23,23,23,0.20)",
-        Icon: () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 00-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0020 4.77 5.07 5.07 0 0019.91 1S18.73.65 16 2.48a13.38 13.38 0 00-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 005 4.77a5.44 5.44 0 00-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 009 18.13V22" /></svg>,
-    },
-];
-
-const KNOWN_TOOL_NAMES = new Set(TOOLS.map((t) => t.name));
-const findTool = (name: string) => TOOLS.find((t) => t.name === name);
 
 /* ── Helpers ─────────────────────────────────────────────────────── */
 
@@ -381,33 +341,18 @@ const ImageWithMagnifier = ({ src, editing, lensPos, onLensPosChange }: {
 /* ── Step card ───────────────────────────────────────────────────── */
 
 const StepCard = ({
-    step, index, editing, onUpdate, onUpdateTools, onUpdateLensPos, onDelete, onMove, onInsert,
+    step, index, editing, onUpdate, onUpdateLensPos, onDelete, onMove, onInsert,
 }: {
     step: Step;
     index: number;
     editing: boolean;
     onUpdate: (id: string, field: keyof Step, val: string) => void;
-    onUpdateTools: (id: string, tools: string[]) => void;
     onUpdateLensPos: (id: string, pos: LensPos) => void;
     onDelete: (id: string) => void;
     onMove: (id: string, dir: -1 | 1) => void;
     onInsert: (id: string, pos: "before" | "after") => void;
 }) => {
     const fileRef = useRef<HTMLInputElement>(null);
-    const customInputRef = useRef<HTMLInputElement>(null);
-    const [customDraft, setCustomDraft] = useState<string | null>(null);
-
-    // auto-focus the custom tool input when it opens
-    useEffect(() => {
-        if (customDraft === "") customInputRef.current?.focus();
-    }, [customDraft]);
-
-    const commitCustom = () => {
-        const v = (customDraft ?? "").trim();
-        if (v) onUpdateTools(step.id, [...step.tools, v]);
-        setCustomDraft(null);
-    };
-    const cancelCustom = () => setCustomDraft(null);
 
     const handleImage = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -462,126 +407,11 @@ const StepCard = ({
                     )}
                 </div>
 
-                {/* tool selector */}
-                <div className="mt-3.5 px-5 pl-[69px]">
-                    {editing ? (
-                        <div className="flex flex-wrap items-center gap-2">
-                            {/* predefined tool chips — multi-select */}
-                            {TOOLS.map((t) => {
-                                const active = step.tools.includes(t.name);
-                                return (
-                                    <button
-                                        key={t.name}
-                                        type="button"
-                                        onClick={() => onUpdateTools(step.id,
-                                            active
-                                                ? step.tools.filter((x) => x !== t.name)
-                                                : [...step.tools, t.name],
-                                        )}
-                                        style={{
-                                            color: t.color,
-                                            background: active ? t.bg : "transparent",
-                                            border: `1.5px solid ${active ? t.color : t.border}`,
-                                        }}
-                                        className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-semibold transition duration-100 ease-linear hover:opacity-80"
-                                    >
-                                        <t.Icon />
-                                        {t.name}
-                                    </button>
-                                );
-                            })}
-
-                            {/* custom (non-predefined) chips */}
-                            {step.tools.map((name, idx) =>
-                                KNOWN_TOOL_NAMES.has(name) ? null : (
-                                    <span
-                                        key={idx}
-                                        style={{ color: "#525252", background: "#F5F5F5", border: "1.5px solid rgba(82,82,82,0.30)" }}
-                                        className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[12px] font-semibold"
-                                    >
-                                        {name}
-                                        <button
-                                            type="button"
-                                            onClick={() => onUpdateTools(step.id, step.tools.filter((_, j) => j !== idx))}
-                                            className="ml-0.5 leading-none text-[#888] hover:text-[#333]"
-                                        >
-                                            <svg viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
-                                        </button>
-                                    </span>
-                                ),
-                            )}
-
-                            {/* "Other" chip (no icon) and "+" button — both add a custom entry */}
-                            {customDraft === null ? (
-                                <>
-                                    <button
-                                        type="button"
-                                        onClick={() => setCustomDraft("")}
-                                        style={{ color: "#525252", border: "1.5px dashed rgba(82,82,82,0.40)" }}
-                                        className="inline-flex items-center rounded-full bg-transparent px-3 py-1 text-[12px] font-semibold transition duration-100 ease-linear hover:opacity-70"
-                                    >
-                                        Other
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setCustomDraft("")}
-                                        style={{ color: "#525252", border: "1.5px dashed rgba(82,82,82,0.40)" }}
-                                        className="inline-flex size-[27px] items-center justify-center rounded-full bg-transparent text-[16px] font-medium leading-none transition duration-100 ease-linear hover:opacity-70"
-                                    >
-                                        +
-                                    </button>
-                                </>
-                            ) : (
-                                <div
-                                    style={{ border: "1.5px solid rgba(82,82,82,0.50)" }}
-                                    className="inline-flex items-center rounded-full px-2.5 py-0.5"
-                                >
-                                    <input
-                                        ref={customInputRef}
-                                        value={customDraft}
-                                        onChange={(e) => setCustomDraft(e.target.value)}
-                                        onKeyDown={(e) => {
-                                            if (e.key === "Enter") commitCustom();
-                                            if (e.key === "Escape") cancelCustom();
-                                        }}
-                                        onBlur={commitCustom}
-                                        placeholder="Tool name…"
-                                        className="w-24 bg-transparent text-[12px] text-secondary outline-none placeholder:text-placeholder"
-                                    />
-                                </div>
-                            )}
-                        </div>
-                    ) : step.tools.length > 0 ? (
-                        <div className="flex flex-wrap gap-2">
-                            {step.tools.map((name, i) => {
-                                const t = findTool(name);
-                                return t ? (
-                                    <span
-                                        key={i}
-                                        style={{ color: t.color, background: t.bg, border: `1.5px solid ${t.border}` }}
-                                        className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-semibold"
-                                    >
-                                        <t.Icon />
-                                        {t.name}
-                                    </span>
-                                ) : (
-                                    <span
-                                        key={i}
-                                        style={{ color: "#525252", background: "#F5F5F5", border: "1.5px solid rgba(82,82,82,0.30)" }}
-                                        className="inline-flex items-center rounded-full px-3 py-1 text-[12px] font-semibold"
-                                    >
-                                        {name}
-                                    </span>
-                                );
-                            })}
-                        </div>
-                    ) : null}
-                </div>
 
                 {/* command */}
                 <div className="mt-3.5 flex flex-col gap-1.5 px-5 pl-[69px]">
                     <div className="flex items-center justify-between">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-quaternary">Command / Prompt</p>
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-quaternary">Instructions</p>
                         {step.command && <CopyButton text={step.command} />}
                     </div>
                     {editing ? (
@@ -593,7 +423,7 @@ const StepCard = ({
                             className="w-full resize-y rounded-lg border border-secondary bg-secondary px-3.5 py-3 font-mono text-[13.5px] leading-[22px] text-secondary outline-none focus:border-brand focus:bg-primary focus:ring-1 focus:ring-brand"
                         />
                     ) : step.command ? (
-                        <pre className="whitespace-pre-wrap break-words rounded-lg border border-secondary bg-secondary px-3.5 py-3 font-mono text-[13.5px] leading-[22px] text-secondary">{step.command}</pre>
+                        <pre className="whitespace-pre-wrap break-words rounded-lg border border-secondary bg-secondary px-3.5 py-3 font-mono text-[13.5px] leading-[22px] text-secondary">{linkify(step.command)}</pre>
                     ) : (
                         <span className="text-sm text-placeholder">—</span>
                     )}
@@ -612,7 +442,19 @@ const StepCard = ({
                                 className="w-full resize-y rounded-lg border border-secondary bg-secondary px-3.5 py-3 text-[13.5px] leading-[22px] text-secondary outline-none focus:border-brand focus:bg-primary focus:ring-1 focus:ring-brand"
                             />
                         ) : (
-                            <p className="whitespace-pre-wrap rounded-lg border border-secondary bg-secondary px-3.5 py-3 text-[13.5px] leading-[22px] text-secondary">{step.note}</p>
+                            <p className="whitespace-pre-wrap rounded-lg border border-secondary bg-secondary px-3.5 py-3 text-[13.5px] leading-[22px] text-secondary">{linkify(step.note ?? "")}</p>
+                        )}
+                    </div>
+                )}
+
+                {/* video — Loom / YouTube / uploaded; hidden entirely when empty, like the note */}
+                {(editing || !!step.video) && (
+                    <div className="mt-3.5 flex flex-col gap-1.5 px-5 pl-[69px]">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-quaternary">Video</p>
+                        {editing ? (
+                            <VideoAttach value={step.video || undefined} onChange={(v) => onUpdate(step.id, "video", v ?? "")} />
+                        ) : (
+                            <VideoEmbed url={step.video!} />
                         )}
                     </div>
                 )}
@@ -1113,12 +955,6 @@ export const TemplateOneScreen = ({
         if (st) (st as Record<string, unknown>)[field as string] = val;
     });
 
-    const handleUpdateTools = (stepId: string, tools: string[]) => update((d) => {
-        const s = d.stages.find((x) => x.id === d.selectedId);
-        const st = s?.steps.find((x) => x.id === stepId);
-        if (st) st.tools = tools;
-    });
-
     const handleUpdateLensPos = (stepId: string, pos: LensPos) => update((d) => {
         const s = d.stages.find((x) => x.id === d.selectedId);
         const st = s?.steps.find((x) => x.id === stepId);
@@ -1246,7 +1082,6 @@ export const TemplateOneScreen = ({
                                             index={i}
                                             editing={editing}
                                             onUpdate={handleUpdateStep}
-                                            onUpdateTools={handleUpdateTools}
                                             onUpdateLensPos={handleUpdateLensPos}
                                             onDelete={handleDeleteStep}
                                             onMove={handleMoveStep}
