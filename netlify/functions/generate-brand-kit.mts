@@ -1,4 +1,4 @@
-import { ASSET_CAP, PAGE_CAP, assertPublicUrl, asText, grab } from "../lib/client-sources.mts";
+import { ASSET_CAP, NOT_CONFIGURED, PAGE_CAP, assertPublicUrl, asText, callerEmail, grab, isTeamEmail, readAuthEnv } from "../lib/client-sources.mts";
 
 /**
  * Reads a client's own website and returns a first-draft Brand Kit — palette, fonts and
@@ -207,6 +207,14 @@ async function fetchLogos(html: string, base: URL) {
 
 export default async (req: Request) => {
     if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
+
+    // Team-only. Without this, anyone who finds the URL can make our server fetch any public
+    // site and hand back its images — an open fetch proxy wearing our IP address.
+    const auth = readAuthEnv();
+    if (!auth) return Response.json({ error: NOT_CONFIGURED }, { status: 500 });
+    if (!isTeamEmail(await callerEmail(req, auth.supabaseUrl, auth.anonKey))) {
+        return Response.json({ error: "Team sign-in required." }, { status: 401 });
+    }
 
     let raw: string;
     try {

@@ -6,6 +6,7 @@ import {
     callerEmail,
     isDashboardSlug,
     isTeamEmail,
+    readAuthEnv,
     readClientSources,
     readEnv,
     readWebsite,
@@ -208,14 +209,17 @@ function clean(value: unknown): unknown {
 export default async (req: Request) => {
     if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
 
-    const env = readEnv();
-    if (!env) return Response.json({ error: NOT_CONFIGURED }, { status: 500 });
-
     // The button is team-only in the UI, but the UI is a JavaScript bundle anyone can read.
     // This is the check that actually holds — and it is here from the first commit rather
-    // than added after the endpoint has been public for a while.
-    const email = await callerEmail(req, env.supabaseUrl, env.serviceKey);
+    // than added after the endpoint has been public for a while. It runs BEFORE the
+    // service-key check below so rejecting a stranger needs no secret at all.
+    const auth = readAuthEnv();
+    if (!auth) return Response.json({ error: NOT_CONFIGURED }, { status: 500 });
+    const email = await callerEmail(req, auth.supabaseUrl, auth.anonKey);
     if (!isTeamEmail(email)) return Response.json({ error: "Team sign-in required." }, { status: 401 });
+
+    const env = readEnv();
+    if (!env) return Response.json({ error: NOT_CONFIGURED }, { status: 500 });
 
     let slug = "";
     let group = "";

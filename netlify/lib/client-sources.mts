@@ -39,6 +39,25 @@ export const readEnv = (): Env | null => {
 
 export const NOT_CONFIGURED = "Not configured — ask the web team to check the Netlify environment variables.";
 
+export interface AuthEnv {
+    supabaseUrl: string;
+    anonKey: string;
+}
+
+/**
+ * Just what's needed to check WHO is calling — deliberately not the service-role key.
+ *
+ * Verifying a session token needs only the publishable key: the token itself is the
+ * credential, and Supabase checks its signature. Keeping the auth gate off the service key
+ * means an endpoint can reject a stranger before it needs any secret at all, and it means
+ * the 401 path is reachable in local dev, where the service key isn't set.
+ */
+export const readAuthEnv = (): AuthEnv | null => {
+    const supabaseUrl = process.env.VITE_SUPABASE_URL;
+    const anonKey = process.env.VITE_SUPABASE_ANON_KEY;
+    return supabaseUrl && anonKey ? { supabaseUrl, anonKey } : null;
+};
+
 /* ── who is calling ──────────────────────────────────────────────────────── */
 
 /**
@@ -48,14 +67,17 @@ export const NOT_CONFIGURED = "Not configured — ask the web team to check the 
  * call, so "the button is hidden from clients" is not access control — the button lives in
  * a JavaScript bundle anyone can read. The browser sends its Supabase access token and we
  * verify it here.
+ *
+ * `key` should be the PUBLISHABLE key (see readAuthEnv). The token being checked is the
+ * credential; handing this the service-role key would grant it nothing extra.
  */
-export async function callerEmail(req: Request, supabaseUrl: string, serviceKey: string): Promise<string | null> {
+export async function callerEmail(req: Request, supabaseUrl: string, key: string): Promise<string | null> {
     const token = req.headers
         .get("authorization")
         ?.replace(/^Bearer\s+/i, "")
         .trim();
     if (!token) return null;
-    const { data, error } = await createClient(supabaseUrl, serviceKey).auth.getUser(token);
+    const { data, error } = await createClient(supabaseUrl, key).auth.getUser(token);
     if (error || !data.user?.email) return null;
     return data.user.email.toLowerCase();
 }

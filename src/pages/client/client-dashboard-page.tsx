@@ -532,9 +532,16 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
         setBrandKitBusy(true);
         setBrandKitMsg(null);
         try {
+            // Team-only on the server too, so the session token travels with the request.
+            const { data: sessionData } = await supabase.auth.getSession();
+            const token = sessionData.session?.access_token;
+            if (!token) {
+                setBrandKitMsg({ kind: "err", text: "Your sign-in has expired — reload the page and sign in again." });
+                return;
+            }
             const res = await fetch("/.netlify/functions/generate-brand-kit", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
                 body: JSON.stringify({ url }),
             });
             const json = (await res.json()) as {
