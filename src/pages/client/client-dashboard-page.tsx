@@ -76,6 +76,7 @@ import {
     type RevenueMonth,
     STATUS_OPTIONS,
     type SectionId,
+    TEMPLATE_CONTENT,
     type VideoGuide,
     createDefaultContent,
     emptyFavorite,
@@ -497,6 +498,79 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     const [masterDocCopied, setMasterDocCopied] = useState(false);
     /** "Copied" flash on the Reviews working prompt (team-only block). */
     const [promptCopied, setPromptCopied] = useState(false);
+    /* ── Brand Kit from the client's own website (team-only) ── */
+    const [brandKitUrl, setBrandKitUrl] = useState("");
+    const [brandKitBusy, setBrandKitBusy] = useState(false);
+    const [brandKitMsg, setBrandKitMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+    /**
+     * Read the client's website and merge a draft palette in.
+     *
+     * Nothing here can destroy work an AM already did: logos are always appended, fonts
+     * only fill a blank (or the "Inter" default), and the palette is REPLACED only while it
+     * is still the untouched template — the four Untitled UI purples, which are wrong for
+     * every client. Once someone has edited a swatch, found colours are appended instead and
+     * they prune what they don't want with the delete button that's already there.
+     */
+    const generateBrandKit = async () => {
+        const url = (brandKitUrl.trim() || clientWebsite.trim()).trim();
+        if (!url) {
+            setBrandKitMsg({ kind: "err", text: "Enter the client's website address first." });
+            return;
+        }
+        setBrandKitBusy(true);
+        setBrandKitMsg(null);
+        try {
+            const res = await fetch("/.netlify/functions/generate-brand-kit", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ url }),
+            });
+            const json = (await res.json()) as {
+                error?: string;
+                colors?: BrandColor[];
+                fonts?: string;
+                logos?: { name: string; url: string }[];
+            };
+            if (!res.ok) {
+                setBrandKitMsg({ kind: "err", text: json.error || "Couldn't read that site." });
+                return;
+            }
+            const found = json.colors ?? [];
+            /* Compare by value, not JSON.stringify: Postgres jsonb stores object keys sorted,
+               so a saved swatch returns as {hex,name} while the template literal is {name,hex}.
+               Stringifying made every round-tripped palette look edited, so the replace branch
+               never fired for the one case it exists for — an AM who never touched Brand Kit. */
+            const tpl = TEMPLATE_CONTENT.brand.colors;
+            const isTemplatePalette =
+                content.brand.colors.length === tpl.length &&
+                content.brand.colors.every((c, i) => c.name === tpl[i].name && c.hex.toLowerCase() === tpl[i].hex.toLowerCase());
+            const patch: Partial<DashboardContent["brand"]> = {};
+            if (found.length) patch.colors = isTemplatePalette ? found : [...content.brand.colors, ...found];
+            if (json.fonts && (!content.brand.fonts.trim() || content.brand.fonts.trim() === "Inter")) patch.fonts = json.fonts;
+            if (json.logos?.length) {
+                patch.logos = [...(content.brand.logos ?? []), ...json.logos.map((l) => ({ id: uid(), name: l.name, url: l.url }))];
+            }
+            if (!Object.keys(patch).length) {
+                setBrandKitMsg({ kind: "err", text: "Nothing new found — the palette and fonts here are already filled in." });
+                return;
+            }
+            patchBrand(patch);
+            const bits = [
+                found.length && `${found.length} colour${found.length > 1 ? "s" : ""}`,
+                patch.fonts && "fonts",
+                json.logos?.length && `${json.logos.length} logo${json.logos.length > 1 ? "s" : ""}`,
+            ].filter(Boolean);
+            setBrandKitMsg({
+                kind: "ok",
+                text: `Found ${bits.join(", ")}. Review it, then Save changes — nothing is saved yet.`,
+            });
+        } catch {
+            setBrandKitMsg({ kind: "err", text: "Couldn't reach the generator. Try again in a moment." });
+        } finally {
+            setBrandKitBusy(false);
+        }
+    };
+
     /** Which Brand Kit hex was just copied, for the swatch's "Copied!" flash. */
     const [copiedHex, setCopiedHex] = useState("");
     const copyHex = (hex: string) => {
@@ -3647,6 +3721,43 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                         <p className="mt-3 text-md text-tertiary">
                                                             Your official colors and typography. Use these everywhere so your brand stays consistent.
                                                         </p>
+
+                                                        {/* Team-only: draft the kit from the client's live site, then review. */}
+                                                        {isTeam && !isLocked && (
+                                                            <div className="mt-4">
+                                                                <div className="flex flex-wrap items-center gap-2">
+                                                                    <input
+                                                                        type="url"
+                                                                        placeholder={clientWebsite.trim() || "clientwebsite.com"}
+                                                                        value={brandKitUrl}
+                                                                        onChange={(e) => setBrandKitUrl(e.target.value)}
+                                                                        onKeyDown={(e) => e.key === "Enter" && !brandKitBusy && void generateBrandKit()}
+                                                                        className={editInput("max-w-72")}
+                                                                    />
+                                                                    <Button
+                                                                        size="sm"
+                                                                        color="secondary"
+                                                                        iconLeading={Stars02}
+                                                                        isLoading={brandKitBusy}
+                                                                        showTextWhileLoading
+                                                                        onClick={() => void generateBrandKit()}
+                                                                    >
+                                                                        {brandKitBusy ? "Reading the site…" : "Generate from website"}
+                                                                    </Button>
+                                                                </div>
+                                                                {brandKitMsg && (
+                                                                    <p
+                                                                        className={cx(
+                                                                            "mt-2 text-sm",
+                                                                            brandKitMsg.kind === "ok" ? "text-success-primary" : "text-error-primary",
+                                                                        )}
+                                                                        role={brandKitMsg.kind === "err" ? "alert" : "status"}
+                                                                    >
+                                                                        {brandKitMsg.text}
+                                                                    </p>
+                                                                )}
+                                                            </div>
+                                                        )}
 
                                                         <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
                                                             {content.brand.colors.map((color, i) => (

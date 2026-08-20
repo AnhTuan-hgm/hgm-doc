@@ -37,3 +37,8 @@ dist-ssr
 .agents/
 .claude/skills/supabase
 .claude/skills/supabase-postgres-best-practices
+
+# Written by `netlify dev` when it boots the edge-function runtime. Pins
+# edge.netlify.com bootstrap hashes and is regenerated on every run — local
+# tooling output, not something the build needs.
+deno.lock
