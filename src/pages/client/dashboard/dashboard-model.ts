@@ -134,6 +134,7 @@ export const TEMPLATE_CONTENT: DashboardContent = {
         ],
         fonts: "Inter",
         folder_link: "",
+        logos: [],
     },
     instagram: { profile_url: "", highlights: [] },
     ghl: { login_url: "https://app.gohighlevel.com", items: DEFAULT_GHL_ITEMS },

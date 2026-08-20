@@ -190,6 +190,9 @@ export interface DashboardContent {
         colors: { name: string; hex: string }[];
         fonts: string;
         folder_link: string;
+        /** Logo files the AM uploads — SVG stays vector (compressImageFile passes it
+         *  through), raster is compressed to WebP. Optional: older rows predate it. */
+        logos?: { id: string; name: string; url: string }[];
     };
     instagram: {
         profile_url: string;
