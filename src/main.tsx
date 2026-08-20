@@ -24,6 +24,7 @@ import { ChatWidgetOverviewScreen } from "@/pages/overviews/chat-widget-overview
 import { ClientDashboardOverviewScreen } from "@/pages/overviews/client-dashboard-overview-screen";
 import { OwnerGuideOverviewScreen } from "@/pages/overviews/owner-guide-overview-screen";
 import { HomepageOverviewScreen } from "@/pages/overviews/homepage-overview-screen";
+import { MasterDocumentLogScreen } from "@/pages/overviews/master-document-log-screen";
 import { HomeScreen } from "@/pages/team/home-screen";
 import { QuestionsScreen } from "@/pages/team/questions-screen";
 import { SettingsScreen } from "@/pages/team/settings-screen";
@@ -43,7 +44,7 @@ import "@/styles/globals.css";
 // floating toggle is hidden there to avoid duplicates. The account avatar is NOT
 // shown globally — it's a team-only settings shortcut that lives in the dashboard
 // rail, and it must never appear on client-facing pages (owner guides, popups, etc.).
-const PAGES_WITHOUT_FLOATING_CHROME = ["/designsystem", "/home", "/home2", "/dashboard", "/webteam/ai-website-setup", "/webteam/component-library-architecture", "/clients/reading-your-clients", "/template-1", "/welcome-email-flow-overview", "/prompt-library", "/settings", "/roadmap", "/chat-widget-overview", "/client-dashboard-overview", "/homepage-overview", "/questions", "/deployment", "/log-script"];
+const PAGES_WITHOUT_FLOATING_CHROME = ["/designsystem", "/home", "/home2", "/dashboard", "/webteam/ai-website-setup", "/webteam/component-library-architecture", "/clients/reading-your-clients", "/template-1", "/welcome-email-flow-overview", "/prompt-library", "/settings", "/roadmap", "/chat-widget-overview", "/client-dashboard-overview", "/homepage-overview", "/master-document-log", "/questions", "/deployment", "/log-script"];
 
 // The floating "?" help menu is a team tool. It renders ONLY on internal team
 // pages and is hidden on every client-facing page — all client slugs
@@ -69,6 +70,7 @@ const PAGES_WITH_CHAT_WIDGET = [
     "/client-dashboard-overview",
     "/owner-guide-overview",
     "/homepage-overview",
+    "/master-document-log",
     "/questions",
 ];
 
@@ -180,6 +182,7 @@ createRoot(document.getElementById("root")!).render(
                         <Route path="/client-dashboard-overview" element={<ClientDashboardOverviewScreen />} />
                         <Route path="/owner-guide-overview" element={<OwnerGuideOverviewScreen />} />
                         <Route path="/homepage-overview" element={<HomepageOverviewScreen />} />
+                        <Route path="/master-document-log" element={<MasterDocumentLogScreen />} />
                         <Route path="/questions" element={<QuestionsScreen />} />
                         <Route path="/:clientSlug" element={<ClientScreen />} />
                         <Route path="*" element={<NotFound />} />
