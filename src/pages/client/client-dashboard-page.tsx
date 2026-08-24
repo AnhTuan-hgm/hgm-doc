@@ -40,6 +40,7 @@ import { ProgressBarCircle } from "@/components/base/progress-indicators/progres
 import { ProgressBar } from "@/components/base/progress-indicators/progress-indicators";
 import { FeaturedIcon } from "@/components/foundations/featured-icon/featured-icon";
 import { Instagram } from "@/components/foundations/social-icons";
+import { ImageLightbox } from "@/components/shared-assets/image-lightbox";
 import { Reveal } from "@/components/shared-assets/reveal";
 import { useAuthUser } from "@/hooks/use-auth-user";
 import { useEditShortcuts } from "@/hooks/use-edit-shortcuts";
@@ -675,6 +676,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
         ),
     };
     const [overviewBusy, setOverviewBusy] = useState(false);
+    const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
     const [overviewError, setOverviewError] = useState("");
 
     /**
@@ -2880,10 +2882,22 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                         <p className="text-sm font-medium text-secondary">Instagram profile screenshot</p>
                                                                         {overviewDoc.instagram_screenshot ? (
                                                                             <div className="mt-3 flex flex-wrap items-start gap-3">
-                                                                                <img
-                                                                                    src={overviewDoc.instagram_screenshot}
+                                                                                <button
+                                                                                    type="button"
+                                                                                    title="View full size"
+                                                                                    onClick={() => setLightboxSrc(overviewDoc.instagram_screenshot)}
+                                                                                    className="cursor-zoom-in"
+                                                                                >
+                                                                                    <img
+                                                                                        src={overviewDoc.instagram_screenshot}
+                                                                                        alt="Instagram profile at kickoff"
+                                                                                        className="max-h-56 rounded-lg ring-1 ring-secondary"
+                                                                                    />
+                                                                                </button>
+                                                                                <ImageLightbox
+                                                                                    src={lightboxSrc}
+                                                                                    onClose={() => setLightboxSrc(null)}
                                                                                     alt="Instagram profile at kickoff"
-                                                                                    className="max-h-56 rounded-lg ring-1 ring-secondary"
                                                                                 />
                                                                                 {!isLocked && (
                                                                                     <button
