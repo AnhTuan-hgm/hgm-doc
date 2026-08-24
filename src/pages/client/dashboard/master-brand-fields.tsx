@@ -10,7 +10,7 @@ import { Check, Trash01 } from "@untitledui-pro/icons/line";
 import { BadgeWithDot } from "@/components/base/badges/badges";
 import { editInput } from "@/pages/client/dashboard/dashboard-chrome";
 import { type LocalFavorite, filled } from "@/pages/client/dashboard/dashboard-model";
-import { FOUNDATION_SECTIONS, type FoundationSectionId, WORKFLOW_SECTION_COUNT } from "@/pages/client/dashboard/master-brand-document";
+import { FOUNDATION_SECTIONS, type FoundationSectionId } from "@/pages/client/dashboard/master-brand-document";
 import { cx } from "@/utils/cx";
 
 /** One of the eleven sections. Anchored by id so the in-page rail can jump to it;
@@ -186,11 +186,7 @@ export const DocRail = ({ progress, filledCount }: { progress: Record<Foundation
                 ))}
             </ul>
             <div className="mt-4 border-t border-secondary pt-3">
-                <p className="flex items-start gap-2 text-xs text-tertiary">
-                    <span className="mt-1 size-1.5 shrink-0 rounded-full bg-fg-warning-secondary" aria-hidden="true" />
-                    {WORKFLOW_SECTION_COUNT} sections pull from the brand messaging workflow
-                </p>
-                <p className="mt-2 text-xs text-quaternary tabular-nums">
+                <p className="text-xs text-quaternary tabular-nums">
                     {FOUNDATION_SECTIONS.length} sections ·{" "}
                     {filledCount === 0 ? "nothing filled in yet" : `${filledCount} of ${FOUNDATION_SECTIONS.length} filled`}
                 </p>

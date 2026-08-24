@@ -34,7 +34,6 @@ export const FOUNDATION_SECTIONS = [
 
 export type FoundationSectionId = (typeof FOUNDATION_SECTIONS)[number]["id"];
 
-export const WORKFLOW_SECTION_COUNT = FOUNDATION_SECTIONS.filter((s) => s.workflow).length;
 
 /** Which of the eleven sections have any content — drives the rail ticks and the counter. */
 export const foundationProgress = (f: Foundation): Record<FoundationSectionId, boolean> => ({
