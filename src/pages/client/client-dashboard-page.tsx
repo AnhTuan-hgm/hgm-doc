@@ -20,11 +20,13 @@ import {
     LinkExternal01,
     MessageChatCircle,
     Moon01,
+    Palette,
     Plus,
     RefreshCw01,
     Stars02,
     Sun,
     Trash01,
+    Type01,
     UploadCloud02,
     XClose,
 } from "@untitledui-pro/icons/line";
@@ -52,6 +54,8 @@ import {
     clientOnboardingProgress,
     ensureClientOnboardingForm,
 } from "@/pages/client/client-onboarding-form-page";
+import { ShadeScales } from "@/pages/client/dashboard/brand-kit-shades";
+import { FontPreviews, TypeScale } from "@/pages/client/dashboard/brand-kit-typography";
 import {
     ClientSearchBar,
     DashboardAccessGate,
@@ -4090,189 +4094,252 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                             </div>
                                                         )}
 
-                                                        <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
-                                                            {content.brand.colors.map((color, i) => (
-                                                                <div key={i} className="overflow-hidden rounded-xl ring-1 ring-secondary">
-                                                                    <div className="h-20" style={{ backgroundColor: color.hex }} />
-                                                                    <div className="p-3">
-                                                                        {isLocked ? (
-                                                                            <>
-                                                                                <p className="text-sm font-semibold text-primary">{color.name}</p>
-                                                                                {/* The hex is the thing people actually come here for — one click
-                                                                                    beats selecting six characters by hand. */}
-                                                                                <button
-                                                                                    type="button"
-                                                                                    onClick={() => copyHex(color.hex)}
-                                                                                    title="Copy hex"
-                                                                                    className="mt-0.5 font-mono text-xs text-tertiary uppercase transition duration-100 ease-linear hover:text-brand-secondary"
-                                                                                >
-                                                                                    {copiedHex === color.hex ? "Copied!" : color.hex}
-                                                                                </button>
-                                                                            </>
-                                                                        ) : (
-                                                                            <div className="flex flex-col gap-1.5">
-                                                                                <input
-                                                                                    type="text"
-                                                                                    placeholder="Name"
-                                                                                    value={color.name}
-                                                                                    onChange={(e) => updateColor(i, { name: e.target.value })}
-                                                                                    className={editInput("px-2 py-1 text-xs")}
-                                                                                />
-                                                                                <div className="flex items-center gap-1">
-                                                                                    {/* Native picker — no dependency, and it stops hand-typed hex typos. */}
-                                                                                    <input
-                                                                                        type="color"
-                                                                                        aria-label={`${color.name || "Colour"} picker`}
-                                                                                        value={/^#[0-9a-f]{6}$/i.test(color.hex) ? color.hex : "#888888"}
-                                                                                        onChange={(e) => updateColor(i, { hex: e.target.value })}
-                                                                                        className="size-7 shrink-0 cursor-pointer rounded-md border border-secondary bg-transparent p-0.5"
-                                                                                    />
-                                                                                    <input
-                                                                                        type="text"
-                                                                                        placeholder="#000000"
-                                                                                        value={color.hex}
-                                                                                        onChange={(e) => updateColor(i, { hex: e.target.value })}
-                                                                                        className={editInput("px-2 py-1 font-mono text-xs")}
-                                                                                    />
-                                                                                    <button
-                                                                                        type="button"
-                                                                                        title="Remove color"
-                                                                                        onClick={() =>
-                                                                                            patchBrand({
-                                                                                                colors: content.brand.colors.filter((_, j) => j !== i),
-                                                                                            })
-                                                                                        }
-                                                                                        className={removeButton}
-                                                                                    >
-                                                                                        <Trash01 className="size-4" aria-hidden="true" />
-                                                                                    </button>
-                                                                                </div>
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-                                                                </div>
-                                                            ))}
-                                                            {!isLocked && (
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() =>
-                                                                        patchBrand({ colors: [...content.brand.colors, { name: "New color", hex: "#888888" }] })
-                                                                    }
-                                                                    className="flex min-h-32 flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-secondary text-sm font-medium text-tertiary transition duration-100 ease-linear hover:border-brand hover:text-brand-secondary"
-                                                                >
-                                                                    <Plus className="size-5" aria-hidden="true" />
-                                                                    Add color
-                                                                </button>
-                                                            )}
-                                                        </div>
-
-                                                        {/* ── Logo files ──
-                                                            Checkerboard behind each mark so a white or transparent logo is
-                                                            actually visible. Download is a plain <a download> on the data URL —
-                                                            no server round-trip, and a brand kit you can't download is decor. */}
-                                                        {(!!(content.brand.logos ?? []).length || !isLocked) && (
-                                                            <div className="mt-8">
-                                                                <div className="flex flex-wrap items-center justify-between gap-2">
-                                                                    <p className="text-sm font-semibold text-primary">Logo files</p>
-                                                                    <span className="text-xs text-quaternary">
-                                                                        SVG keeps its vector quality — PNG and JPG are compressed
-                                                                    </span>
-                                                                </div>
-                                                                <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-4">
-                                                                    {(content.brand.logos ?? []).map((logo) => (
-                                                                        <div key={logo.id} className="overflow-hidden rounded-xl ring-1 ring-secondary">
-                                                                            <div
-                                                                                className="flex h-24 items-center justify-center p-3"
-                                                                                style={{
-                                                                                    backgroundImage:
-                                                                                        "linear-gradient(45deg,var(--color-bg-secondary) 25%,transparent 25%,transparent 75%,var(--color-bg-secondary) 75%),linear-gradient(45deg,var(--color-bg-secondary) 25%,transparent 25%,transparent 75%,var(--color-bg-secondary) 75%)",
-                                                                                    backgroundSize: "16px 16px",
-                                                                                    backgroundPosition: "0 0, 8px 8px",
-                                                                                }}
-                                                                            >
-                                                                                <img
-                                                                                    src={logo.url}
-                                                                                    alt={logo.name}
-                                                                                    className="max-h-full max-w-full object-contain"
-                                                                                    draggable={false}
-                                                                                />
-                                                                            </div>
-                                                                            <div className="flex items-center gap-1 p-3">
+                                                        {/* Same numbered-document treatment as Master Brand and the Overview. */}
+                                                        <div className="mt-8 flex flex-col gap-8">
+                                                            <DocSection id="colors" label="Colors" icon={Palette}>
+                                                                <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                                                                    {content.brand.colors.map((color, i) => (
+                                                                        <div key={i} className="overflow-hidden rounded-xl ring-1 ring-secondary">
+                                                                            <div className="h-28" style={{ backgroundColor: color.hex }} />
+                                                                            <div className="p-3">
                                                                                 {isLocked ? (
-                                                                                    <p className="min-w-0 flex-1 truncate text-sm font-medium text-secondary">
-                                                                                        {logo.name}
-                                                                                    </p>
+                                                                                    <>
+                                                                                        <p className="text-sm font-semibold text-primary">{color.name}</p>
+                                                                                        {/* The hex is the thing people actually come here for — one click
+                                                                                    beats selecting six characters by hand. */}
+                                                                                        <button
+                                                                                            type="button"
+                                                                                            onClick={() => copyHex(color.hex)}
+                                                                                            title="Copy hex"
+                                                                                            className="mt-0.5 font-mono text-xs text-tertiary uppercase transition duration-100 ease-linear hover:text-brand-secondary"
+                                                                                        >
+                                                                                            {copiedHex === color.hex ? "Copied!" : color.hex}
+                                                                                        </button>
+                                                                                    </>
                                                                                 ) : (
-                                                                                    <input
-                                                                                        type="text"
-                                                                                        placeholder="Logo name"
-                                                                                        value={logo.name}
-                                                                                        onChange={(e) =>
-                                                                                            patchBrand({
-                                                                                                logos: (content.brand.logos ?? []).map((x) =>
-                                                                                                    x.id === logo.id ? { ...x, name: e.target.value } : x,
-                                                                                                ),
-                                                                                            })
-                                                                                        }
-                                                                                        className={editInput("px-2 py-1 text-xs")}
-                                                                                    />
-                                                                                )}
-                                                                                <a
-                                                                                    href={logo.url}
-                                                                                    download={logo.name || "logo"}
-                                                                                    title={`Download ${logo.name || "logo"}`}
-                                                                                    className="flex size-8 shrink-0 items-center justify-center rounded-lg text-fg-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-brand-secondary"
-                                                                                >
-                                                                                    <Download01 className="size-4" aria-hidden="true" />
-                                                                                </a>
-                                                                                {!isLocked && (
-                                                                                    <button
-                                                                                        type="button"
-                                                                                        title="Remove logo"
-                                                                                        onClick={() =>
-                                                                                            patchBrand({
-                                                                                                logos: (content.brand.logos ?? []).filter(
-                                                                                                    (x) => x.id !== logo.id,
-                                                                                                ),
-                                                                                            })
-                                                                                        }
-                                                                                        className={removeButton}
-                                                                                    >
-                                                                                        <Trash01 className="size-4" aria-hidden="true" />
-                                                                                    </button>
+                                                                                    <div className="flex flex-col gap-1.5">
+                                                                                        <input
+                                                                                            type="text"
+                                                                                            placeholder="Name"
+                                                                                            value={color.name}
+                                                                                            onChange={(e) => updateColor(i, { name: e.target.value })}
+                                                                                            className={editInput("px-2 py-1 text-xs")}
+                                                                                        />
+                                                                                        <div className="flex items-center gap-1">
+                                                                                            {/* Native picker — no dependency, and it stops hand-typed hex typos. */}
+                                                                                            <input
+                                                                                                type="color"
+                                                                                                aria-label={`${color.name || "Colour"} picker`}
+                                                                                                value={
+                                                                                                    /^#[0-9a-f]{6}$/i.test(color.hex) ? color.hex : "#888888"
+                                                                                                }
+                                                                                                onChange={(e) => updateColor(i, { hex: e.target.value })}
+                                                                                                className="size-7 shrink-0 cursor-pointer rounded-md border border-secondary bg-transparent p-0.5"
+                                                                                            />
+                                                                                            <input
+                                                                                                type="text"
+                                                                                                placeholder="#000000"
+                                                                                                value={color.hex}
+                                                                                                onChange={(e) => updateColor(i, { hex: e.target.value })}
+                                                                                                className={editInput("px-2 py-1 font-mono text-xs")}
+                                                                                            />
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                title="Remove color"
+                                                                                                onClick={() =>
+                                                                                                    patchBrand({
+                                                                                                        colors: content.brand.colors.filter((_, j) => j !== i),
+                                                                                                    })
+                                                                                                }
+                                                                                                className={removeButton}
+                                                                                            >
+                                                                                                <Trash01 className="size-4" aria-hidden="true" />
+                                                                                            </button>
+                                                                                        </div>
+                                                                                    </div>
                                                                                 )}
                                                                             </div>
                                                                         </div>
                                                                     ))}
                                                                     {!isLocked && (
-                                                                        <label className="flex min-h-32 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-secondary text-sm font-medium text-tertiary transition duration-100 ease-linear hover:border-brand hover:text-brand-secondary">
-                                                                            <input
-                                                                                type="file"
-                                                                                accept="image/svg+xml,image/png,image/jpeg,image/webp"
-                                                                                multiple
-                                                                                className="hidden"
-                                                                                onChange={(e) => void onPickLogos(e)}
-                                                                            />
-                                                                            <UploadCloud02 className="size-5" aria-hidden="true" />
-                                                                            Upload logos
-                                                                        </label>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() =>
+                                                                                patchBrand({
+                                                                                    colors: [...content.brand.colors, { name: "New color", hex: "#888888" }],
+                                                                                })
+                                                                            }
+                                                                            className="flex min-h-32 flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-secondary text-sm font-medium text-tertiary transition duration-100 ease-linear hover:border-brand hover:text-brand-secondary"
+                                                                        >
+                                                                            <Plus className="size-5" aria-hidden="true" />
+                                                                            Add color
+                                                                        </button>
                                                                     )}
                                                                 </div>
-                                                            </div>
-                                                        )}
 
-                                                        <div className="mt-4 flex items-center gap-3 rounded-xl bg-secondary px-4 py-3">
-                                                            <span className="text-sm font-medium text-secondary">Fonts:</span>
-                                                            {isLocked ? (
-                                                                <span className="text-sm text-tertiary">{content.brand.fonts || "—"}</span>
-                                                            ) : (
-                                                                <input
-                                                                    type="text"
-                                                                    placeholder="e.g. Inter, Playfair Display"
-                                                                    value={content.brand.fonts}
-                                                                    onChange={(e) => patchBrand({ fonts: e.target.value })}
-                                                                    className={editInput("max-w-72")}
-                                                                />
+                                                                {/* Tailwind-style shade scales, generated live from the swatches above. */}
+                                                                {content.brand.colors.length > 0 && (
+                                                                    <div className="mt-8">
+                                                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                                                            <p className="text-sm font-semibold text-primary">Shade scales</p>
+                                                                            <span className="text-xs text-quaternary">
+                                                                                Generated from each color — click a shade to copy its hex
+                                                                            </span>
+                                                                        </div>
+                                                                        <div className="mt-3">
+                                                                            <ShadeScales
+                                                                                colors={content.brand.colors}
+                                                                                onRemove={
+                                                                                    isLocked
+                                                                                        ? undefined
+                                                                                        : (i) =>
+                                                                                              patchBrand({
+                                                                                                  colors: content.brand.colors.filter((_, j) => j !== i),
+                                                                                              })
+                                                                                }
+                                                                            />
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </DocSection>
+
+                                                            {/* ── Typography — the fonts, previewed in the typefaces themselves. ── */}
+                                                            <DocSection id="typography" label="Typography" icon={Type01}>
+                                                                {!isLocked && (
+                                                                    <input
+                                                                        type="text"
+                                                                        placeholder="e.g. Inter, Playfair Display"
+                                                                        value={content.brand.fonts}
+                                                                        onChange={(e) => patchBrand({ fonts: e.target.value })}
+                                                                        className={cx(editInput("max-w-72"), "mb-4")}
+                                                                    />
+                                                                )}
+                                                                <FontPreviews fonts={content.brand.fonts} />
+
+                                                                {/* The Untitled UI type scale in the brand's own fonts, px + fluid clamp(). */}
+                                                                {content.brand.fonts.trim() && (
+                                                                    <div className="mt-8">
+                                                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                                                            <p className="text-sm font-semibold text-primary">Type scale</p>
+                                                                            <span className="text-xs text-quaternary">
+                                                                                Untitled UI scale · size / line-height · click the clamp() to copy
+                                                                            </span>
+                                                                        </div>
+                                                                        <div className="mt-2">
+                                                                            <TypeScale fonts={content.brand.fonts} />
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </DocSection>
+
+                                                            {/* ── Logo files ──
+                                                            Each mark previews on a light AND a dark tile so a white or
+                                                            transparent logo is actually visible on both grounds. Download is
+                                                            a plain <a download> on the data URL — no server round-trip, and
+                                                            a brand kit you can't download is decor. */}
+                                                            {(!!(content.brand.logos ?? []).length || !isLocked) && (
+                                                                <DocSection
+                                                                    id="logos"
+                                                                    label="Logo files"
+                                                                    icon={Image01}
+                                                                    action={
+                                                                        <span className="text-xs text-quaternary">
+                                                                            SVG keeps its vector quality — PNG and JPG are compressed
+                                                                        </span>
+                                                                    }
+                                                                >
+                                                                    <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                                                                        {(content.brand.logos ?? []).map((logo) => (
+                                                                            <div key={logo.id} className="overflow-hidden rounded-xl ring-1 ring-secondary">
+                                                                                {/* Fixed white / near-black tiles on purpose (not theme tokens):
+                                                                                the point is to prove the mark reads on both grounds. */}
+                                                                                <div className="grid h-24 grid-cols-2">
+                                                                                    <div
+                                                                                        className="flex items-center justify-center p-3"
+                                                                                        style={{ background: "#FFFFFF" }}
+                                                                                    >
+                                                                                        <img
+                                                                                            src={logo.url}
+                                                                                            alt={logo.name}
+                                                                                            className="max-h-full max-w-full object-contain"
+                                                                                            draggable={false}
+                                                                                        />
+                                                                                    </div>
+                                                                                    <div
+                                                                                        className="flex items-center justify-center p-3"
+                                                                                        style={{ background: "#0C111D" }}
+                                                                                    >
+                                                                                        <img
+                                                                                            src={logo.url}
+                                                                                            alt=""
+                                                                                            aria-hidden="true"
+                                                                                            className="max-h-full max-w-full object-contain"
+                                                                                            draggable={false}
+                                                                                        />
+                                                                                    </div>
+                                                                                </div>
+                                                                                <div className="flex items-center gap-1 p-3">
+                                                                                    {isLocked ? (
+                                                                                        <p className="min-w-0 flex-1 truncate text-sm font-medium text-secondary">
+                                                                                            {logo.name}
+                                                                                        </p>
+                                                                                    ) : (
+                                                                                        <input
+                                                                                            type="text"
+                                                                                            placeholder="Logo name"
+                                                                                            value={logo.name}
+                                                                                            onChange={(e) =>
+                                                                                                patchBrand({
+                                                                                                    logos: (content.brand.logos ?? []).map((x) =>
+                                                                                                        x.id === logo.id ? { ...x, name: e.target.value } : x,
+                                                                                                    ),
+                                                                                                })
+                                                                                            }
+                                                                                            className={editInput("px-2 py-1 text-xs")}
+                                                                                        />
+                                                                                    )}
+                                                                                    <a
+                                                                                        href={logo.url}
+                                                                                        download={logo.name || "logo"}
+                                                                                        title={`Download ${logo.name || "logo"}`}
+                                                                                        className="flex size-8 shrink-0 items-center justify-center rounded-lg text-fg-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-brand-secondary"
+                                                                                    >
+                                                                                        <Download01 className="size-4" aria-hidden="true" />
+                                                                                    </a>
+                                                                                    {!isLocked && (
+                                                                                        <button
+                                                                                            type="button"
+                                                                                            title="Remove logo"
+                                                                                            onClick={() =>
+                                                                                                patchBrand({
+                                                                                                    logos: (content.brand.logos ?? []).filter(
+                                                                                                        (x) => x.id !== logo.id,
+                                                                                                    ),
+                                                                                                })
+                                                                                            }
+                                                                                            className={removeButton}
+                                                                                        >
+                                                                                            <Trash01 className="size-4" aria-hidden="true" />
+                                                                                        </button>
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                        ))}
+                                                                        {!isLocked && (
+                                                                            <label className="flex min-h-32 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-secondary text-sm font-medium text-tertiary transition duration-100 ease-linear hover:border-brand hover:text-brand-secondary">
+                                                                                <input
+                                                                                    type="file"
+                                                                                    accept="image/svg+xml,image/png,image/jpeg,image/webp"
+                                                                                    multiple
+                                                                                    className="hidden"
+                                                                                    onChange={(e) => void onPickLogos(e)}
+                                                                                />
+                                                                                <UploadCloud02 className="size-5" aria-hidden="true" />
+                                                                                Upload logos
+                                                                            </label>
+                                                                        )}
+                                                                    </div>
+                                                                </DocSection>
                                                             )}
                                                         </div>
                                                     </Reveal>

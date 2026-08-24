@@ -19,6 +19,7 @@ export const DocSection = ({
     id,
     label,
     number,
+    icon: Icon,
     badge,
     action,
     children,
@@ -27,6 +28,8 @@ export const DocSection = ({
     label: string;
     /** 1-based heading number; defaults to the section's place in FOUNDATION_SECTIONS. */
     number?: number;
+    /** Heading icon — rendered INSTEAD of the number (Brand Kit style). */
+    icon?: React.FC<{ className?: string; "aria-hidden"?: boolean }>;
     badge?: ReactNode;
     action?: ReactNode;
     children: ReactNode;
@@ -34,9 +37,11 @@ export const DocSection = ({
     <section id={`mbd-${id}`} className="scroll-mt-24 border-t border-secondary pt-8 first:border-t-0 first:pt-0">
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
             <div className="flex flex-wrap items-center gap-2.5">
-                {/* Numbered like the rail and the compiled document's "## 1. …" headings. */}
-                <h3 className="text-xl font-semibold text-primary">
-                    {number ?? FOUNDATION_SECTIONS.findIndex((s) => s.id === id) + 1}. {label}
+                {/* Numbered like the rail and the compiled document's "## 1. …" headings,
+                    unless the document uses icons instead. */}
+                <h3 className="flex items-center gap-2 text-xl font-semibold text-primary">
+                    {Icon && <Icon className="size-5 text-fg-brand-secondary" aria-hidden={true} />}
+                    {Icon ? label : `${number ?? FOUNDATION_SECTIONS.findIndex((s) => s.id === id) + 1}. ${label}`}
                 </h3>
                 {badge}
             </div>
