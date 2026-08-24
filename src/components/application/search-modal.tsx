@@ -26,7 +26,7 @@ export const STATIC_ITEMS: SearchItem[] = [
     { id: "s-metapixel", title: "Meta Pixel template", subtitle: "New client pixel page", path: "/metapixel", kind: "Template", icon: Share07 },
     { id: "s-popup", title: "Popup template", subtitle: "New lead-capture page", path: "/popup", kind: "Template", icon: Mail01 },
     { id: "s-chatwidget", title: "Chat Widget template", subtitle: "New client chat-widget page", path: "/chat-widget", kind: "Template", icon: MessageChatCircle },
-    { id: "s-hostonboarding", title: "Brand Vision Form template", subtitle: "New brand vision form", path: "/host-onboarding-form", kind: "Template", icon: Home02 },
+    { id: "s-hostonboarding", title: "Brand Vision Form template", subtitle: "New brand vision form", path: "/brand-vision-form", kind: "Template", icon: Home02 },
     { id: "s-template1", title: "Template 1", subtitle: "Copyable document template", path: "/template-1", kind: "Page", icon: Code02 },
     { id: "s-emailflow", title: "Welcome Email Flow — Overview", subtitle: "AM email-flow builder project reference", path: "/welcome-email-flow-overview", kind: "Page", icon: Mail01 },
     { id: "s-chatoverview", title: "AI Chat Widget — Overview", subtitle: "Claude-powered chat project reference", path: "/chat-widget-overview", kind: "Page", icon: MessageChatCircle },

@@ -31,6 +31,9 @@ type Question = {
     upload?: boolean;
     /** Renders two inputs (username + password, stored as {field}__user / {field}__pass) plus a trust note. */
     credentials?: boolean;
+    /** Adds a public-handle input above the login fields (stored as {field}__handle) —
+        the @name guests see, distinct from the login username which is often an email. */
+    handle?: { label: string; placeholder: string };
     /** Puts a platform picker above the login fields — chips for the common choices plus
         an "Other" free-text escape hatch — so "which system" and "the login for it" are
         one screen instead of two. The pick keeps its own field key (e.g. domainPlatform),
@@ -153,8 +156,9 @@ const SECTIONS: SectionDef[] = [
         icon: Settings01,
         intro: "By sharing your business account login details in advance, we can smoothly navigate any Two-Factor Authentication during your Onboarding Call.",
         questions: [
-            { field: "instagramLogin", label: "Instagram Login", hint: "(If applicable)", credentials: true },
-            { field: "tiktokLogin", label: "TikTok Login", hint: "(If applicable)", credentials: true },
+            { field: "instagramLogin", label: "Instagram Login", hint: "(If applicable)", credentials: true, handle: { label: "Instagram handle", placeholder: "@yourbusiness" } },
+            { field: "tiktokLogin", label: "TikTok Login", hint: "(If applicable)", credentials: true, handle: { label: "TikTok handle", placeholder: "@yourbusiness" } },
+            { field: "facebookLogin", label: "Facebook Login", hint: "(If applicable)", credentials: true, handle: { label: "Facebook page name or URL", placeholder: "Your page name or facebook.com/…" } },
             { field: "pricelabsLogin", label: "PriceLabs Login", hint: "(If applicable)", credentials: true },
             { field: "stayfiLogin", label: "StayFi Login", hint: "(If applicable)", credentials: true },
             {
@@ -391,9 +395,11 @@ export const clientOnboardingAnswers = (partial?: Partial<ClientOnboardingData> 
             const lines: OnboardingAnswerLine[] = [];
             if (q.credentials) {
                 const platform = q.platform ? (data.answers[q.platform.field] ?? "").trim() : "";
+                const handle = (data.answers[`${q.field}__handle`] ?? "").trim();
                 const user = (data.answers[`${q.field}__user`] ?? "").trim();
                 const pass = (data.answers[`${q.field}__pass`] ?? "").trim();
                 if (platform) lines.push({ text: platform });
+                if (handle) lines.push({ text: `Handle: ${handle}` });
                 if (user) lines.push({ text: `Username: ${user}` });
                 if (pass) lines.push({ text: pass, secret: true });
             } else {
@@ -729,12 +735,14 @@ const CredentialsQuestion = ({
     q,
     user,
     pass,
+    handleValue,
     platformValue,
     onChange,
 }: {
     q: Question;
     user: string;
     pass: string;
+    handleValue: string;
     platformValue: string;
     onChange: (field: string, value: string) => void;
 }) => {
@@ -742,9 +750,15 @@ const CredentialsQuestion = ({
     return (
         <div className="mt-8 flex max-w-xl flex-col gap-7">
             {q.platform && <PlatformChips platform={q.platform} value={platformValue} onChange={(v) => onChange(q.platform!.field, v)} />}
+            {q.handle && (
+                <label className="block">
+                    <span className="text-xs font-semibold tracking-wide text-quaternary uppercase">{q.handle.label}</span>
+                    <input data-step-autofocus type="text" placeholder={q.handle.placeholder} value={handleValue} onChange={(e) => onChange(`${q.field}__handle`, e.target.value)} className={cls} />
+                </label>
+            )}
             <label className="block">
                 <span className="text-xs font-semibold tracking-wide text-quaternary uppercase">Username or email</span>
-                <input data-step-autofocus type="text" placeholder="Username" value={user} onChange={(e) => onChange(`${q.field}__user`, e.target.value)} className={cls} />
+                <input data-step-autofocus={!q.handle} type="text" placeholder="Username" value={user} onChange={(e) => onChange(`${q.field}__user`, e.target.value)} className={cls} />
             </label>
             <label className="block">
                 <span className="text-xs font-semibold tracking-wide text-quaternary uppercase">Password</span>
@@ -1251,6 +1265,7 @@ export const ClientOnboardingFormPage = ({
                                             q={step.q}
                                             user={data.answers[`${step.q.field}__user`] ?? ""}
                                             pass={data.answers[`${step.q.field}__pass`] ?? ""}
+                                            handleValue={data.answers[`${step.q.field}__handle`] ?? ""}
                                             platformValue={step.q.platform ? (data.answers[step.q.platform.field] ?? "") : ""}
                                             onChange={onText}
                                         />

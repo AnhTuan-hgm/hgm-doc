@@ -120,6 +120,22 @@ export default async (req: Request) => {
         const raw = block.input as Record<string, unknown>;
         const doc = Object.fromEntries(Object.keys(FIELDS).map((k) => [k, blankIfPlaceholder(String(raw[k] ?? ""))]));
 
+        // Literal form answers don't need a model — copy them verbatim when the model left
+        // the field blank. The model is (rightly) told never to guess, so it skips e.g.
+        // "direct_booking_website" when the form only says "Website URL"; the client's own
+        // typed answer is always the better value for these.
+        const literal = (docKey: string, formKey: string) => {
+            if (!String(doc[docKey] ?? "").trim()) doc[docKey] = String(sources.intakeAnswers[formKey] ?? "").trim();
+        };
+        literal("direct_booking_website", "websiteUrl");
+        literal("email", "email");
+        // The client's answer to "Link to Your Airbnb Profile" — kept even when it's
+        // actually an Expedia/VRBO link, because it's the listing they chose to give us.
+        literal("airbnb", "airbnbUrl");
+        // Public @handles from the login steps (asked since 2026-08-24).
+        literal("instagram", "instagramLogin__handle");
+        literal("tiktok", "tiktokLogin__handle");
+
         return Response.json({ doc, sources: { intake: !!sources.intakeText, brandVision: !!sources.visionText, recordings: !!sources.spokenText } });
     } catch (err) {
         console.error("[generate-overview]", err);

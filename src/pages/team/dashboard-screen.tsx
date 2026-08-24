@@ -1067,11 +1067,11 @@ const HostOnboardingContent = () => {
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => navigate("/host-onboarding-form")}
+                    <button type="button" onClick={() => navigate("/brand-vision-form")}
                         className="rounded-lg border border-secondary bg-primary px-3.5 py-2 text-sm font-semibold text-secondary transition duration-100 ease-linear hover:bg-secondary hover:text-primary">
                         View Template
                     </button>
-                    <button type="button" onClick={() => navigate("/host-onboarding-form?create=1")}
+                    <button type="button" onClick={() => navigate("/brand-vision-form?create=1")}
                         className="flex items-center gap-1.5 rounded-lg bg-brand-solid px-3.5 py-2 text-sm font-semibold text-white transition duration-100 ease-linear hover:opacity-90">
                         <Plus className="size-4" aria-hidden="true" />
                         New Form
@@ -1106,7 +1106,7 @@ const HostOnboardingContent = () => {
                                 <p className="text-sm font-medium text-primary">No host onboarding forms yet</p>
                                 <p className="mt-0.5 text-sm text-tertiary">Create one from the template to send to a new host.</p>
                             </div>
-                            <button type="button" onClick={() => navigate("/host-onboarding-form?create=1")}
+                            <button type="button" onClick={() => navigate("/brand-vision-form?create=1")}
                                 className="mt-1 flex items-center gap-1.5 rounded-lg bg-brand-solid px-3.5 py-2 text-sm font-semibold text-white transition duration-100 ease-linear hover:opacity-90">
                                 <Plus className="size-4" aria-hidden="true" /> New Form
                             </button>

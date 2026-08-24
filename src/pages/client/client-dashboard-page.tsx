@@ -314,7 +314,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     // it by hand for each client. The template dashboard points at the master form.
     const clientBase = slug ? slug.replace(/-dashboard$/, "") : "";
     const onboardingSlug = clientBase ? `${clientBase}-hostonboarding` : "";
-    const onboardingHref = isTemplate || !onboardingSlug ? "/host-onboarding-form" : `/${onboardingSlug}`;
+    const onboardingHref = isTemplate || !onboardingSlug ? "/brand-vision-form" : `/${onboardingSlug}`;
     const [onboardingStatus, setOnboardingStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
     const [onboardingInfo, setOnboardingInfo] = useState<{ answered: number; total: number; submittedAt?: string }>({ answered: 0, total: 0 });
     const [copiedOnboardingLink, setCopiedOnboardingLink] = useState(false);
@@ -695,7 +695,11 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
             }
             if (!res.ok || json.error) throw new Error(json.error || `Request failed (${res.status})`);
             patchOverviewDoc({
-                ...(json.doc as Partial<OverviewDoc>),
+                // Drop the model's empty strings — a field it couldn't source must not
+                // blank out something an AM already typed on screen.
+                ...(Object.fromEntries(
+                    Object.entries(json.doc as Partial<OverviewDoc>).filter(([, v]) => String(v ?? "").trim()),
+                ) as Partial<OverviewDoc>),
                 generated_at: new Date().toISOString(),
                 generated_by: user?.email ?? "",
             });

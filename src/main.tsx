@@ -168,6 +168,8 @@ createRoot(document.getElementById("root")!).render(
                         <Route path="/owner-guide" element={<OwnerGuideScreen />} />
                         <Route path="/owner-guide/:slug" element={<OwnerGuideScreen />} />
                         <Route path="/popup" element={<PopupPage />} />
+                        <Route path="/brand-vision-form" element={<HostOnboardingFormPage />} />
+                        {/* Legacy alias — the template's old URL; links in the wild still resolve. */}
                         <Route path="/host-onboarding-form" element={<HostOnboardingFormPage />} />
                         <Route path="/client-onboarding-form" element={<ClientOnboardingFormPage />} />
                         <Route path="/requests" element={<RequestsScreen />} />
