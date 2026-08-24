@@ -76,6 +76,18 @@ export const OVERVIEW_SECTIONS: {
     },
 ];
 
+/** The section rail's list, in reading order — OVERVIEW_SECTIONS plus the two blocks that
+ *  render outside it (Properties sits between Platforms and Goals; Baseline closes the doc). */
+export const OVERVIEW_RAIL: { id: string; label: string }[] = [
+    ...OVERVIEW_SECTIONS.slice(0, 2).map((s) => ({ id: s.id, label: s.title })),
+    { id: "properties", label: "Properties" },
+    ...OVERVIEW_SECTIONS.slice(2).map((s) => ({ id: s.id, label: s.title })),
+    { id: "baseline", label: "Baseline (snapshot)" },
+];
+
+/** 1-based heading number for a rail section, shared by the rail and the headings. */
+export const overviewSectionNumber = (id: string) => OVERVIEW_RAIL.findIndex((r) => r.id === id) + 1;
+
 /** The kickoff numbers. Kept out of OVERVIEW_SECTIONS because they render as tiles, not rows. */
 export const OVERVIEW_BASELINE: { key: keyof OverviewDoc; label: string }[] = [
     { key: "instagram_followers", label: "Instagram followers" },

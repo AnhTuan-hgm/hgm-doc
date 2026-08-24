@@ -112,7 +112,14 @@ import {
 } from "@/pages/client/dashboard/master-brand-document";
 import { DocField, DocRail, DocSection, DocStat, FavoriteTable, SourceBadge, WorkflowBadge } from "@/pages/client/dashboard/master-brand-fields";
 import { OnboardingAnswers } from "@/pages/client/dashboard/onboarding-answers";
-import { DEFAULT_OVERVIEW_DOC, OVERVIEW_BASELINE, OVERVIEW_COUNTED_FIELDS, OVERVIEW_SECTIONS } from "@/pages/client/dashboard/overview-doc";
+import {
+    DEFAULT_OVERVIEW_DOC,
+    OVERVIEW_BASELINE,
+    OVERVIEW_COUNTED_FIELDS,
+    OVERVIEW_RAIL,
+    OVERVIEW_SECTIONS,
+    overviewSectionNumber,
+} from "@/pages/client/dashboard/overview-doc";
 import { HostOnboardingFormPage, ensureHostOnboardingForm, hostOnboardingAnswers, hostOnboardingProgress } from "@/pages/client/host-onboarding-form-page";
 import { useSuppressFloatingThemeToggle, useTheme } from "@/providers/theme-provider";
 import { compressImageFile } from "@/utils/compress-image";
@@ -659,6 +666,14 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     const patchOverviewDoc = (patch: Partial<OverviewDoc>) =>
         setContent((c) => ({ ...c, overview_doc: { ...DEFAULT_OVERVIEW_DOC, ...(c.overview_doc ?? {}), ...patch } }));
     const overviewFilled = OVERVIEW_COUNTED_FIELDS.filter((k) => String(overviewDoc[k] ?? "").trim()).length;
+    // The Overview rail's per-section checks — a section counts once any of its fields has content.
+    const overviewSectionFilled: Record<string, boolean> = {
+        ...Object.fromEntries(OVERVIEW_SECTIONS.map((s) => [s.id, s.fields.some((f) => String(overviewDoc[f.key] ?? "").trim())])),
+        properties: overviewDoc.properties.some((p) => p.name.trim() || p.link.trim()),
+        baseline: [...OVERVIEW_BASELINE.map((f) => f.key), "direct_booking_split" as const, "instagram_screenshot" as const].some((k) =>
+            String(overviewDoc[k] ?? "").trim(),
+        ),
+    };
     const [overviewBusy, setOverviewBusy] = useState(false);
     const [overviewError, setOverviewError] = useState("");
 
@@ -703,9 +718,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
             patchOverviewDoc({
                 // Drop the model's empty strings — a field it couldn't source must not
                 // blank out something an AM already typed on screen.
-                ...(Object.fromEntries(
-                    Object.entries(json.doc as Partial<OverviewDoc>).filter(([, v]) => String(v ?? "").trim()),
-                ) as Partial<OverviewDoc>),
+                ...(Object.fromEntries(Object.entries(json.doc as Partial<OverviewDoc>).filter(([, v]) => String(v ?? "").trim())) as Partial<OverviewDoc>),
                 generated_at: new Date().toISOString(),
                 generated_by: user?.email ?? "",
             });
@@ -1005,9 +1018,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
         const html = [
             `<h1>Master Brand Document — ${esc(clientName.trim() || "Client")}</h1>`,
             `<p>${esc([clientWebsite.trim() && `Website: ${clientWebsite.trim()}`, `Generated: ${compiled.generatedOn}`].filter(Boolean).join("  ·  "))}</p>`,
-            ...compiled.sections.map(
-                (s, i) => `<h2>${i + 1}. ${esc(s.label)}</h2><p>${esc(s.value.trim() || "Not provided yet.").replace(/\n/g, "<br>")}</p>`,
-            ),
+            ...compiled.sections.map((s, i) => `<h2>${i + 1}. ${esc(s.label)}</h2><p>${esc(s.value.trim() || "Not provided yet.").replace(/\n/g, "<br>")}</p>`),
         ].join("");
         try {
             await navigator.clipboard.write([
@@ -2647,243 +2658,259 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                         )}
                                                         {isLocked && <p className="mt-2 text-xs text-quaternary">Unlock the dashboard to edit these fields.</p>}
 
-                                                        <div className="mt-8 flex flex-col gap-10">
-                                                            {OVERVIEW_SECTIONS.map((sec) => (
-                                                                <section key={sec.id}>
-                                                                    <p className="text-xs font-semibold tracking-wide text-brand-secondary uppercase">
-                                                                        {sec.title}
-                                                                    </p>
-                                                                    <div className="mt-4 grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2">
-                                                                        {sec.fields.map((f) => (
-                                                                            <div key={String(f.key)} className={cx(!f.half && "sm:col-span-2")}>
+                                                        {/* Same two-column shape as the Master Brand Document: rail beside the
+                                                            document on wide screens, above it on narrow ones. */}
+                                                        <div className="mt-8 flex flex-col gap-8 lg:flex-row lg:items-start lg:gap-10">
+                                                            <DocRail sections={OVERVIEW_RAIL} progress={overviewSectionFilled} />
+
+                                                            <div className="flex min-w-0 flex-1 flex-col gap-8">
+                                                                {OVERVIEW_SECTIONS.map((sec) => (
+                                                                    <DocSection
+                                                                        key={sec.id}
+                                                                        id={sec.id}
+                                                                        label={sec.title}
+                                                                        number={overviewSectionNumber(sec.id)}
+                                                                    >
+                                                                        <div className="grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2">
+                                                                            {sec.fields.map((f) => (
+                                                                                <div key={String(f.key)} className={cx(!f.half && "sm:col-span-2")}>
+                                                                                    <p className="text-sm font-medium text-secondary">{f.label}</p>
+                                                                                    {isLocked ? (
+                                                                                        <p
+                                                                                            className={cx(
+                                                                                                "mt-1 text-md whitespace-pre-wrap",
+                                                                                                String(overviewDoc[f.key] ?? "").trim()
+                                                                                                    ? "text-tertiary"
+                                                                                                    : "text-quaternary italic",
+                                                                                            )}
+                                                                                        >
+                                                                                            {String(overviewDoc[f.key] ?? "").trim() || "Not filled in"}
+                                                                                        </p>
+                                                                                    ) : f.long ? (
+                                                                                        <textarea
+                                                                                            rows={2}
+                                                                                            placeholder={f.placeholder}
+                                                                                            value={String(overviewDoc[f.key] ?? "")}
+                                                                                            onChange={(e) =>
+                                                                                                patchOverviewDoc({
+                                                                                                    [f.key]: e.target.value,
+                                                                                                } as Partial<OverviewDoc>)
+                                                                                            }
+                                                                                            className={cx(editInput(), "mt-1.5 resize-y")}
+                                                                                        />
+                                                                                    ) : (
+                                                                                        <input
+                                                                                            placeholder={f.placeholder}
+                                                                                            value={String(overviewDoc[f.key] ?? "")}
+                                                                                            onChange={(e) =>
+                                                                                                patchOverviewDoc({
+                                                                                                    [f.key]: e.target.value,
+                                                                                                } as Partial<OverviewDoc>)
+                                                                                            }
+                                                                                            className={cx(editInput(), "mt-1.5")}
+                                                                                        />
+                                                                                    )}
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+
+                                                                        {/* Properties sit between Platforms and Goals, matching the brief's order.
+                                                                        Anchored + numbered like a section of its own so the rail can reach it. */}
+                                                                        {sec.id === "platforms" && (
+                                                                            <div
+                                                                                id="mbd-properties"
+                                                                                className="mt-8 scroll-mt-24 border-t border-secondary pt-8"
+                                                                            >
+                                                                                <div className="flex items-center justify-between gap-3">
+                                                                                    <h3 className="text-xl font-semibold text-primary">
+                                                                                        {overviewSectionNumber("properties")}. Properties
+                                                                                    </h3>
+                                                                                    {!isLocked && (
+                                                                                        <button
+                                                                                            type="button"
+                                                                                            onClick={() =>
+                                                                                                patchOverviewDoc({
+                                                                                                    properties: [
+                                                                                                        ...overviewDoc.properties,
+                                                                                                        { id: crypto.randomUUID(), name: "", link: "" },
+                                                                                                    ],
+                                                                                                })
+                                                                                            }
+                                                                                            className="text-sm font-semibold text-brand-secondary transition duration-100 ease-linear hover:underline"
+                                                                                        >
+                                                                                            + Add property
+                                                                                        </button>
+                                                                                    )}
+                                                                                </div>
+                                                                                <div className="mt-3 flex flex-col gap-2">
+                                                                                    {overviewDoc.properties.map((prop, i) => (
+                                                                                        <div
+                                                                                            key={prop.id}
+                                                                                            className="grid grid-cols-[2rem_minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-3 rounded-xl bg-primary p-3 ring-1 ring-secondary"
+                                                                                        >
+                                                                                            <span className="font-mono text-xs text-quaternary tabular-nums">
+                                                                                                {String(i + 1).padStart(2, "0")}
+                                                                                            </span>
+                                                                                            {isLocked ? (
+                                                                                                <>
+                                                                                                    <span className="truncate text-md text-tertiary">
+                                                                                                        {prop.name || "—"}
+                                                                                                    </span>
+                                                                                                    <span className="truncate text-md text-tertiary">
+                                                                                                        {prop.link || "—"}
+                                                                                                    </span>
+                                                                                                    <span />
+                                                                                                </>
+                                                                                            ) : (
+                                                                                                <>
+                                                                                                    <input
+                                                                                                        placeholder="Property name"
+                                                                                                        value={prop.name}
+                                                                                                        onChange={(e) =>
+                                                                                                            patchOverviewDoc({
+                                                                                                                properties: overviewDoc.properties.map((x) =>
+                                                                                                                    x.id === prop.id
+                                                                                                                        ? { ...x, name: e.target.value }
+                                                                                                                        : x,
+                                                                                                                ),
+                                                                                                            })
+                                                                                                        }
+                                                                                                        className={editInput()}
+                                                                                                    />
+                                                                                                    <input
+                                                                                                        placeholder="Listing link"
+                                                                                                        value={prop.link}
+                                                                                                        onChange={(e) =>
+                                                                                                            patchOverviewDoc({
+                                                                                                                properties: overviewDoc.properties.map((x) =>
+                                                                                                                    x.id === prop.id
+                                                                                                                        ? { ...x, link: e.target.value }
+                                                                                                                        : x,
+                                                                                                                ),
+                                                                                                            })
+                                                                                                        }
+                                                                                                        className={editInput()}
+                                                                                                    />
+                                                                                                    <button
+                                                                                                        type="button"
+                                                                                                        onClick={() =>
+                                                                                                            patchOverviewDoc({
+                                                                                                                properties: overviewDoc.properties.filter(
+                                                                                                                    (x) => x.id !== prop.id,
+                                                                                                                ),
+                                                                                                            })
+                                                                                                        }
+                                                                                                        title="Remove this property"
+                                                                                                        className="flex size-7 items-center justify-center rounded-lg text-fg-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-error-primary"
+                                                                                                    >
+                                                                                                        <Trash01 className="size-3.5" aria-hidden="true" />
+                                                                                                    </button>
+                                                                                                </>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    ))}
+                                                                                    {!overviewDoc.properties.length && (
+                                                                                        <p className="rounded-xl border border-dashed border-secondary px-4 py-3 text-sm text-quaternary italic">
+                                                                                            No properties listed yet.
+                                                                                        </p>
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+                                                                    </DocSection>
+                                                                ))}
+
+                                                                {/* Baseline — the numbers as they stood at kickoff, so growth has a zero point. */}
+                                                                <DocSection
+                                                                    id="baseline"
+                                                                    label="Baseline (snapshot)"
+                                                                    number={overviewSectionNumber("baseline")}
+                                                                    action={<span className="text-xs text-quaternary">Recorded at kickoff</span>}
+                                                                >
+                                                                    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                                                                        {OVERVIEW_BASELINE.map((f) => (
+                                                                            <div
+                                                                                key={String(f.key)}
+                                                                                className="rounded-xl bg-primary p-4 ring-1 ring-secondary"
+                                                                            >
                                                                                 <p className="text-sm font-medium text-secondary">{f.label}</p>
                                                                                 {isLocked ? (
-                                                                                    <p
-                                                                                        className={cx(
-                                                                                            "mt-1 text-md whitespace-pre-wrap",
-                                                                                            String(overviewDoc[f.key] ?? "").trim()
-                                                                                                ? "text-tertiary"
-                                                                                                : "text-quaternary italic",
-                                                                                        )}
-                                                                                    >
-                                                                                        {String(overviewDoc[f.key] ?? "").trim() || "Not filled in"}
+                                                                                    <p className="mt-1 text-md text-tertiary tabular-nums">
+                                                                                        {String(overviewDoc[f.key] ?? "").trim() || "—"}
                                                                                     </p>
-                                                                                ) : f.long ? (
-                                                                                    <textarea
-                                                                                        rows={2}
-                                                                                        placeholder={f.placeholder}
-                                                                                        value={String(overviewDoc[f.key] ?? "")}
-                                                                                        onChange={(e) =>
-                                                                                            patchOverviewDoc({
-                                                                                                [f.key]: e.target.value,
-                                                                                            } as Partial<OverviewDoc>)
-                                                                                        }
-                                                                                        className={cx(editInput(), "mt-1.5 resize-y")}
-                                                                                    />
                                                                                 ) : (
                                                                                     <input
-                                                                                        placeholder={f.placeholder}
+                                                                                        placeholder="—"
                                                                                         value={String(overviewDoc[f.key] ?? "")}
                                                                                         onChange={(e) =>
                                                                                             patchOverviewDoc({
                                                                                                 [f.key]: e.target.value,
                                                                                             } as Partial<OverviewDoc>)
                                                                                         }
-                                                                                        className={cx(editInput(), "mt-1.5")}
+                                                                                        className={cx(editInput(), "mt-1.5 tabular-nums")}
                                                                                     />
                                                                                 )}
                                                                             </div>
                                                                         ))}
                                                                     </div>
 
-                                                                    {/* Properties sit between Platforms and Goals, matching the brief's order. */}
-                                                                    {sec.id === "platforms" && (
-                                                                        <div className="mt-10">
-                                                                            <div className="flex items-center justify-between gap-3">
-                                                                                <p className="text-xs font-semibold tracking-wide text-brand-secondary uppercase">
-                                                                                    Properties
-                                                                                </p>
-                                                                                {!isLocked && (
-                                                                                    <button
-                                                                                        type="button"
-                                                                                        onClick={() =>
-                                                                                            patchOverviewDoc({
-                                                                                                properties: [
-                                                                                                    ...overviewDoc.properties,
-                                                                                                    { id: crypto.randomUUID(), name: "", link: "" },
-                                                                                                ],
-                                                                                            })
-                                                                                        }
-                                                                                        className="text-sm font-semibold text-brand-secondary transition duration-100 ease-linear hover:underline"
-                                                                                    >
-                                                                                        + Add property
-                                                                                    </button>
-                                                                                )}
-                                                                            </div>
-                                                                            <div className="mt-3 flex flex-col gap-2">
-                                                                                {overviewDoc.properties.map((prop, i) => (
-                                                                                    <div
-                                                                                        key={prop.id}
-                                                                                        className="grid grid-cols-[2rem_minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-3 rounded-xl bg-primary p-3 ring-1 ring-secondary"
-                                                                                    >
-                                                                                        <span className="font-mono text-xs text-quaternary tabular-nums">
-                                                                                            {String(i + 1).padStart(2, "0")}
-                                                                                        </span>
-                                                                                        {isLocked ? (
-                                                                                            <>
-                                                                                                <span className="truncate text-md text-tertiary">
-                                                                                                    {prop.name || "—"}
-                                                                                                </span>
-                                                                                                <span className="truncate text-md text-tertiary">
-                                                                                                    {prop.link || "—"}
-                                                                                                </span>
-                                                                                                <span />
-                                                                                            </>
-                                                                                        ) : (
-                                                                                            <>
-                                                                                                <input
-                                                                                                    placeholder="Property name"
-                                                                                                    value={prop.name}
-                                                                                                    onChange={(e) =>
-                                                                                                        patchOverviewDoc({
-                                                                                                            properties: overviewDoc.properties.map((x) =>
-                                                                                                                x.id === prop.id
-                                                                                                                    ? { ...x, name: e.target.value }
-                                                                                                                    : x,
-                                                                                                            ),
-                                                                                                        })
-                                                                                                    }
-                                                                                                    className={editInput()}
-                                                                                                />
-                                                                                                <input
-                                                                                                    placeholder="Listing link"
-                                                                                                    value={prop.link}
-                                                                                                    onChange={(e) =>
-                                                                                                        patchOverviewDoc({
-                                                                                                            properties: overviewDoc.properties.map((x) =>
-                                                                                                                x.id === prop.id
-                                                                                                                    ? { ...x, link: e.target.value }
-                                                                                                                    : x,
-                                                                                                            ),
-                                                                                                        })
-                                                                                                    }
-                                                                                                    className={editInput()}
-                                                                                                />
-                                                                                                <button
-                                                                                                    type="button"
-                                                                                                    onClick={() =>
-                                                                                                        patchOverviewDoc({
-                                                                                                            properties: overviewDoc.properties.filter(
-                                                                                                                (x) => x.id !== prop.id,
-                                                                                                            ),
-                                                                                                        })
-                                                                                                    }
-                                                                                                    title="Remove this property"
-                                                                                                    className="flex size-7 items-center justify-center rounded-lg text-fg-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-error-primary"
-                                                                                                >
-                                                                                                    <Trash01 className="size-3.5" aria-hidden="true" />
-                                                                                                </button>
-                                                                                            </>
-                                                                                        )}
-                                                                                    </div>
-                                                                                ))}
-                                                                                {!overviewDoc.properties.length && (
-                                                                                    <p className="rounded-xl border border-dashed border-secondary px-4 py-3 text-sm text-quaternary italic">
-                                                                                        No properties listed yet.
-                                                                                    </p>
-                                                                                )}
-                                                                            </div>
+                                                                    <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-primary p-4 ring-1 ring-secondary">
+                                                                        <div>
+                                                                            <p className="text-sm font-medium text-secondary">Current direct booking split</p>
+                                                                            <p className="mt-0.5 text-xs text-quaternary">Fill out after gaining PMS access</p>
                                                                         </div>
-                                                                    )}
-                                                                </section>
-                                                            ))}
-
-                                                            {/* Baseline — the numbers as they stood at kickoff, so growth has a zero point. */}
-                                                            <section>
-                                                                <div className="flex flex-wrap items-center justify-between gap-3">
-                                                                    <p className="text-xs font-semibold tracking-wide text-brand-secondary uppercase">
-                                                                        Baseline (snapshot)
-                                                                    </p>
-                                                                    <span className="text-xs text-quaternary">Recorded at kickoff</span>
-                                                                </div>
-                                                                <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-                                                                    {OVERVIEW_BASELINE.map((f) => (
-                                                                        <div key={String(f.key)} className="rounded-xl bg-primary p-4 ring-1 ring-secondary">
-                                                                            <p className="text-sm font-medium text-secondary">{f.label}</p>
+                                                                        <div className="flex items-center gap-1.5">
                                                                             {isLocked ? (
-                                                                                <p className="mt-1 text-md text-tertiary tabular-nums">
-                                                                                    {String(overviewDoc[f.key] ?? "").trim() || "—"}
-                                                                                </p>
+                                                                                <span className="text-md text-tertiary tabular-nums">
+                                                                                    {String(overviewDoc.direct_booking_split ?? "").trim() || "—"}
+                                                                                </span>
                                                                             ) : (
                                                                                 <input
                                                                                     placeholder="—"
-                                                                                    value={String(overviewDoc[f.key] ?? "")}
-                                                                                    onChange={(e) =>
-                                                                                        patchOverviewDoc({ [f.key]: e.target.value } as Partial<OverviewDoc>)
-                                                                                    }
-                                                                                    className={cx(editInput(), "mt-1.5 tabular-nums")}
+                                                                                    value={overviewDoc.direct_booking_split}
+                                                                                    onChange={(e) => patchOverviewDoc({ direct_booking_split: e.target.value })}
+                                                                                    className={cx(editInput(), "w-20 text-right tabular-nums")}
                                                                                 />
                                                                             )}
+                                                                            <span className="text-md text-tertiary">%</span>
                                                                         </div>
-                                                                    ))}
-                                                                </div>
-
-                                                                <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-primary p-4 ring-1 ring-secondary">
-                                                                    <div>
-                                                                        <p className="text-sm font-medium text-secondary">Current direct booking split</p>
-                                                                        <p className="mt-0.5 text-xs text-quaternary">Fill out after gaining PMS access</p>
                                                                     </div>
-                                                                    <div className="flex items-center gap-1.5">
-                                                                        {isLocked ? (
-                                                                            <span className="text-md text-tertiary tabular-nums">
-                                                                                {String(overviewDoc.direct_booking_split ?? "").trim() || "—"}
-                                                                            </span>
+
+                                                                    <div className="mt-3 rounded-xl bg-primary p-4 ring-1 ring-secondary">
+                                                                        <p className="text-sm font-medium text-secondary">Instagram profile screenshot</p>
+                                                                        {overviewDoc.instagram_screenshot ? (
+                                                                            <div className="mt-3 flex flex-wrap items-start gap-3">
+                                                                                <img
+                                                                                    src={overviewDoc.instagram_screenshot}
+                                                                                    alt="Instagram profile at kickoff"
+                                                                                    className="max-h-56 rounded-lg ring-1 ring-secondary"
+                                                                                />
+                                                                                {!isLocked && (
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={() => patchOverviewDoc({ instagram_screenshot: "" })}
+                                                                                        className="text-sm font-medium text-tertiary transition duration-100 ease-linear hover:text-error-primary"
+                                                                                    >
+                                                                                        Remove
+                                                                                    </button>
+                                                                                )}
+                                                                            </div>
+                                                                        ) : isLocked ? (
+                                                                            <p className="mt-1 text-md text-quaternary italic">Not added</p>
                                                                         ) : (
-                                                                            <input
-                                                                                placeholder="—"
-                                                                                value={overviewDoc.direct_booking_split}
-                                                                                onChange={(e) => patchOverviewDoc({ direct_booking_split: e.target.value })}
-                                                                                className={cx(editInput(), "w-20 text-right tabular-nums")}
-                                                                            />
+                                                                            <label className="mt-3 flex cursor-pointer items-center justify-center rounded-lg border border-dashed border-secondary px-4 py-6 text-sm text-quaternary transition duration-100 ease-linear hover:border-brand hover:text-tertiary">
+                                                                                <input
+                                                                                    type="file"
+                                                                                    accept="image/*"
+                                                                                    className="hidden"
+                                                                                    onChange={(e) => void onPickOverviewShot(e)}
+                                                                                />
+                                                                                Add an image — it's compressed before saving
+                                                                            </label>
                                                                         )}
-                                                                        <span className="text-md text-tertiary">%</span>
                                                                     </div>
-                                                                </div>
-
-                                                                <div className="mt-3 rounded-xl bg-primary p-4 ring-1 ring-secondary">
-                                                                    <p className="text-sm font-medium text-secondary">Instagram profile screenshot</p>
-                                                                    {overviewDoc.instagram_screenshot ? (
-                                                                        <div className="mt-3 flex flex-wrap items-start gap-3">
-                                                                            <img
-                                                                                src={overviewDoc.instagram_screenshot}
-                                                                                alt="Instagram profile at kickoff"
-                                                                                className="max-h-56 rounded-lg ring-1 ring-secondary"
-                                                                            />
-                                                                            {!isLocked && (
-                                                                                <button
-                                                                                    type="button"
-                                                                                    onClick={() => patchOverviewDoc({ instagram_screenshot: "" })}
-                                                                                    className="text-sm font-medium text-tertiary transition duration-100 ease-linear hover:text-error-primary"
-                                                                                >
-                                                                                    Remove
-                                                                                </button>
-                                                                            )}
-                                                                        </div>
-                                                                    ) : isLocked ? (
-                                                                        <p className="mt-1 text-md text-quaternary italic">Not added</p>
-                                                                    ) : (
-                                                                        <label className="mt-3 flex cursor-pointer items-center justify-center rounded-lg border border-dashed border-secondary px-4 py-6 text-sm text-quaternary transition duration-100 ease-linear hover:border-brand hover:text-tertiary">
-                                                                            <input
-                                                                                type="file"
-                                                                                accept="image/*"
-                                                                                className="hidden"
-                                                                                onChange={(e) => void onPickOverviewShot(e)}
-                                                                            />
-                                                                            Add an image — it's compressed before saving
-                                                                        </label>
-                                                                    )}
-                                                                </div>
-                                                            </section>
+                                                                </DocSection>
+                                                            </div>
                                                         </div>
                                                     </Reveal>
                                                 )}
@@ -2960,11 +2987,15 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                         {/* Rail beside the document on wide screens; above it on narrow ones, where a
                                                             sticky column would eat the reading width. */}
                                                         <div className="mt-8 flex flex-col gap-8 lg:flex-row lg:items-start lg:gap-10">
-                                                            <DocRail progress={foundationFilledMap} />
+                                                            <DocRail sections={FOUNDATION_SECTIONS} progress={foundationFilledMap} />
 
                                                             <div className="flex min-w-0 flex-1 flex-col gap-8">
                                                                 {/* ── 1. About the hosts ── */}
-                                                                <DocSection id="hosts" label="About the hosts" badge={isTeam ? <SourceBadge>From onboarding form</SourceBadge> : undefined}>
+                                                                <DocSection
+                                                                    id="hosts"
+                                                                    label="About the hosts"
+                                                                    badge={isTeam ? <SourceBadge>From onboarding form</SourceBadge> : undefined}
+                                                                >
                                                                     <DocField
                                                                         isLocked={isLocked}
                                                                         rows={3}
@@ -2975,7 +3006,11 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                 </DocSection>
 
                                                                 {/* ── 2. About the properties ── */}
-                                                                <DocSection id="properties" label="About the properties" badge={isTeam ? <SourceBadge>From onboarding form + website</SourceBadge> : undefined}>
+                                                                <DocSection
+                                                                    id="properties"
+                                                                    label="About the properties"
+                                                                    badge={isTeam ? <SourceBadge>From onboarding form + website</SourceBadge> : undefined}
+                                                                >
                                                                     <p className="text-md text-tertiary">
                                                                         If it's a micro resort or separate properties, what type of properties they have (e.g.
                                                                         treehouses, cabins, domes), general amenities, shared resort amenities, etc.
@@ -3015,7 +3050,11 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                 </DocSection>
 
                                                                 {/* ── 3. Location ── */}
-                                                                <DocSection id="location" label="Location" badge={isTeam ? <SourceBadge>From onboarding form</SourceBadge> : undefined}>
+                                                                <DocSection
+                                                                    id="location"
+                                                                    label="Location"
+                                                                    badge={isTeam ? <SourceBadge>From onboarding form</SourceBadge> : undefined}
+                                                                >
                                                                     <DocField
                                                                         isLocked={isLocked}
                                                                         label="Exact location"
@@ -3648,7 +3687,11 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                 </DocSection>
 
                                                                 {/* ── 9. Local favorites ── */}
-                                                                <DocSection id="favorites" label="Local favorites" badge={isTeam ? <SourceBadge>From onboarding form</SourceBadge> : undefined}>
+                                                                <DocSection
+                                                                    id="favorites"
+                                                                    label="Local favorites"
+                                                                    badge={isTeam ? <SourceBadge>From onboarding form</SourceBadge> : undefined}
+                                                                >
                                                                     <div className="flex flex-col gap-6">
                                                                         <FavoriteTable
                                                                             title="Restaurants"
@@ -3672,7 +3715,11 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                 </DocSection>
 
                                                                 {/* ── 10. Reviews ── */}
-                                                                <DocSection id="reviews" label="Reviews" badge={isTeam ? <SourceBadge>From guest reviews</SourceBadge> : undefined}>
+                                                                <DocSection
+                                                                    id="reviews"
+                                                                    label="Reviews"
+                                                                    badge={isTeam ? <SourceBadge>From guest reviews</SourceBadge> : undefined}
+                                                                >
                                                                     <p className="text-md text-tertiary">
                                                                         Pull guest reviews and analyze them to identify recurring themes in what guests love
                                                                         about their stays. The goal is to gain deeper insights into the brand's strengths and
@@ -3706,10 +3753,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                         bot-protection to datacenter IPs, so pasting is the reliable route. */}
                                                                     {isTeam && !isTemplate && !isLocked && (
                                                                         <div className="mt-5 rounded-2xl bg-primary p-4 ring-1 ring-secondary">
-                                                                            <label
-                                                                                htmlFor="reviews-paste"
-                                                                                className="text-sm font-medium text-secondary"
-                                                                            >
+                                                                            <label htmlFor="reviews-paste" className="text-sm font-medium text-secondary">
                                                                                 Paste guest reviews
                                                                             </label>
                                                                             <p className="mt-1 text-xs text-tertiary">

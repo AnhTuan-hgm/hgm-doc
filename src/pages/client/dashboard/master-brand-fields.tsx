@@ -10,7 +10,7 @@ import { Check, Trash01 } from "@untitledui-pro/icons/line";
 import { BadgeWithDot } from "@/components/base/badges/badges";
 import { editInput } from "@/pages/client/dashboard/dashboard-chrome";
 import { type LocalFavorite, filled } from "@/pages/client/dashboard/dashboard-model";
-import { FOUNDATION_SECTIONS, type FoundationSectionId } from "@/pages/client/dashboard/master-brand-document";
+import { FOUNDATION_SECTIONS } from "@/pages/client/dashboard/master-brand-document";
 import { cx } from "@/utils/cx";
 
 /** One of the eleven sections. Anchored by id so the in-page rail can jump to it;
@@ -18,12 +18,15 @@ import { cx } from "@/utils/cx";
 export const DocSection = ({
     id,
     label,
+    number,
     badge,
     action,
     children,
 }: {
-    id: FoundationSectionId;
+    id: string;
     label: string;
+    /** 1-based heading number; defaults to the section's place in FOUNDATION_SECTIONS. */
+    number?: number;
     badge?: ReactNode;
     action?: ReactNode;
     children: ReactNode;
@@ -33,7 +36,7 @@ export const DocSection = ({
             <div className="flex flex-wrap items-center gap-2.5">
                 {/* Numbered like the rail and the compiled document's "## 1. …" headings. */}
                 <h3 className="text-xl font-semibold text-primary">
-                    {FOUNDATION_SECTIONS.findIndex((s) => s.id === id) + 1}. {label}
+                    {number ?? FOUNDATION_SECTIONS.findIndex((s) => s.id === id) + 1}. {label}
                 </h3>
                 {badge}
             </div>
@@ -131,40 +134,40 @@ export const DocStat = ({ label, value, isLocked, onChange }: { label: string; v
  * rootMargin keeps the highlight on the section you are reading rather than the one just
  * entering from below.
  */
-export const DocRail = ({ progress }: { progress: Record<FoundationSectionId, boolean> }) => {
-    const [active, setActive] = useState<FoundationSectionId>(FOUNDATION_SECTIONS[0].id);
-    const onScreen = useRef(new Set<FoundationSectionId>());
+export const DocRail = <Id extends string>({ sections, progress }: { sections: readonly { id: Id; label: string }[]; progress: Record<Id, boolean> }) => {
+    const [active, setActive] = useState<Id>(sections[0].id);
+    const onScreen = useRef(new Set<Id>());
 
     useEffect(() => {
-        const els = FOUNDATION_SECTIONS.map((s) => document.getElementById(`mbd-${s.id}`)).filter((el): el is HTMLElement => Boolean(el));
+        const els = sections.map((s) => document.getElementById(`mbd-${s.id}`)).filter((el): el is HTMLElement => Boolean(el));
         if (!els.length) return;
 
         const io = new IntersectionObserver(
             (entries) => {
                 for (const e of entries) {
-                    const id = e.target.id.replace("mbd-", "") as FoundationSectionId;
+                    const id = e.target.id.replace("mbd-", "") as Id;
                     if (e.isIntersecting) onScreen.current.add(id);
                     else onScreen.current.delete(id);
                 }
-                const first = FOUNDATION_SECTIONS.find((s) => onScreen.current.has(s.id));
+                const first = sections.find((s) => onScreen.current.has(s.id));
                 if (first) setActive(first.id);
             },
             { rootMargin: "-96px 0px -55% 0px" },
         );
         els.forEach((el) => io.observe(el));
         return () => io.disconnect();
-    }, []);
+    }, [sections]);
 
-    const jump = (id: FoundationSectionId) => {
+    const jump = (id: Id) => {
         document.getElementById(`mbd-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
         setActive(id);
     };
 
     return (
-        <nav aria-label="Master Brand Document sections" className="lg:sticky lg:top-6 lg:w-56 lg:shrink-0">
+        <nav aria-label="Document sections" className="lg:sticky lg:top-6 lg:w-56 lg:shrink-0">
             <p className="font-mono text-[11px] font-semibold tracking-[0.08em] text-quaternary uppercase">Sections</p>
             <ul className="mt-3 flex flex-col gap-0.5">
-                {FOUNDATION_SECTIONS.map((s, i) => (
+                {sections.map((s, i) => (
                     <li key={s.id}>
                         <button
                             type="button"
