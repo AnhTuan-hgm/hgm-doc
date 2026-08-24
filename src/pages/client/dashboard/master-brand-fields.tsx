@@ -47,6 +47,15 @@ export const WorkflowBadge = () => (
     </BadgeWithDot>
 );
 
+/** Marks where a section's content pulls from — the onboarding form, the client's
+ *  website, or pasted guest reviews — so an AM can see each answer's source at a glance.
+ *  Blue on purpose: yellow stays reserved for the workflow sections above. */
+export const SourceBadge = ({ children }: { children: ReactNode }) => (
+    <BadgeWithDot color="blue" size="sm" type="pill-color">
+        {children}
+    </BadgeWithDot>
+);
+
 /** A labelled field. Renders read-only prose when locked and an input when not, so the
  *  document reads as a document rather than as a form full of empty boxes. */
 export const DocField = ({

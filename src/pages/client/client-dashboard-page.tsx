@@ -110,7 +110,7 @@ import {
     compileMasterDocument,
     foundationProgress,
 } from "@/pages/client/dashboard/master-brand-document";
-import { DocField, DocRail, DocSection, DocStat, FavoriteTable, WorkflowBadge } from "@/pages/client/dashboard/master-brand-fields";
+import { DocField, DocRail, DocSection, DocStat, FavoriteTable, SourceBadge, WorkflowBadge } from "@/pages/client/dashboard/master-brand-fields";
 import { OnboardingAnswers } from "@/pages/client/dashboard/onboarding-answers";
 import { DEFAULT_OVERVIEW_DOC, OVERVIEW_BASELINE, OVERVIEW_COUNTED_FIELDS, OVERVIEW_SECTIONS } from "@/pages/client/dashboard/overview-doc";
 import { HostOnboardingFormPage, ensureHostOnboardingForm, hostOnboardingAnswers, hostOnboardingProgress } from "@/pages/client/host-onboarding-form-page";
@@ -2936,7 +2936,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
 
                                                             <div className="flex min-w-0 flex-1 flex-col gap-8">
                                                                 {/* ── 1. About the hosts ── */}
-                                                                <DocSection id="hosts" label="About the hosts">
+                                                                <DocSection id="hosts" label="About the hosts" badge={isTeam ? <SourceBadge>From onboarding form</SourceBadge> : undefined}>
                                                                     <DocField
                                                                         isLocked={isLocked}
                                                                         rows={3}
@@ -2947,7 +2947,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                 </DocSection>
 
                                                                 {/* ── 2. About the properties ── */}
-                                                                <DocSection id="properties" label="About the properties">
+                                                                <DocSection id="properties" label="About the properties" badge={isTeam ? <SourceBadge>From onboarding form + website</SourceBadge> : undefined}>
                                                                     <p className="text-md text-tertiary">
                                                                         If it's a micro resort or separate properties, what type of properties they have (e.g.
                                                                         treehouses, cabins, domes), general amenities, shared resort amenities, etc.
@@ -2987,7 +2987,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                 </DocSection>
 
                                                                 {/* ── 3. Location ── */}
-                                                                <DocSection id="location" label="Location">
+                                                                <DocSection id="location" label="Location" badge={isTeam ? <SourceBadge>From onboarding form</SourceBadge> : undefined}>
                                                                     <DocField
                                                                         isLocked={isLocked}
                                                                         label="Exact location"
@@ -3393,6 +3393,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                 <DocSection
                                                                     id="focus"
                                                                     label="Focus properties"
+                                                                    badge={isTeam ? <SourceBadge>From client's website</SourceBadge> : undefined}
                                                                     action={
                                                                         !isLocked && (
                                                                             <button
@@ -3619,7 +3620,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                 </DocSection>
 
                                                                 {/* ── 9. Local favorites ── */}
-                                                                <DocSection id="favorites" label="Local favorites">
+                                                                <DocSection id="favorites" label="Local favorites" badge={isTeam ? <SourceBadge>From onboarding form</SourceBadge> : undefined}>
                                                                     <div className="flex flex-col gap-6">
                                                                         <FavoriteTable
                                                                             title="Restaurants"
@@ -3643,7 +3644,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                 </DocSection>
 
                                                                 {/* ── 10. Reviews ── */}
-                                                                <DocSection id="reviews" label="Reviews">
+                                                                <DocSection id="reviews" label="Reviews" badge={isTeam ? <SourceBadge>From guest reviews</SourceBadge> : undefined}>
                                                                     <p className="text-md text-tertiary">
                                                                         Pull guest reviews and analyze them to identify recurring themes in what guests love
                                                                         about their stays. The goal is to gain deeper insights into the brand's strengths and
@@ -3762,6 +3763,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                 <DocSection
                                                                     id="links"
                                                                     label="Website links"
+                                                                    badge={isTeam ? <SourceBadge>From website sitemap</SourceBadge> : undefined}
                                                                     action={
                                                                         <a
                                                                             href="https://www.xml-sitemaps.com"
