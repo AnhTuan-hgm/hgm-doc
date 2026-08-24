@@ -146,16 +146,16 @@ const GROUPS: Record<
         keys: ["restaurants", "activities"],
         maxTokens: 2000,
         instruction:
-            "Split the client's local recommendations into rows. They typed these as free text in the onboarding form; keep their names exactly and write a one-line description for each from what they said. Do not add places they didn't mention, and do not invent descriptions for places you know nothing about — an empty description is fine.",
+            "Split the client's local recommendations into rows. They typed these as free text in the onboarding form, often as 'Name — https://…'; keep their names exactly and carry each place's website address through verbatim. Do not add places they didn't mention, and never invent or guess a URL — an empty description is fine.",
         properties: {
             restaurants: {
                 type: "array",
-                items: { type: "object", properties: { name: str("The restaurant or café name, exactly as the client wrote it."), description: str("One line on why they recommend it. Empty if they gave no reason.") }, required: ["name", "description"] },
+                items: { type: "object", properties: { name: str("The restaurant or café name, exactly as the client wrote it."), description: str("The website address the client gave for it, exactly as written. If they gave no link, one line on why they recommend it. Empty if neither.") }, required: ["name", "description"] },
                 description: "One row per restaurant or café the client named. Empty array if they named none.",
             },
             activities: {
                 type: "array",
-                items: { type: "object", properties: { name: str("The activity or attraction name, exactly as the client wrote it."), description: str("One line on why they recommend it. Empty if they gave no reason.") }, required: ["name", "description"] },
+                items: { type: "object", properties: { name: str("The activity or attraction name, exactly as the client wrote it."), description: str("The website address the client gave for it, exactly as written. If they gave no link, one line on why they recommend it. Empty if neither.") }, required: ["name", "description"] },
                 description: "One row per activity or attraction the client named. Empty array if they named none.",
             },
         },

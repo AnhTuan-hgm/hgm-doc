@@ -377,13 +377,27 @@ export const mergeFoundationDraft = (current: Foundation, draft: Record<string, 
             name: str(r.name),
             description: str(r.description),
         }));
+        // Filling an EMPTY description on a row that already exists doesn't change anything a
+        // person wrote — without this, a re-draft could never add the website addresses to
+        // rows an earlier draft created with names only.
+        const byName = new Map(drafted.filter((r) => filled(r.name)).map((r) => [r.name.trim().toLowerCase(), r.description]));
+        let filledExisting = false;
+        const existing = current[list].map((r) => {
+            const d = byName.get(r.name.trim().toLowerCase());
+            if (!filled(r.description) && d && filled(d)) {
+                filledExisting = true;
+                return { ...r, description: d };
+            }
+            return r;
+        });
         const merged = mergeRows(
-            current[list],
+            existing,
             drafted,
             (r) => filled(r.name),
             (r) => r.name,
         );
         if (merged) patch[list] = merged;
+        else if (filledExisting) patch[list] = existing;
     }
 
     if (Array.isArray(draft.websiteLinks)) {

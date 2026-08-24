@@ -131,7 +131,7 @@ export const DocStat = ({ label, value, isLocked, onChange }: { label: string; v
  * rootMargin keeps the highlight on the section you are reading rather than the one just
  * entering from below.
  */
-export const DocRail = ({ progress, filledCount }: { progress: Record<FoundationSectionId, boolean>; filledCount: number }) => {
+export const DocRail = ({ progress }: { progress: Record<FoundationSectionId, boolean> }) => {
     const [active, setActive] = useState<FoundationSectionId>(FOUNDATION_SECTIONS[0].id);
     const onScreen = useRef(new Set<FoundationSectionId>());
 
@@ -185,12 +185,6 @@ export const DocRail = ({ progress, filledCount }: { progress: Record<Foundation
                     </li>
                 ))}
             </ul>
-            <div className="mt-4 border-t border-secondary pt-3">
-                <p className="text-xs text-quaternary tabular-nums">
-                    {FOUNDATION_SECTIONS.length} sections ·{" "}
-                    {filledCount === 0 ? "nothing filled in yet" : `${filledCount} of ${FOUNDATION_SECTIONS.length} filled`}
-                </p>
-            </div>
         </nav>
     );
 };

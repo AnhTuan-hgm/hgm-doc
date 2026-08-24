@@ -647,7 +647,6 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     const removeFavorite = (list: "restaurants" | "activities") => (id: string) => patchFoundation({ [list]: foundation[list].filter((r) => r.id !== id) });
 
     const foundationFilledMap = foundationProgress(foundation);
-    const foundationFilledCount = Object.values(foundationFilledMap).filter(Boolean).length;
     /** v1 answers still sitting in the row — shown to the team so the redesign doesn't bury them. */
     const legacyFoundation = LEGACY_FOUNDATION_FIELDS.filter((f) => filled(foundation[f.key])).map((f) => ({
         ...f,
@@ -2961,7 +2960,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                         {/* Rail beside the document on wide screens; above it on narrow ones, where a
                                                             sticky column would eat the reading width. */}
                                                         <div className="mt-8 flex flex-col gap-8 lg:flex-row lg:items-start lg:gap-10">
-                                                            <DocRail progress={foundationFilledMap} filledCount={foundationFilledCount} />
+                                                            <DocRail progress={foundationFilledMap} />
 
                                                             <div className="flex min-w-0 flex-1 flex-col gap-8">
                                                                 {/* ── 1. About the hosts ── */}

@@ -72,6 +72,28 @@ const base = (over: Partial<Foundation> = {}): Foundation => ({ ...DEFAULT_FOUND
     assert.ok(rows[1].id && rows[1].id !== "b", "a drafted row gets its own id");
 }
 
+/* 5b. A re-draft fills the EMPTY description of an existing row (how the website addresses
+       reach rows an earlier draft created with names only) — but never touches a filled one. */
+{
+    const current = base({
+        restaurants: [
+            { id: "a", name: "The Foundry", description: "" },
+            { id: "b", name: "Joe's Diner", description: "Best pie in the valley." },
+        ],
+    });
+    const patch = mergeFoundationDraft(current, {
+        restaurants: [
+            { name: "The Foundry", description: "https://www.foundrykillington.com/" },
+            { name: "Joe's Diner", description: "A rewrite that must lose." },
+        ],
+    });
+    const rows = patch.restaurants!;
+    assert.equal(rows.length, 2, "no new rows, just the fill");
+    assert.equal(rows[0].id, "a", "the existing row keeps its id");
+    assert.equal(rows[0].description, "https://www.foundrykillington.com/");
+    assert.equal(rows[1].description, "Best pie in the valley.", "a filled description is never overwritten");
+}
+
 /* 6. Re-running a draft over its own output changes nothing. This is what makes the button
       safe to press twice, which an AM will do. */
 {
