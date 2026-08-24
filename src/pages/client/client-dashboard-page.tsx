@@ -3653,7 +3653,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                     <div className="flex flex-col gap-6">
                                                                         <FavoriteTable
                                                                             title="Restaurants"
-                                                                            note="Short description, max 15 words"
+                                                                            note="Name + website address"
                                                                             rows={foundation.restaurants}
                                                                             isLocked={isLocked}
                                                                             onChange={patchFavorite("restaurants")}
@@ -3662,7 +3662,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                         />
                                                                         <FavoriteTable
                                                                             title="Activities / attractions"
-                                                                            note="Short description, max 15 words"
+                                                                            note="Name + website address"
                                                                             rows={foundation.activities}
                                                                             isLocked={isLocked}
                                                                             onChange={patchFavorite("activities")}

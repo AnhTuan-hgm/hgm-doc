@@ -31,7 +31,10 @@ export const DocSection = ({
     <section id={`mbd-${id}`} className="scroll-mt-24 border-t border-secondary pt-8 first:border-t-0 first:pt-0">
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
             <div className="flex flex-wrap items-center gap-2.5">
-                <h3 className="font-mono text-[11px] font-semibold tracking-[0.08em] text-quaternary uppercase">{label}</h3>
+                {/* Numbered like the rail and the compiled document's "## 1. …" headings. */}
+                <h3 className="font-mono text-[11px] font-semibold tracking-[0.08em] text-quaternary uppercase">
+                    {FOUNDATION_SECTIONS.findIndex((s) => s.id === id) + 1}. {label}
+                </h3>
                 {badge}
             </div>
             {action}
@@ -196,7 +199,7 @@ export const DocRail = ({ progress, filledCount }: { progress: Record<Foundation
     );
 };
 
-/** A two-column name / short-description table (Restaurants, Activities). */
+/** A two-column name / website-address table (Restaurants, Activities). */
 export const FavoriteTable = ({
     title,
     note,
@@ -245,7 +248,7 @@ export const FavoriteTable = ({
                                 {filled(r.name) ? r.name : "Name"}
                             </span>
                             <span className={cx("text-md", filled(r.description) ? "text-tertiary" : "text-quaternary italic")}>
-                                {filled(r.description) ? r.description : "Short description"}
+                                {filled(r.description) ? r.description : "Website address"}
                             </span>
                             <span />
                         </>
@@ -253,7 +256,7 @@ export const FavoriteTable = ({
                         <>
                             <input placeholder="Name" value={r.name} onChange={(e) => onChange(r.id, { name: e.target.value })} className={editInput()} />
                             <input
-                                placeholder="Short description"
+                                placeholder="Website address"
                                 value={r.description}
                                 onChange={(e) => onChange(r.id, { description: e.target.value })}
                                 className={editInput()}
