@@ -126,7 +126,7 @@ export const SectionEyebrow = ({ section }: { section: SectionId }) => {
 };
 
 export const SectionHeading = ({ children }: { children: ReactNode }) => (
-    <h2 className="mt-4 text-display-xs font-semibold text-primary md:text-display-sm">{children}</h2>
+    <h2 className="mt-4 text-xl font-semibold text-primary md:text-display-xs">{children}</h2>
 );
 
 /** Shared chrome for every editable field on the dashboard. Module scope (it closes over

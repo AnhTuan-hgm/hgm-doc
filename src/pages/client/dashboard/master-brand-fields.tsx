@@ -32,7 +32,7 @@ export const DocSection = ({
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
             <div className="flex flex-wrap items-center gap-2.5">
                 {/* Numbered like the rail and the compiled document's "## 1. …" headings. */}
-                <h3 className="font-mono text-[11px] font-semibold tracking-[0.08em] text-quaternary uppercase">
+                <h3 className="text-xl font-semibold text-primary">
                     {FOUNDATION_SECTIONS.findIndex((s) => s.id === id) + 1}. {label}
                 </h3>
                 {badge}
