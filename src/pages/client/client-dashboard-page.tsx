@@ -184,7 +184,14 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
 
     // Lock state
     const [isLocked, setIsLocked] = useState(true);
-    const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+    const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error" | "conflict">("idle");
+    /** The row's jsonb exactly as the server last handed it to this tab, so Save can tell
+     *  whether someone else wrote the row since. Compared as the server's own serialization
+     *  (jsonb re-orders keys, so stringifying local state would always mismatch). Null
+     *  disables the check rather than blocking saves when a read fails. */
+    const savedRowRef = useRef<string | null>(JSON.stringify(initialData ?? null));
+    /** Set by a blocked save; the next Save press overwrites deliberately. */
+    const overwriteArmedRef = useRef(false);
 
     /**
      * Clicking the client's logo or name enters the client preview — but only while locked.
@@ -935,14 +942,32 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     const persistAndLock = async () => {
         if (slug && !isTemplate) {
             setSaveState("saving");
+            /* A save writes the WHOLE row, last writer wins — so a tab left open since the
+               morning silently erased an afternoon of other people's work three times on
+               2026-08-24. Before writing, re-read the row: if it changed since this tab last
+               saw it, someone else saved in between. Block once and say so; a second press
+               overwrites deliberately. Stays unlocked either way, so nothing is lost. */
+            if (savedRowRef.current !== null && !overwriteArmedRef.current) {
+                const { data: row, error: readErr } = await supabase.from("dashboard_pages").select("data").eq("slug", slug).maybeSingle();
+                if (!readErr && JSON.stringify(row?.data ?? null) !== savedRowRef.current) {
+                    overwriteArmedRef.current = true;
+                    setSaveState("conflict");
+                    return;
+                }
+            }
             const { error } = await supabase
                 .from("dashboard_pages")
                 .upsert({ slug, client_name: clientName.trim(), client_website: clientWebsite.trim(), data: content }, { onConflict: "slug" });
+            overwriteArmedRef.current = false;
             if (error) {
                 console.error("[client dashboard save] Supabase error:", error);
                 setSaveState("error");
                 return;
             }
+            // The baseline must be the row as the SERVER now stores it, not our local copy —
+            // jsonb re-orders keys, so only a re-read compares equal on the next save.
+            const { data: fresh } = await supabase.from("dashboard_pages").select("data").eq("slug", slug).maybeSingle();
+            savedRowRef.current = fresh ? JSON.stringify(fresh.data ?? null) : null;
             setSaveState("saved");
             window.setTimeout(() => setSaveState((s) => (s === "saved" ? "idle" : s)), 2500);
         }
@@ -1678,7 +1703,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                             title={isLocked ? "Shift+E" : "Shift+S"}
                                             className={cx(
                                                 "flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition duration-100 ease-linear disabled:cursor-not-allowed disabled:opacity-50",
-                                                saveState === "error"
+                                                saveState === "error" || saveState === "conflict"
                                                     ? "border-error bg-error-primary text-error-primary hover:bg-error-secondary"
                                                     : isLocked
                                                       ? "border-secondary bg-primary text-secondary hover:bg-tertiary hover:text-primary"
@@ -1690,7 +1715,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                     className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent"
                                                     aria-hidden="true"
                                                 />
-                                            ) : saveState === "error" ? (
+                                            ) : saveState === "error" || saveState === "conflict" ? (
                                                 <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
                                             ) : isLocked ? (
                                                 <Edit01 className="size-4 shrink-0" aria-hidden="true" />
@@ -1701,9 +1726,11 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                 ? "Saving…"
                                                 : saveState === "error"
                                                   ? "Try saving again"
-                                                  : isLocked
-                                                    ? "Edit dashboard"
-                                                    : "Save changes"}
+                                                  : saveState === "conflict"
+                                                    ? "Save anyway (overwrite)"
+                                                    : isLocked
+                                                      ? "Edit dashboard"
+                                                      : "Save changes"}
                                         </button>
                                     </div>
                                 )}
@@ -1755,19 +1782,21 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                         <p
                                             className={cx(
                                                 "text-xs",
-                                                saveState === "error"
+                                                saveState === "error" || saveState === "conflict"
                                                     ? "text-error-primary"
                                                     : saveState === "saved"
                                                       ? "text-success-primary"
                                                       : "text-quaternary",
                                             )}
-                                            role={saveState === "error" ? "alert" : undefined}
+                                            role={saveState === "error" || saveState === "conflict" ? "alert" : undefined}
                                         >
                                             {saveState === "saving"
                                                 ? "Saving…"
                                                 : saveState === "saved"
                                                   ? "Saved"
-                                                  : "Couldn't save — your changes are still here. Press save to try again."}
+                                                  : saveState === "conflict"
+                                                    ? "Not saved — someone else (or another tab) saved this dashboard after this tab loaded. Refresh to see their version first, or press Save again to overwrite it."
+                                                    : "Couldn't save — your changes are still here. Press save to try again."}
                                         </p>
                                     </div>
                                 )}

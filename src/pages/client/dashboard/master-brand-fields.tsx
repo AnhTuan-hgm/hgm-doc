@@ -161,7 +161,7 @@ export const DocRail = ({ progress, filledCount }: { progress: Record<Foundation
         <nav aria-label="Master Brand Document sections" className="lg:sticky lg:top-6 lg:w-56 lg:shrink-0">
             <p className="font-mono text-[11px] font-semibold tracking-[0.08em] text-quaternary uppercase">Sections</p>
             <ul className="mt-3 flex flex-col gap-0.5">
-                {FOUNDATION_SECTIONS.map((s) => (
+                {FOUNDATION_SECTIONS.map((s, i) => (
                     <li key={s.id}>
                         <button
                             type="button"
@@ -174,6 +174,8 @@ export const DocRail = ({ progress, filledCount }: { progress: Record<Foundation
                                     : "text-tertiary hover:bg-primary_hover hover:text-secondary",
                             )}
                         >
+                            {/* Numbered to match the compiled document's "## 1. …" headings. */}
+                            <span className="w-5 shrink-0 font-mono text-xs text-quaternary tabular-nums">{i + 1}.</span>
                             <span className="min-w-0 flex-1">{s.label}</span>
                             {progress[s.id] && <Check className="size-3.5 shrink-0 text-fg-success-secondary" aria-label="Has content" />}
                         </button>
