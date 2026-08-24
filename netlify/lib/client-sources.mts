@@ -154,7 +154,11 @@ export async function readClientSources(admin: SupabaseClient, slug: string): Pr
             .eq("status", "done"),
     ]);
 
-    const intakeAnswers = (intake.data?.data as Record<string, unknown> | undefined) ?? {};
+    // The onboarding form stores its answers nested under `answers` (beside lastField and
+    // submittedAt); reading the row flat handed every draft an intake with no answers in it
+    // and made the website lookup miss. Fall back to the flat shape for any older row.
+    const intakeRow = (intake.data?.data as Record<string, unknown> | undefined) ?? {};
+    const intakeAnswers = (intakeRow.answers as Record<string, unknown> | undefined) ?? intakeRow;
     const visionAnswers = (brandVision.data?.data as Record<string, unknown> | undefined) ?? {};
     const spoken = (transcripts.data ?? []).filter((t) => (t.transcript ?? "").trim());
 
@@ -360,6 +364,67 @@ export function internalLinks(html: string, base: URL, max = 14): { page: string
     return out.sort((a, b) => Number(LINK_WORTH.test(b.page + b.url)) - Number(LINK_WORTH.test(a.page + a.url))).slice(0, max);
 }
 
+/** Page name derived from a URL path — "/wedding-events/" → "Wedding Events", "/" → "Home". */
+const pathLabel = (u: URL): string => {
+    const seg = u.pathname.replace(/\/+$/, "").split("/").filter(Boolean).pop() ?? "";
+    if (!seg) return "Home";
+    // A short single segment is an acronym more often than a word — "faq" → "FAQ".
+    return seg.length <= 3 ? seg.toUpperCase() : seg.replace(/[-_]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+};
+
+/** Sitemap entries that aren't pages a brand document should list: feeds, WordPress
+ *  plumbing, taxonomy archives, pagination, and media files. */
+const SITEMAP_SKIP = /\/(feed|wp-json|wp-content|wp-includes|tag|category|author|page\/\d+)([/?]|$)|\.(jpe?g|png|gif|webp|svg|ico|pdf|mp4|xml)$/i;
+
+/** Child sitemaps of an index that only hold taxonomy/user archives, never real pages. */
+const SITEMAP_CHILD_SKIP = /(user|author|categor|tag|taxonom)/i;
+
+/**
+ * The site's own sitemap.xml — the complete page list every CMS publishes for search
+ * engines — so the Master Document's Website links table doesn't depend on which pages
+ * happen to be linked from the homepage nav.
+ *
+ * Tries the three conventional locations, following one level of sitemap index (WordPress
+ * serves wp-sitemap.xml as an index of child sitemaps). Returns [] when nothing answers —
+ * the caller falls back to homepage links. Names are derived from the URL path; the caller
+ * swaps in the nav's own anchor text where it has one.
+ */
+export async function sitemapLinks(site: URL, max = 40): Promise<{ page: string; url: string }[]> {
+    const locs = async (url: string): Promise<string[]> => {
+        const r = await grab(url, PAGE_CAP, 3500);
+        if (!r) return [];
+        return [...asText(r.body).matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/gi)].map((m) => m[1].replace(/&amp;/g, "&")).slice(0, 200);
+    };
+
+    const candidates = await Promise.all(["/sitemap.xml", "/sitemap_index.xml", "/wp-sitemap.xml"].map((p) => locs(new URL(p, site).href)));
+    let found = candidates.find((c) => c.length) ?? [];
+    // An index lists child sitemaps rather than pages — read the page-bearing children.
+    if (found.length && found.every((l) => /\.xml(\?|$)/i.test(l))) {
+        const children = found.filter((l) => !SITEMAP_CHILD_SKIP.test(l)).slice(0, 3);
+        found = (await Promise.all(children.map(locs))).flat();
+    }
+
+    const out: { page: string; url: string }[] = [];
+    const seen = new Set<string>();
+    for (const raw of found) {
+        let u: URL;
+        try {
+            u = new URL(raw);
+        } catch {
+            continue;
+        }
+        if (u.hostname.toLowerCase() !== site.hostname.toLowerCase()) continue;
+        if (SITEMAP_SKIP.test(u.pathname)) continue;
+        u.hash = "";
+        const key = u.href.replace(/\/+$/, "");
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push({ page: pathLabel(u), url: u.href });
+    }
+    // Home first; the rest keep the sitemap's own order.
+    return out.sort((a, b) => Number(b.page === "Home") - Number(a.page === "Home")).slice(0, max);
+}
+
 export interface SiteRead {
     site: string;
     /** Homepage text plus a few inner pages, each headed by its URL. */
@@ -377,10 +442,13 @@ export interface SiteRead {
  */
 export async function readWebsite(raw: string, maxPages = 4): Promise<SiteRead> {
     const site = await assertPublicUrl(raw);
-    const home = await grab(site.href, PAGE_CAP);
+    const [home, fromSitemap] = await Promise.all([grab(site.href, PAGE_CAP), sitemapLinks(site)]);
     if (!home) throw new Error(`Couldn't load ${site.hostname}. Is the address right, and the site public?`);
     const html = asText(home.body);
-    const links = internalLinks(html, site);
+    // The sitemap is the complete page list and its path-derived names read better than
+    // anchor text ("Standard King Room" vs "VIEW ROOM"). A site with no sitemap keeps the
+    // nav-scrape behaviour.
+    const links = fromSitemap.length ? fromSitemap : internalLinks(html, site);
     const homeText = stripHtml(html, 9000);
 
     /* A single-page app serves an empty shell and renders everything in the browser, so
@@ -393,8 +461,12 @@ export async function readWebsite(raw: string, maxPages = 4): Promise<SiteRead> 
         );
     }
 
-    // internalLinks already ranked these; just drop the homepage and take the first few.
-    const inner = links.filter((l) => l.url.replace(/\/+$/, "") !== site.href.replace(/\/+$/, "")).slice(0, Math.max(0, maxPages - 1));
+    // Rank here rather than trusting list order — the sitemap lists pages in its own order,
+    // so the stay/room/about pages worth reading need pulling to the front either way.
+    const inner = links
+        .filter((l) => l.url.replace(/\/+$/, "") !== site.href.replace(/\/+$/, ""))
+        .sort((a, b) => Number(LINK_WORTH.test(b.page + b.url)) - Number(LINK_WORTH.test(a.page + a.url)))
+        .slice(0, Math.max(0, maxPages - 1));
 
     const fetched = await Promise.all(inner.map((l) => grab(l.url, PAGE_CAP, 4500).then((r) => ({ l, r }))));
 
