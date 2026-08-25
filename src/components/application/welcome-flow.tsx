@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Check, Copy01, Image01, Monitor01, Phone01, SearchSm, Settings01, XClose } from "@untitledui/icons";
 import { supabase } from "@/lib/supabase";
@@ -45,6 +45,11 @@ export interface WelcomeFlowData {
     settings: FlowSettings;
     waits: string[];
     emails: FlowEmail[];
+    /** Finished HTML emails delivered by Pooja (the AI email technician), one per slot
+     *  0–8 (shown as Email 1–9). A filled slot REPLACES the built-in template for that
+     *  tab: the file renders verbatim and Copy HTML exports it byte-for-byte, so what
+     *  the client approves is exactly what lands in GHL. Optional: older rows predate it. */
+    customHtml?: (string | null)[];
 }
 
 /* ── Seed (Lagom Retreat example from the Canva file, with placeholders) ── */
@@ -513,6 +518,33 @@ export const WelcomeFlowSection = ({
             });
     }, [slug, isTemplate]);
 
+    /** Pooja's finished emails, straight from the email_wf_emails table — keyed by slot
+     *  (her position 1–9 → slot 0–8). Read-only here: her pipeline owns those rows, so
+     *  fixes happen there, not in this editor. Matched by client name (case-insensitive)
+     *  because her table has no dashboard slug. */
+    const [dbEmails, setDbEmails] = useState<Record<number, { html: string; subject: string; preview: string }>>({});
+    useEffect(() => {
+        const name = clientName.trim();
+        if (!name || isTemplate) return;
+        supabase
+            .from("email_wf_emails")
+            .select("position, subject_line, preview_text, rendered_html")
+            .ilike("client_name", name)
+            .order("position")
+            .then(({ data, error }) => {
+                if (error || !data?.length) return;
+                const next: Record<number, { html: string; subject: string; preview: string }> = {};
+                for (const r of data) {
+                    const slot = Number(r.position) - 1;
+                    if (slot >= 0 && slot < 9 && r.rendered_html) {
+                        next[slot] = { html: r.rendered_html, subject: r.subject_line ?? "", preview: r.preview_text ?? "" };
+                    }
+                }
+                setDbEmails(next);
+                setRev((r) => r + 1);
+            });
+    }, [clientName, isTemplate]);
+
     // Debounced autosave while editing.
     useEffect(() => {
         if (!hydratedRef.current || !slug || isTemplate || isLocked) return;
@@ -678,11 +710,57 @@ export const WelcomeFlowSection = ({
         setPenPop(null);
     };
 
-    const email = flow.emails[tab];
+    const customs = flow.customHtml ?? [];
+    const dbEmail = dbEmails[tab];
+    /** Which Email tabs exist: the three built-in slots, plus any slot holding a
+     *  finished email — an uploaded HTML file or a row from Pooja's table (1–9). */
+    const slots = Array.from({ length: 9 }, (_, i) => i).filter((i) => i < flow.emails.length || !!customs[i] || !!dbEmails[i]);
+    /** The finished HTML for this tab; an uploaded file wins over the table row. */
+    const custom = customs[tab] || dbEmail?.html || null;
+    const email = flow.emails[tab] ?? flow.emails[0];
     // Recompute only on tab switch / structural change / lock toggle — inline text
-    // edits keep the iframe document alive so typing never flickers.
+    // edits keep the iframe document alive so typing never flickers. dbEmails isn't a
+    // dep because loading it bumps rev.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    const previewHtml = useMemo(() => emailHtml(flowRef.current.emails[tab], flowRef.current.settings, !isLocked), [tab, rev, isLocked]);
+    const previewHtml = useMemo(() => {
+        const c = (flowRef.current.customHtml ?? [])[tab] || dbEmails[tab]?.html;
+        if (c) return c;
+        return emailHtml(flowRef.current.emails[tab] ?? flowRef.current.emails[0], flowRef.current.settings, !isLocked);
+    }, [tab, rev, isLocked]);
+
+    /** Store (or clear) a finished HTML file for a slot; trailing empty slots are
+     *  trimmed so removed tabs disappear again. */
+    const setCustom = (slot: number, html: string | null) =>
+        patch((d) => {
+            const list = (d.customHtml = d.customHtml ?? []);
+            while (list.length <= slot) list.push(null);
+            list[slot] = html;
+            while (list.length && !list[list.length - 1]) list.pop();
+        }, true);
+
+    const onPickHtml = (slot: number) => async (e: ChangeEvent<HTMLInputElement>) => {
+        const f = e.target.files?.[0];
+        e.target.value = "";
+        if (!f) return;
+        const text = await f.text();
+        if (!text.trim()) return;
+        setCustom(slot, text);
+        setTab(slot);
+        setPenPop(null);
+    };
+
+    /* Paste-HTML panel — the second way in besides a file: which slot it's aimed at,
+       and the pasted code until Save. */
+    const [pasteFor, setPasteFor] = useState<number | null>(null);
+    const [pasteText, setPasteText] = useState("");
+    const savePaste = () => {
+        if (pasteFor === null || !pasteText.trim()) return;
+        setCustom(pasteFor, pasteText);
+        setTab(pasteFor);
+        setPasteFor(null);
+        setPasteText("");
+        setPenPop(null);
+    };
 
     const restoreScroll = () => {
         const win = iframeRef.current?.contentWindow;
@@ -690,7 +768,7 @@ export const WelcomeFlowSection = ({
     };
 
     const copyHtml = () => {
-        navigator.clipboard.writeText(emailHtml(email, flow.settings)).then(() => {
+        navigator.clipboard.writeText(custom ?? emailHtml(email, flow.settings)).then(() => {
             setCopied(true);
             setTimeout(() => setCopied(false), 1800);
         });
@@ -709,15 +787,17 @@ export const WelcomeFlowSection = ({
             <div>
                 <h2 className="text-display-xs font-semibold text-primary md:text-display-sm">Welcome Email Flow</h2>
                 <p className="mt-1.5 text-md text-tertiary">
-                    Three emails — Promotion → Reminder → Last Chance — sent {flow.waits[0] || "1 day"} apart. Copy each finished email into GoHighLevel.
+                    {slots.length === 3
+                        ? `Three emails — Promotion → Reminder → Last Chance — sent ${flow.waits[0] || "1 day"} apart. Copy each finished email into GoHighLevel.`
+                        : `${slots.length} emails, designed and delivered as finished HTML. Review each one, then copy it into GoHighLevel.`}
                 </p>
             </div>
 
-            {/* Email tabs */}
+            {/* Email tabs — the built-in three plus any slot holding a finished HTML file. */}
             <div className="mt-6 flex flex-wrap items-center gap-2">
-                {flow.emails.map((e, i) => (
+                {slots.map((i) => (
                     <button
-                        key={e.key}
+                        key={i}
                         type="button"
                         onClick={() => {
                             setTab(i);
@@ -732,13 +812,81 @@ export const WelcomeFlowSection = ({
                         Email {i + 1}
                     </button>
                 ))}
+                {!isLocked && (slots[slots.length - 1] ?? -1) < 8 && (
+                    <>
+                        <label className="cursor-pointer rounded-lg border border-dashed border-secondary px-3.5 py-2 text-sm font-semibold text-tertiary transition duration-100 ease-linear hover:border-brand hover:text-brand-secondary">
+                            + Add email (HTML file)
+                            <input type="file" accept=".html,.htm" className="hidden" onChange={onPickHtml((slots[slots.length - 1] ?? -1) + 1)} />
+                        </label>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setPasteText("");
+                                setPasteFor((slots[slots.length - 1] ?? -1) + 1);
+                            }}
+                            className="rounded-lg border border-dashed border-secondary px-3.5 py-2 text-sm font-semibold text-tertiary transition duration-100 ease-linear hover:border-brand hover:text-brand-secondary"
+                        >
+                            + Paste HTML
+                        </button>
+                    </>
+                )}
                 <span className="ml-1 text-xs text-quaternary">
                     {tab > 0 ? `sent ${flow.waits[tab - 1] || "1 day"} after Email ${tab}` : "sent when the lead signs up"}
                 </span>
             </div>
 
-            {/* Edit toolbar */}
-            {!isLocked && (
+            {/* Table-sourced email — subject/preview from Pooja's row; edits happen in her pipeline. */}
+            {dbEmail && !customs[tab] && (
+                <div className="mt-4 rounded-xl bg-secondary px-4 py-3">
+                    <p className="text-sm text-tertiary">
+                        <span className="font-semibold text-secondary">Subject:</span> {dbEmail.subject || "—"}
+                    </p>
+                    {dbEmail.preview && <p className="mt-0.5 text-xs text-quaternary">Preview text: {dbEmail.preview}</p>}
+                    {!isLocked && (
+                        <p className="mt-1 text-xs text-quaternary">
+                            Loaded from the email designer's table (position {tab + 1}) — to change it, update the row there; this page always shows the
+                            latest version.
+                        </p>
+                    )}
+                </div>
+            )}
+
+            {/* Finished-HTML bar — this tab shows an uploaded file, not the built-in editor. */}
+            {customs[tab] && !isLocked && (
+                <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl bg-secondary px-4 py-3">
+                    <p className="min-w-0 flex-1 text-sm text-tertiary">
+                        <span className="font-semibold text-secondary">Finished HTML email</span> — delivered by Pooja and shown exactly as it will send.
+                        The built-in editor is off for this tab.
+                    </p>
+                    <label className="cursor-pointer text-sm font-semibold text-brand-secondary hover:underline">
+                        Replace file
+                        <input type="file" accept=".html,.htm" className="hidden" onChange={onPickHtml(tab)} />
+                    </label>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setPasteText(customs[tab] ?? "");
+                            setPasteFor(tab);
+                        }}
+                        className="text-sm font-semibold text-brand-secondary hover:underline"
+                    >
+                        Paste HTML
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setCustom(tab, null);
+                            if (tab >= flow.emails.length && !dbEmails[tab]) setTab(0);
+                        }}
+                        className="text-sm font-semibold text-tertiary transition duration-100 ease-linear hover:text-error-primary"
+                    >
+                        Remove
+                    </button>
+                </div>
+            )}
+
+            {/* Edit toolbar — built-in emails only; a finished HTML file isn't edited here. */}
+            {!isLocked && !custom && (
                 <div className="mt-4 flex flex-wrap items-end gap-3">
                     <div className="min-w-64 flex-1">
                         <Field label="Subject line" value={email.subject} onChange={(v) => patch((d) => void (d.emails[tab].subject = v))} />
@@ -778,7 +926,64 @@ export const WelcomeFlowSection = ({
                 </div>
             )}
 
-            {!isLocked && (
+            {/* Even a built-in tab can be replaced by a finished email — file or pasted code. */}
+            {!isLocked && !custom && (
+                <p className="mt-3 text-sm text-tertiary">
+                    Replace this email with finished HTML:{" "}
+                    <label className="cursor-pointer font-semibold text-brand-secondary hover:underline">
+                        Upload file
+                        <input type="file" accept=".html,.htm" className="hidden" onChange={onPickHtml(tab)} />
+                    </label>{" "}
+                    ·{" "}
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setPasteText("");
+                            setPasteFor(tab);
+                        }}
+                        className="font-semibold text-brand-secondary hover:underline"
+                    >
+                        Paste HTML
+                    </button>
+                </p>
+            )}
+
+            {/* Paste-HTML panel */}
+            {!isLocked && pasteFor !== null && (
+                <div className="mt-4 rounded-xl bg-primary p-4 ring-1 ring-secondary">
+                    <p className="text-sm font-semibold text-primary">Paste the email's HTML — it becomes Email {pasteFor + 1}</p>
+                    <textarea
+                        rows={6}
+                        value={pasteText}
+                        onChange={(e) => setPasteText(e.target.value)}
+                        placeholder="<!DOCTYPE html>…"
+                        spellCheck={false}
+                        className="mt-2 w-full resize-y rounded-lg bg-secondary px-3 py-2 font-mono text-xs text-primary ring-1 ring-secondary outline-none focus:ring-brand"
+                    />
+                    <div className="mt-2 flex items-center gap-3">
+                        <button
+                            type="button"
+                            onClick={savePaste}
+                            disabled={!pasteText.trim()}
+                            className="rounded-lg bg-brand-solid px-3.5 py-2 text-sm font-semibold text-white transition duration-100 ease-linear hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            Use this HTML
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setPasteFor(null);
+                                setPasteText("");
+                            }}
+                            className="text-sm font-semibold text-tertiary transition duration-100 ease-linear hover:text-secondary"
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {!isLocked && !custom && (
                 <p className="mt-3 text-sm text-tertiary">
                     <span className="font-semibold text-secondary">Double-click</span> any text in the email to edit it · click the{" "}
                     <span className="inline-flex size-5 items-center justify-center rounded-full bg-brand-solid text-[11px] text-white">✎</span> on buttons and
@@ -825,7 +1030,7 @@ export const WelcomeFlowSection = ({
                         ref={iframeRef}
                         title={`${email.label} preview`}
                         srcDoc={previewHtml}
-                        sandbox={isLocked ? "" : "allow-scripts"}
+                        sandbox={isLocked || custom ? "" : "allow-scripts"}
                         onLoad={restoreScroll}
                         className="rounded-xl bg-white shadow-lg ring-1 ring-secondary"
                         style={{ width: device === "mobile" ? 375 : 620, height: isLocked ? 640 : 780, border: "0", maxWidth: "100%" }}
