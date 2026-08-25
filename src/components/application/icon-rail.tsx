@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { AlertCircle, Bell01, BookOpen01, CheckCircle, ChevronLeft, ChevronRight, Code02, HelpCircle, Home02, LayoutLeft, Lock01, LockUnlocked01, Moon01, Sun, Users01 } from "@untitledui/icons";
+import { AlertCircle, Bell01, BookOpen01, CheckCircle, ChevronLeft, ChevronRight, Code02, Edit05, HelpCircle, Home02, LayoutLeft, Lock01, LockUnlocked01, Moon01, Sun, Users01 } from "@untitledui/icons";
 import { Avatar } from "@/components/base/avatar/avatar";
 import { useAuthUser } from "@/hooks/use-auth-user";
 import { fetchAttentionItems, type AttentionItem } from "@/lib/notifications";
@@ -53,7 +53,7 @@ export const HeaderAvatar = () => {
  * project-log pages (HIGH count called out), open docs requests / bug reports,
  * and the Client List roster gap. Team-only (signed-in @hiddengem.media).
  */
-const BELL_KIND_ICONS = { questions: HelpCircle, request: AlertCircle, roster: Users01 };
+const BELL_KIND_ICONS = { questions: HelpCircle, request: AlertCircle, roster: Users01, suggestions: Edit05 };
 
 export const HeaderBell = () => {
     const { user } = useAuthUser();

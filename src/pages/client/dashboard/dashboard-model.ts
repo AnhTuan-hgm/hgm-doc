@@ -185,6 +185,7 @@ export const mergeContent = (partial?: Partial<DashboardContent> | null): Dashbo
     revenue: { ...TEMPLATE_CONTENT.revenue, ...partial?.revenue },
     links: partial?.links ?? TEMPLATE_CONTENT.links,
     videos: partial?.videos ?? [],
+    resources: partial?.resources ?? [],
     // Arrays are spread-hostile: `...partial.foundation` would hand back `undefined` for
     // every list an older row predates, and the section renderers all call .map on them.
     // Each one falls back explicitly. `taglines` is padded to three so the 01/02/03 rail

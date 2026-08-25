@@ -211,6 +211,10 @@ export interface DashboardContent {
     };
     links: { title: string; description: string; url: string }[];
     videos?: { id: string; title: string; url: string }[]; // Video guides (Loom link or uploaded mp4) — optional so older rows load unchanged
+    /** AM-added rows in the side menu's Resources group (e.g. a Claude project link).
+     *  `hidden` keeps a row team-only — new rows start hidden so nothing internal
+     *  leaks to a client by default. Optional: older rows predate it. */
+    resources?: { id: string; label: string; url: string; hidden?: boolean }[];
     /** The Master Brand Document — the Foundation feeding the funnel. Optional so older
      * dashboard rows (saved before this section existed) still load unchanged.
      *

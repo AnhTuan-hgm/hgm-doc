@@ -12,7 +12,7 @@ import { supabase } from "@/lib/supabase";
 
 export interface AttentionItem {
     id: string;
-    kind: "questions" | "request" | "roster";
+    kind: "questions" | "request" | "roster" | "suggestions";
     title: string;
     description: string;
     /** Internal route to open when clicked. */
@@ -36,11 +36,15 @@ type QA = { answer?: string; resolved?: boolean; priority?: string };
 const isOpen = (q: QA) => !(q.resolved ?? !!(q.answer || "").trim());
 
 export async function fetchAttentionItems(): Promise<AttentionItem[]> {
-    const [pagesRes, requestsRes, clientsRes] = await Promise.all([
+    const [pagesRes, requestsRes, clientsRes, suggestionsRes] = await Promise.all([
         supabase.from("sop_pages").select("slug, data").in("slug", QUESTION_SLUGS),
         supabase.from("docs_requests").select("id, title, priority, requester").eq("status", "open").order("created_at", { ascending: false }),
         // Private/test clients don't count toward the team-wide roster size.
         supabase.from("clients").select("id", { count: "exact", head: true }).is("private_to", null),
+        // Client edit suggestions awaiting AM review. Non-team sessions get a
+        // permission-denied error (anon has no grant at all), which the error
+        // check below turns into a silent no-op.
+        supabase.from("dashboard_suggestions").select("slug").eq("status", "pending"),
     ]);
 
     const items: AttentionItem[] = [];
@@ -63,7 +67,10 @@ export async function fetchAttentionItems(): Promise<AttentionItem[]> {
                 id: "questions",
                 kind: "questions",
                 title: `${open} question${open === 1 ? "" : "s"} need${open === 1 ? "s" : ""} your attention`,
-                description: high > 0 ? `${high} HIGH priority · across ${pages} project page${pages === 1 ? "" : "s"}` : `Across ${pages} project page${pages === 1 ? "" : "s"}`,
+                description:
+                    high > 0
+                        ? `${high} HIGH priority · across ${pages} project page${pages === 1 ? "" : "s"}`
+                        : `Across ${pages} project page${pages === 1 ? "" : "s"}`,
                 to: "/questions",
                 urgent: high > 0,
             });
@@ -80,6 +87,19 @@ export async function fetchAttentionItems(): Promise<AttentionItem[]> {
                 to: "/dashboard?dept=clients",
             });
         }
+    }
+
+    // 4) Client suggestions on Master Brand Documents awaiting review
+    if (!suggestionsRes.error && suggestionsRes.data && suggestionsRes.data.length > 0) {
+        const slugs = [...new Set(suggestionsRes.data.map((r) => r.slug as string))];
+        const n = suggestionsRes.data.length;
+        items.push({
+            id: "suggestions",
+            kind: "suggestions",
+            title: `${n} client edit suggestion${n === 1 ? "" : "s"} to review`,
+            description: `On ${slugs.length} dashboard${slugs.length === 1 ? "" : "s"} — accept or decline in the Master Brand Document`,
+            to: slugs.length === 1 ? `/${slugs[0]}#foundation` : "/dashboard?dept=clients",
+        });
     }
 
     // 2) Open docs requests / bugs (bugs + high priority first, cap at 4)

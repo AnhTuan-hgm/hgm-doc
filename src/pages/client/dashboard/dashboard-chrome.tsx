@@ -33,7 +33,9 @@ export const DashboardAccessGate = ({
 }: {
     allowedEmails: string[];
     sharePassword: string;
-    onUnlock: () => void;
+    /** Receives the (normalized) email that cleared the gate — the client's identity
+     *  for the suggestion feature, since to Supabase they are just `anon`. */
+    onUnlock: (email: string) => void;
     /** Per-client override (image or video). Falls back to the shared leaf loop. */
     backgroundUrl?: string;
 }) => {
@@ -53,7 +55,7 @@ export const DashboardAccessGate = ({
             return;
         }
         setError("");
-        onUnlock();
+        onUnlock(normEmail(email));
     };
 
     return (

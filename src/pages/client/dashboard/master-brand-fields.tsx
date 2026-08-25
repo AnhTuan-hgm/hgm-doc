@@ -5,12 +5,13 @@
  * so the page reads as a document rather than a form full of empty boxes. The section
  * metadata and the compiler they pair with live in master-brand-document.ts.
  */
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useContext, useEffect, useRef, useState } from "react";
 import { Check, Trash01 } from "@untitledui-pro/icons/line";
 import { BadgeWithDot } from "@/components/base/badges/badges";
 import { editInput } from "@/pages/client/dashboard/dashboard-chrome";
 import { type LocalFavorite, filled } from "@/pages/client/dashboard/dashboard-model";
 import { FOUNDATION_SECTIONS } from "@/pages/client/dashboard/master-brand-document";
+import { SuggestionBox, SuggestionContext } from "@/pages/client/dashboard/suggestions";
 import { cx } from "@/utils/cx";
 
 /** One of the eleven sections. Anchored by id so the in-page rail can jump to it;
@@ -68,7 +69,13 @@ export const SourceBadge = ({ children }: { children: ReactNode }) => (
 );
 
 /** A labelled field. Renders read-only prose when locked and an input when not, so the
- *  document reads as a document rather than as a form full of empty boxes. */
+ *  document reads as a document rather than as a form full of empty boxes.
+ *
+ *  `sKey` opts a field into suggestion mode: in a client's "suggest" mode the input
+ *  renders despite the lock but writes ONLY the suggestion draft (never `onChange` —
+ *  that would mutate real content a client can't save anyway), and in every mode the
+ *  field shows its pending / resolved suggestions underneath. No sKey ⇒ exactly the
+ *  old behaviour. */
 export const DocField = ({
     label,
     hint,
@@ -79,6 +86,7 @@ export const DocField = ({
     onChange,
     className,
     mono,
+    sKey,
 }: {
     label?: string;
     hint?: string;
@@ -90,44 +98,76 @@ export const DocField = ({
     onChange: (v: string) => void;
     className?: string;
     mono?: boolean;
-}) => (
-    <div className={className}>
-        {label && <p className="text-sm font-medium text-secondary">{label}</p>}
-        {hint && <p className="mt-0.5 text-xs text-quaternary">{hint}</p>}
-        {isLocked ? (
-            <p className={cx("mt-1 text-md whitespace-pre-wrap", filled(value) ? "text-tertiary" : "text-quaternary italic", mono && "font-mono text-sm")}>
-                {filled(value) ? value : "Not filled in"}
-            </p>
-        ) : rows ? (
-            <textarea
-                rows={rows}
-                placeholder={placeholder}
-                value={value}
-                onChange={(e) => onChange(e.target.value)}
-                className={cx(editInput(), "mt-1.5 resize-y", mono && "font-mono")}
-            />
-        ) : (
-            <input
-                placeholder={placeholder}
-                value={value}
-                onChange={(e) => onChange(e.target.value)}
-                className={cx(editInput(), "mt-1.5", mono && "font-mono")}
-            />
-        )}
-    </div>
-);
+    sKey?: string;
+}) => {
+    const sctx = useContext(SuggestionContext);
+    const suggesting = !!sKey && sctx?.mode === "suggest";
+    const shownValue = suggesting ? (sctx!.draft[sKey!] ?? value) : value;
+    const handleChange = suggesting ? (v: string) => sctx!.setDraft(sKey!, v) : onChange;
+    return (
+        <div className={className}>
+            {label && <p className="text-sm font-medium text-secondary">{label}</p>}
+            {hint && <p className="mt-0.5 text-xs text-quaternary">{hint}</p>}
+            {isLocked && !suggesting ? (
+                <p className={cx("mt-1 text-md whitespace-pre-wrap", filled(value) ? "text-tertiary" : "text-quaternary italic", mono && "font-mono text-sm")}>
+                    {filled(value) ? value : "Not filled in"}
+                </p>
+            ) : rows ? (
+                <textarea
+                    rows={rows}
+                    placeholder={placeholder}
+                    value={shownValue}
+                    onChange={(e) => handleChange(e.target.value)}
+                    className={cx(editInput(), "mt-1.5 resize-y", mono && "font-mono", suggesting && "border-brand")}
+                />
+            ) : (
+                <input
+                    placeholder={placeholder}
+                    value={shownValue}
+                    onChange={(e) => handleChange(e.target.value)}
+                    className={cx(editInput(), "mt-1.5", mono && "font-mono", suggesting && "border-brand")}
+                />
+            )}
+            {sKey && <SuggestionBox sKey={sKey} liveValue={value} />}
+        </div>
+    );
+};
 
 /** The boxed guests / bedrooms / beds / bathrooms counts on a focus property. */
-export const DocStat = ({ label, value, isLocked, onChange }: { label: string; value: string; isLocked: boolean; onChange: (v: string) => void }) => (
-    <div className="rounded-xl bg-primary p-3 ring-1 ring-secondary">
-        <p className="text-xs font-medium text-secondary">{label}</p>
-        {isLocked ? (
-            <p className={cx("mt-1 text-md tabular-nums", filled(value) ? "text-tertiary" : "text-quaternary")}>{filled(value) ? value : "—"}</p>
-        ) : (
-            <input placeholder="—" value={value} onChange={(e) => onChange(e.target.value)} className={cx(editInput(), "mt-1 tabular-nums")} />
-        )}
-    </div>
-);
+export const DocStat = ({
+    label,
+    value,
+    isLocked,
+    onChange,
+    sKey,
+}: {
+    label: string;
+    value: string;
+    isLocked: boolean;
+    onChange: (v: string) => void;
+    sKey?: string;
+}) => {
+    const sctx = useContext(SuggestionContext);
+    const suggesting = !!sKey && sctx?.mode === "suggest";
+    const shownValue = suggesting ? (sctx!.draft[sKey!] ?? value) : value;
+    const handleChange = suggesting ? (v: string) => sctx!.setDraft(sKey!, v) : onChange;
+    return (
+        <div className="rounded-xl bg-primary p-3 ring-1 ring-secondary">
+            <p className="text-xs font-medium text-secondary">{label}</p>
+            {isLocked && !suggesting ? (
+                <p className={cx("mt-1 text-md tabular-nums", filled(value) ? "text-tertiary" : "text-quaternary")}>{filled(value) ? value : "—"}</p>
+            ) : (
+                <input
+                    placeholder="—"
+                    value={shownValue}
+                    onChange={(e) => handleChange(e.target.value)}
+                    className={cx(editInput(), "mt-1 tabular-nums", suggesting && "border-brand")}
+                />
+            )}
+            {sKey && <SuggestionBox sKey={sKey} liveValue={value} />}
+        </div>
+    );
+};
 
 /**
  * The document's own section rail — eleven entries is too many to scroll blind.
@@ -197,7 +237,10 @@ export const DocRail = <Id extends string>({ sections, progress }: { sections: r
     );
 };
 
-/** A two-column name / website-address table (Restaurants, Activities). */
+/** A two-column name / website-address table (Restaurants, Activities).
+ *  `sKeyBase` opts the table into suggestion mode: in a client's "suggest" mode the
+ *  cells render inputs writing suggestion drafts (row add/remove stays team-only),
+ *  and every cell shows its pending / resolved suggestions underneath. */
 export const FavoriteTable = ({
     title,
     note,
@@ -206,6 +249,7 @@ export const FavoriteTable = ({
     onChange,
     onAdd,
     onRemove,
+    sKeyBase,
 }: {
     title: string;
     note: string;
@@ -214,51 +258,76 @@ export const FavoriteTable = ({
     onChange: (id: string, patch: Partial<LocalFavorite>) => void;
     onAdd: () => void;
     onRemove: (id: string) => void;
-}) => (
-    <div>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-md font-semibold text-primary">{title}</p>
-            {isLocked ? (
-                <span className="text-xs text-quaternary">{note}</span>
-            ) : (
-                <button
-                    type="button"
-                    onClick={onAdd}
-                    className="text-sm font-semibold text-brand-secondary transition duration-100 ease-linear hover:underline"
-                >
-                    + Add row
-                </button>
-            )}
-        </div>
-        {!isLocked && <p className="mt-0.5 text-xs text-quaternary">{note}</p>}
-        <div className="mt-2">
-            {rows.length === 0 && (
-                <p className="rounded-xl border border-dashed border-secondary px-4 py-3 text-sm text-quaternary italic">Nothing added yet.</p>
-            )}
-            {rows.map((r) => (
-                <div
-                    key={r.id}
-                    className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_auto] items-center gap-3 border-b border-secondary py-2.5 last:border-b-0"
-                >
-                    {isLocked ? (
-                        <>
-                            <span className={cx("truncate text-md", filled(r.name) ? "text-primary" : "text-quaternary italic")}>
-                                {filled(r.name) ? r.name : "Name"}
-                            </span>
-                            <span className={cx("text-md", filled(r.description) ? "text-tertiary" : "text-quaternary italic")}>
-                                {filled(r.description) ? r.description : "Website address"}
-                            </span>
-                            <span />
-                        </>
-                    ) : (
-                        <>
-                            <input placeholder="Name" value={r.name} onChange={(e) => onChange(r.id, { name: e.target.value })} className={editInput()} />
-                            <input
-                                placeholder="Website address"
-                                value={r.description}
-                                onChange={(e) => onChange(r.id, { description: e.target.value })}
-                                className={editInput()}
-                            />
+    sKeyBase?: "restaurants" | "activities";
+}) => {
+    const sctx = useContext(SuggestionContext);
+    const suggesting = !!sKeyBase && sctx?.mode === "suggest";
+    const cell = (rowId: string, col: "name" | "description", value: string, placeholder: string) => {
+        const sKey = sKeyBase ? `${sKeyBase}.${rowId}.${col}` : undefined;
+        if (suggesting && sKey) {
+            return (
+                <div className="min-w-0">
+                    <input
+                        placeholder={placeholder}
+                        value={sctx!.draft[sKey] ?? value}
+                        onChange={(e) => sctx!.setDraft(sKey, e.target.value)}
+                        className={editInput("border-brand")}
+                    />
+                    <SuggestionBox sKey={sKey} liveValue={value} />
+                </div>
+            );
+        }
+        if (isLocked) {
+            return (
+                <div className="min-w-0">
+                    <span
+                        className={cx(
+                            col === "name" ? "block truncate text-md" : "text-md",
+                            filled(value) ? (col === "name" ? "text-primary" : "text-tertiary") : "text-quaternary italic",
+                        )}
+                    >
+                        {filled(value) ? value : placeholder}
+                    </span>
+                    {sKey && <SuggestionBox sKey={sKey} liveValue={value} />}
+                </div>
+            );
+        }
+        return (
+            <div className="min-w-0">
+                <input placeholder={placeholder} value={value} onChange={(e) => onChange(rowId, { [col]: e.target.value })} className={editInput()} />
+                {sKey && <SuggestionBox sKey={sKey} liveValue={value} />}
+            </div>
+        );
+    };
+    return (
+        <div>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-md font-semibold text-primary">{title}</p>
+                {isLocked ? (
+                    <span className="text-xs text-quaternary">{note}</span>
+                ) : (
+                    <button
+                        type="button"
+                        onClick={onAdd}
+                        className="text-sm font-semibold text-brand-secondary transition duration-100 ease-linear hover:underline"
+                    >
+                        + Add row
+                    </button>
+                )}
+            </div>
+            {!isLocked && <p className="mt-0.5 text-xs text-quaternary">{note}</p>}
+            <div className="mt-2">
+                {rows.length === 0 && (
+                    <p className="rounded-xl border border-dashed border-secondary px-4 py-3 text-sm text-quaternary italic">Nothing added yet.</p>
+                )}
+                {rows.map((r) => (
+                    <div
+                        key={r.id}
+                        className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_auto] items-start gap-3 border-b border-secondary py-2.5 last:border-b-0"
+                    >
+                        {cell(r.id, "name", r.name, "Name")}
+                        {cell(r.id, "description", r.description, "Website address")}
+                        {!isLocked && !suggesting ? (
                             <button
                                 type="button"
                                 title={`Remove ${r.name.trim() || "row"}`}
@@ -267,10 +336,12 @@ export const FavoriteTable = ({
                             >
                                 <Trash01 className="size-3.5" aria-hidden="true" />
                             </button>
-                        </>
-                    )}
-                </div>
-            ))}
+                        ) : (
+                            <span />
+                        )}
+                    </div>
+                ))}
+            </div>
         </div>
-    </div>
-);
+    );
+};

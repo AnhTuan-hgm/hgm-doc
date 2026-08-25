@@ -1,4 +1,4 @@
-import { type ChangeEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ChangeEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 // Functional UI icons — Untitled UI PRO, line style (drop-in for the free set).
 import {
     AlertTriangle,
@@ -17,6 +17,7 @@ import {
     Edit01,
     FileCheck02,
     Image01,
+    Link01,
     LinkExternal01,
     MessageChatCircle,
     Moon01,
@@ -125,6 +126,8 @@ import {
     OVERVIEW_SECTIONS,
     overviewSectionNumber,
 } from "@/pages/client/dashboard/overview-doc";
+import { SuggestionBox, SuggestionContext, fetchSuggestions, sendSuggestions, withdrawSuggestion } from "@/pages/client/dashboard/suggestions";
+import { type Suggestion, applySuggestion, labelForKey, valueForKey } from "@/pages/client/dashboard/suggestions-model";
 import { HostOnboardingFormPage, ensureHostOnboardingForm, hostOnboardingAnswers, hostOnboardingProgress } from "@/pages/client/host-onboarding-form-page";
 import { useSuppressFloatingThemeToggle, useTheme } from "@/providers/theme-provider";
 import { compressImageFile } from "@/utils/compress-image";
@@ -242,23 +245,35 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     const gateArmed = allowedEmails.some((e) => e.trim()) && !!sharePassword;
 
     // Unlock survives navigation within the tab, not a new one — same lifetime as the
-    // owner-guide share gate (sessionStorage, keyed per slug).
+    // owner-guide share gate (sessionStorage, keyed per slug). Stored as JSON carrying
+    // the email that cleared the gate: the client is `anon` to Supabase, so this typed
+    // address is the only identity their suggestions can be stamped with. A legacy "1"
+    // (written before suggestion mode) still counts as unlocked, just anonymous — the
+    // suggest button stays hidden until their next fresh unlock.
     const unlockKey = `cd_unlock_${slug ?? ""}`;
-    const [clientUnlocked, setClientUnlocked] = useState(() => {
+    const readUnlock = (): { unlocked: boolean; email: string } => {
         try {
-            return sessionStorage.getItem(unlockKey) === "1";
+            const raw = sessionStorage.getItem(unlockKey);
+            if (!raw) return { unlocked: false, email: "" };
+            if (raw === "1") return { unlocked: true, email: "" };
+            return { unlocked: true, email: normEmail(String(JSON.parse(raw)?.email ?? "")) };
         } catch {
-            return false;
+            return { unlocked: false, email: "" };
         }
-    });
-    const unlockDashboard = () => {
+    };
+    const [clientUnlock, setClientUnlock] = useState(readUnlock);
+    const clientUnlocked = clientUnlock.unlocked;
+    const unlockDashboard = (email: string) => {
         try {
-            sessionStorage.setItem(unlockKey, "1");
+            sessionStorage.setItem(unlockKey, JSON.stringify({ email }));
         } catch {
             /* private browsing — the unlock just won't persist past this render */
         }
-        setClientUnlocked(true);
+        setClientUnlock({ unlocked: true, email });
     };
+    /** Who the client viewer is, for suggestion authorship. Falls back to a Google-signed-in
+     *  allowlisted client (they never see the gate). Empty ⇒ suggestion UI stays hidden. */
+    const identityEmail = clientUnlock.email || (isAllowedClient ? viewerEmail : "");
 
     const hasAccess = signedInAsTeam || isTemplate || !gateArmed || clientUnlocked || isAllowedClient;
 
@@ -677,6 +692,146 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     const addFavorite = (list: "restaurants" | "activities") => () => patchFoundation({ [list]: [...foundation[list], emptyFavorite()] });
     const removeFavorite = (list: "restaurants" | "activities") => (id: string) => patchFoundation({ [list]: foundation[list].filter((r) => r.id !== id) });
 
+    /* ── Suggestion mode (Master Brand Document) ──
+       A client proposes values; nothing touches the real document until an AM accepts
+       and SAVES. Suggestions live in their own table (dashboard_suggestions) so they
+       can never trip the whole-row conflict guard or be clobbered by an ordinary save.
+       Clients reach the table only through the Netlify function, which re-validates
+       their email against allowed_emails on every call. */
+    const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+    const [suggestMode, setSuggestMode] = useState(false);
+    const [suggestDraft, setSuggestDraft] = useState<Record<string, string>>({});
+    /** Accepted locally but not yet saved — flipped to accepted in the DB only after
+     *  persistAndLock's upsert succeeds, so an abandoned tab leaves them pending. */
+    const [queuedAccepts, setQueuedAccepts] = useState<ReadonlySet<string>>(new Set());
+    const [sendState, setSendState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+    /** What actually went wrong, so a failed send says why instead of "try again". */
+    const [sendError, setSendError] = useState("");
+    const foundationRevealed = (content.client_visible ?? DEFAULT_CLIENT_VISIBLE).includes("foundation");
+
+    const refreshSuggestions = useCallback(async () => {
+        if (!slug || isTemplate) return;
+        try {
+            // Read straight from the table whenever the viewer holds a team session — that
+            // includes ?preview=client, where RLS still recognises the JWT even though the
+            // page is dressed as the client's.
+            if (signedInAsTeam) {
+                const { data, error } = await supabase.from("dashboard_suggestions").select("*").eq("slug", slug).order("created_at", { ascending: false });
+                if (!error && data) setSuggestions(data as Suggestion[]);
+            } else if (identityEmail && foundationRevealed) {
+                setSuggestions(await fetchSuggestions(slug, identityEmail));
+            }
+        } catch {
+            /* the section just shows no suggestions — nothing is lost, they're server-side */
+        }
+    }, [slug, isTemplate, signedInAsTeam, identityEmail, foundationRevealed]);
+    useEffect(() => {
+        void refreshSuggestions();
+    }, [refreshSuggestions]);
+
+    const pendingSuggestions = suggestions.filter((s) => s.status === "pending");
+    const pendingByKey = new Map<string, Suggestion[]>();
+    for (const s of pendingSuggestions) pendingByKey.set(s.field_key, [...(pendingByKey.get(s.field_key) ?? []), s]);
+    const resolvedByKey = new Map<string, Suggestion>();
+    for (const s of suggestions) if (s.status !== "pending" && !resolvedByKey.has(s.field_key)) resolvedByKey.set(s.field_key, s);
+    /** Pending rows whose key no longer resolves (their row was deleted) — surfaced to
+     *  the team above the document, since no field exists to hang them on. */
+    const orphanedPending = isTeam ? pendingSuggestions.filter((s) => valueForKey(foundation, s.field_key) === null) : [];
+
+    const acceptSuggestion = (s: Suggestion) => {
+        const patch = applySuggestion(foundation, s.field_key, s.suggested_value);
+        if (!patch) return; // row deleted since — the orphan list offers Decline instead
+        patchFoundation(patch);
+        setQueuedAccepts((prev) => new Set(prev).add(s.id));
+        if (isLocked) setIsLocked(false); // the existing Save button owns persistence
+    };
+    const declineSuggestion = (s: Suggestion) => {
+        void supabase
+            .from("dashboard_suggestions")
+            .update({ status: "declined", resolved_by: user?.email ?? "", resolved_at: new Date().toISOString() })
+            .eq("id", s.id)
+            .eq("status", "pending") // a second tab that already resolved it wins
+            .then(() => void refreshSuggestions());
+    };
+    const withdrawOwnSuggestion = (s: Suggestion) => {
+        if (!slug) return;
+        // A client withdraws through the function (it re-checks they own the row); a team
+        // member previewing deletes their own test row directly.
+        const done = () => void refreshSuggestions();
+        if (identityEmail) {
+            void withdrawSuggestion(slug, identityEmail, s.id).then(done).catch(() => undefined);
+        } else if (signedInAsTeam) {
+            void supabase.from("dashboard_suggestions").delete().eq("id", s.id).eq("status", "pending").then(done);
+        }
+    };
+    const submitSuggestions = async () => {
+        if (!slug || !suggestAuthor) return;
+        // Only real changes travel: drafts equal to the live value (or on vanished keys) drop out.
+        const items = Object.entries(suggestDraft)
+            .filter(([key, value]) => {
+                const live = valueForKey(foundation, key);
+                return live !== null && value !== live;
+            })
+            .map(([key, value]) => ({
+                fieldKey: key,
+                fieldLabel: labelForKey(foundation, key),
+                currentValue: valueForKey(foundation, key) ?? "",
+                suggestedValue: value,
+            }));
+        if (items.length === 0) {
+            setSuggestMode(false);
+            setSuggestDraft({});
+            return;
+        }
+        setSendState("sending");
+        setSendError("");
+        try {
+            if (identityEmail) {
+                await sendSuggestions(slug, identityEmail, items);
+            } else {
+                // Team member previewing: write as themselves. Their JWT satisfies the
+                // team-insert policy, so the row is stamped with their real address.
+                const { error } = await supabase.from("dashboard_suggestions").insert(
+                    items.map((i) => ({
+                        slug,
+                        field_key: i.fieldKey,
+                        field_label: i.fieldLabel,
+                        current_value: i.currentValue,
+                        suggested_value: i.suggestedValue,
+                        suggested_by: suggestAuthor,
+                    })),
+                );
+                if (error) throw new Error(error.message);
+            }
+            await refreshSuggestions();
+            // The drafts are only cleared once the server has them — a failed send keeps
+            // everything typed so the client can just press Send again.
+            setSuggestDraft({});
+            setSuggestMode(false);
+            setSendState("sent");
+            window.setTimeout(() => setSendState((s) => (s === "sent" ? "idle" : s)), 6000);
+        } catch (err) {
+            setSendError(err instanceof Error ? err.message : "Something went wrong. Nothing was sent.");
+            setSendState("error");
+        }
+    };
+    /* ── Who is filing suggestions from this view, and by which route ──
+       A client (identified by the gate, or signed in and on the allowlist) posts through
+       the Netlify function, which re-checks their address against this dashboard's
+       allowlist. A team member inside ?preview=client holds no client identity, so they
+       write directly instead — authenticated as themselves, which means the suggestion is
+       honestly stamped with their @hiddengem.media address rather than the client's. Both
+       routes need somebody to attribute the suggestion to; without one there's no Send. */
+    const suggestAsTeam = previewAsClient && !!viewerEmail;
+    /** The address a suggestion sent from this view would carry. */
+    const suggestAuthor = identityEmail || (suggestAsTeam ? viewerEmail : "");
+    const canSuggest = !isTeam && !isTemplate && foundationRevealed && !!suggestAuthor;
+
+    const suggestDraftCount = Object.entries(suggestDraft).filter(([key, value]) => {
+        const live = valueForKey(foundation, key);
+        return live !== null && value !== live;
+    }).length;
+
     const foundationFilledMap = foundationProgress(foundation);
     /** v1 answers still sitting in the row — shown to the team so the redesign doesn't bury them. */
     const legacyFoundation = LEGACY_FOUNDATION_FIELDS.filter((f) => filled(foundation[f.key])).map((f) => ({
@@ -885,6 +1040,15 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     const updateLink = (link: QuickLink, patch: Partial<QuickLink>) =>
         setContent((c) => ({ ...c, links: c.links.map((l) => (l === link ? { ...l, ...patch } : l)) }));
     const removeLink = (link: QuickLink) => setContent((c) => ({ ...c, links: c.links.filter((l) => l !== link) }));
+
+    /* ── Custom Resources rows (side menu) — AM-added links, e.g. a Claude project.
+       New rows start hidden so nothing internal leaks to a client by default; the eye
+       toggle reveals a row once it's meant for them. Saved with the ordinary Save. */
+    const resources = content.resources ?? [];
+    const updateResource = (id: string, patch: Partial<(typeof resources)[number]>) =>
+        setContent((c) => ({ ...c, resources: (c.resources ?? []).map((r) => (r.id === id ? { ...r, ...patch } : r)) }));
+    const addResource = () => setContent((c) => ({ ...c, resources: [...(c.resources ?? []), { id: uid(), label: "", url: "", hidden: true }] }));
+    const removeResource = (id: string) => setContent((c) => ({ ...c, resources: (c.resources ?? []).filter((r) => r.id !== id) }));
     const updateVideo = (i: number, patch: Partial<VideoGuide>) =>
         setContent((c) => ({ ...c, videos: (c.videos ?? []).map((v, j) => (j === i ? { ...v, ...patch } : v)) }));
 
@@ -1005,6 +1169,19 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
             // jsonb re-orders keys, so only a re-read compares equal on the next save.
             const { data: fresh } = await supabase.from("dashboard_pages").select("data").eq("slug", slug).maybeSingle();
             savedRowRef.current = fresh ? JSON.stringify(fresh.data ?? null) : null;
+            // Accepted suggestions become "accepted" in the DB only now, after the values
+            // they carry are really saved. On error they simply stay pending — re-accepting
+            // applies the same value again, so nothing is lost either way.
+            if (queuedAccepts.size) {
+                const { error: flushErr } = await supabase
+                    .from("dashboard_suggestions")
+                    .update({ status: "accepted", resolved_by: user?.email ?? "", resolved_at: new Date().toISOString() })
+                    .in("id", [...queuedAccepts]);
+                if (!flushErr) {
+                    setQueuedAccepts(new Set());
+                    void refreshSuggestions();
+                }
+            }
             setSaveState("saved");
             window.setTimeout(() => setSaveState((s) => (s === "saved" ? "idle" : s)), 2500);
         }
@@ -1684,6 +1861,86 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                             />
                                                         </motion.div>
                                                     ))}
+                                                {/* ── Custom Resources rows — AM-added links (e.g. a Claude project). Clients
+                                                    only see revealed rows with a real URL; hidden rows don't even show "Soon",
+                                                    they're internal links, not roadmap promises. */}
+                                                {group.phase === "resources" && (
+                                                    <>
+                                                        {resources
+                                                            .filter((r) => isTeam || (!r.hidden && r.url.trim()))
+                                                            .map((r) =>
+                                                                isTeam && !isLocked ? (
+                                                                    <div key={r.id} className="flex flex-col gap-1.5 rounded-md p-2 pl-4 ring-1 ring-secondary">
+                                                                        <input
+                                                                            placeholder="Resource name"
+                                                                            value={r.label}
+                                                                            onChange={(e) => updateResource(r.id, { label: e.target.value })}
+                                                                            className={editInput("text-xs font-semibold")}
+                                                                        />
+                                                                        <input
+                                                                            placeholder="https://"
+                                                                            value={r.url}
+                                                                            onChange={(e) => updateResource(r.id, { url: e.target.value })}
+                                                                            className={editInput("font-mono text-xs")}
+                                                                        />
+                                                                        <div className="flex items-center justify-end gap-1">
+                                                                            <button
+                                                                                type="button"
+                                                                                title={r.hidden ? "Show to this client" : "Hide from this client"}
+                                                                                aria-pressed={!r.hidden}
+                                                                                onClick={() => updateResource(r.id, { hidden: !r.hidden })}
+                                                                                className={cx(
+                                                                                    "flex size-6 items-center justify-center rounded-md transition duration-100 ease-linear hover:bg-secondary",
+                                                                                    r.hidden
+                                                                                        ? "text-quaternary hover:text-primary"
+                                                                                        : "text-brand-secondary hover:text-brand-secondary_hover",
+                                                                                )}
+                                                                            >
+                                                                                {r.hidden ? <EyeOffGlyph /> : <EyeGlyph />}
+                                                                            </button>
+                                                                            <button
+                                                                                type="button"
+                                                                                title={`Remove ${r.label.trim() || "resource"}`}
+                                                                                onClick={() => removeResource(r.id)}
+                                                                                className="flex size-6 items-center justify-center rounded-md text-fg-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-error-primary"
+                                                                            >
+                                                                                <Trash01 className="size-3.5" aria-hidden="true" />
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                ) : (
+                                                                    <SectionNavItem
+                                                                        key={r.id}
+                                                                        icon={Link01}
+                                                                        label={r.label.trim() || "Untitled resource"}
+                                                                        current={false}
+                                                                        disabled={!r.url.trim()}
+                                                                        indent
+                                                                        badge={
+                                                                            isTeam && r.hidden ? (
+                                                                                <span className="ml-2 shrink-0 text-[10px] font-bold text-quaternary uppercase">
+                                                                                    Hidden
+                                                                                </span>
+                                                                            ) : undefined
+                                                                        }
+                                                                        onClick={() => {
+                                                                            const url = r.url.trim();
+                                                                            if (url) window.open(url, "_blank", "noopener,noreferrer");
+                                                                        }}
+                                                                    />
+                                                                ),
+                                                            )}
+                                                        {isTeam && !isLocked && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={addResource}
+                                                                className="rounded-md p-2 pl-4 text-left text-sm font-semibold text-brand-secondary transition duration-100 ease-linear hover:bg-primary_hover hover:underline"
+                                                            >
+                                                                + Add resource
+                                                            </button>
+                                                        )}
+                                                    </>
+                                                )}
                                             </div>
                                         )}
                                     </div>
@@ -2953,310 +3210,762 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                 )}
 
                                                 {activeSection === "foundation" && (
-                                                    <Reveal>
-                                                        <SectionEyebrow section={activeSection} />
-                                                        <SectionHeading>Master Brand Document</SectionHeading>
-                                                        <p className="mt-3 text-md text-tertiary">
-                                                            This is where it starts. Everyone — you, your team, and ours — keeps this updated. It's what your
-                                                            Welcome Emails, chat widget, and every future AI feature read from, so the more complete it is, the
-                                                            smarter everything downstream gets.
-                                                        </p>
+                                                    <SuggestionContext.Provider
+                                                        value={{
+                                                            mode: isTeam ? "review" : suggestMode ? "suggest" : "off",
+                                                            pendingByKey,
+                                                            resolvedByKey,
+                                                            draft: suggestDraft,
+                                                            setDraft: (k, v) => setSuggestDraft((d) => ({ ...d, [k]: v })),
+                                                            queuedAccepts,
+                                                            accept: acceptSuggestion,
+                                                            decline: declineSuggestion,
+                                                            withdraw: withdrawOwnSuggestion,
+                                                            // Whoever this view would sign a suggestion as — so a team member
+                                                            // previewing can withdraw their own test rows too.
+                                                            viewerEmail: suggestAuthor,
+                                                        }}
+                                                    >
+                                                        <Reveal>
+                                                            <div className="flex flex-wrap items-center gap-3">
+                                                                <div className="min-w-0 flex-1">
+                                                                    <SectionEyebrow section={activeSection} />
+                                                                </div>
+                                                                {pendingSuggestions.length > 0 && (
+                                                                    <Badge color="brand" size="md" type="pill-color">
+                                                                        {pendingSuggestions.length} suggestion{pendingSuggestions.length === 1 ? "" : "s"}{" "}
+                                                                        pending
+                                                                    </Badge>
+                                                                )}
+                                                            </div>
+                                                            <SectionHeading>Master Brand Document</SectionHeading>
+                                                            <p className="mt-3 text-md text-tertiary">
+                                                                This is where it starts. It's what your Welcome Emails, chat widget, and every future AI feature
+                                                                read from, so the more complete it is, the smarter everything downstream gets.
+                                                                {!isTeam && " Spot something off? Suggest an edit and your account manager will review it."}
+                                                            </p>
 
-                                                        {/* Team-only: draft it from the client's own material, compile it for review,
-                                                            or export it. */}
-                                                        {isTeam && (
-                                                            <div className="mt-4 flex flex-wrap items-center gap-3">
-                                                                {!isTemplate && (
+                                                            {/* Client-only: suggestion mode. Reads identically in ?preview=client — the
+                                                            standing "Viewing as client" banner already says you're previewing, so this
+                                                            surface stays in the client's voice rather than explaining itself to an AM.
+                                                            A send from preview is attributed to the team member's own address. */}
+                                                            {canSuggest && (
+                                                                <div className="mt-4 flex flex-wrap items-center gap-3">
                                                                     <Button
                                                                         size="sm"
-                                                                        color="primary"
-                                                                        iconLeading={Stars02}
-                                                                        isDisabled={isLocked}
-                                                                        isLoading={!!masterDraftStep}
-                                                                        showTextWhileLoading
-                                                                        onClick={() => void draftMasterDocument()}
+                                                                        color={suggestMode ? "secondary" : "primary"}
+                                                                        onClick={() => {
+                                                                            setSuggestMode((v) => !v);
+                                                                            if (suggestMode) setSuggestDraft({});
+                                                                        }}
                                                                     >
-                                                                        {masterDraftStep ? `${masterDraftStep}…` : "Draft from forms & website"}
+                                                                        {suggestMode ? "Cancel suggesting" : "Suggest edits"}
                                                                     </Button>
-                                                                )}
-                                                                <Button
-                                                                    size="sm"
-                                                                    color="secondary"
-                                                                    iconLeading={FileCheck02}
-                                                                    onClick={() => setShowMasterDocModal(true)}
-                                                                >
-                                                                    Generate for AM review
-                                                                </Button>
-                                                                <Button
-                                                                    size="sm"
-                                                                    color="secondary"
-                                                                    iconLeading={headerDocCopied ? Check : Copy01}
-                                                                    onClick={() => void copyMasterDocForDocs()}
-                                                                >
-                                                                    {headerDocCopied ? "Copied!" : "Copy document"}
-                                                                </Button>
-                                                            </div>
-                                                        )}
-                                                        {/* What landed, as it lands. A run is ~7 calls over about a minute, so the
-                                                            AM needs to see progress rather than one long spinner. */}
-                                                        {isTeam && masterDraftDone.length > 0 && (
-                                                            <p className="mt-2 flex items-start gap-1.5 text-sm text-success-primary">
-                                                                <Check className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-                                                                Drafted {masterDraftDone.join(", ")}. Review it, then Save changes — nothing is saved yet.
-                                                            </p>
-                                                        )}
-                                                        {isTeam && masterDraftError && (
-                                                            <p className="mt-2 flex items-start gap-1.5 text-sm text-error-primary" role="alert">
-                                                                <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-                                                                {masterDraftError}
-                                                            </p>
-                                                        )}
-                                                        {isTeam && !isTemplate && isLocked && (
-                                                            <p className="mt-2 text-xs text-quaternary">
-                                                                Unlock the dashboard to draft — a draft fills empty boxes and never changes what's already
-                                                                written.
-                                                            </p>
-                                                        )}
-                                                        {isLocked && (
-                                                            <p className="mt-2 text-xs text-quaternary">Unlock the dashboard to edit this document.</p>
-                                                        )}
+                                                                    {suggestMode && (
+                                                                        <p className="text-sm text-tertiary">
+                                                                            Type into any field, then send — your team reviews every suggestion before it goes
+                                                                            live.
+                                                                        </p>
+                                                                    )}
+                                                                    {/* Sent / failed is reported by the sticky bar at the bottom, next to the
+                                                                        button that was actually pressed — not up here, off-screen. */}
+                                                                </div>
+                                                            )}
 
-                                                        {/* Rail beside the document on wide screens; above it on narrow ones, where a
-                                                            sticky column would eat the reading width. */}
-                                                        <div className="mt-8 flex flex-col gap-8 lg:flex-row lg:items-start lg:gap-10">
-                                                            <DocRail sections={FOUNDATION_SECTIONS} progress={foundationFilledMap} />
-
-                                                            <div className="flex min-w-0 flex-1 flex-col gap-8">
-                                                                {/* ── 1. About the hosts ── */}
-                                                                <DocSection
-                                                                    id="hosts"
-                                                                    label="About the hosts"
-                                                                    badge={isTeam ? <SourceBadge>From onboarding form</SourceBadge> : undefined}
-                                                                >
-                                                                    <DocField
-                                                                        isLocked={isLocked}
-                                                                        rows={3}
-                                                                        value={foundation.hosts}
-                                                                        placeholder="Who they are, how they came to hosting, what they care about."
-                                                                        onChange={(v) => patchFoundation({ hosts: v })}
-                                                                    />
-                                                                </DocSection>
-
-                                                                {/* ── 2. About the properties ── */}
-                                                                <DocSection
-                                                                    id="properties"
-                                                                    label="About the properties"
-                                                                    badge={isTeam ? <SourceBadge>From onboarding form + website</SourceBadge> : undefined}
-                                                                >
-                                                                    <p className="text-md text-tertiary">
-                                                                        If it's a micro resort or separate properties, what type of properties they have (e.g.
-                                                                        treehouses, cabins, domes), general amenities, shared resort amenities, etc.
+                                                            {/* Team-only: pending suggestions whose row was deleted since — no field exists
+                                                            to hang them on, so they're listed here with Decline as the only exit. */}
+                                                            {orphanedPending.length > 0 && (
+                                                                <div className="mt-4 rounded-2xl bg-primary p-4 ring-1 ring-secondary">
+                                                                    <p className="text-sm font-semibold text-primary">
+                                                                        Suggestions on removed rows ({orphanedPending.length})
                                                                     </p>
-                                                                    <div className="mt-4 grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2">
-                                                                        <DocField
-                                                                            isLocked={isLocked}
-                                                                            label="Property type"
-                                                                            value={foundation.propertyType}
-                                                                            placeholder="e.g. treehouses, cabins, domes"
-                                                                            onChange={(v) => patchFoundation({ propertyType: v })}
-                                                                        />
-                                                                        <DocField
-                                                                            isLocked={isLocked}
-                                                                            label="Structure"
-                                                                            value={foundation.structure}
-                                                                            placeholder="Micro resort or separate properties"
-                                                                            onChange={(v) => patchFoundation({ structure: v })}
-                                                                        />
-                                                                        <DocField
-                                                                            isLocked={isLocked}
-                                                                            rows={2}
-                                                                            label="General amenities"
-                                                                            value={foundation.generalAmenities}
-                                                                            placeholder="What every stay includes"
-                                                                            onChange={(v) => patchFoundation({ generalAmenities: v })}
-                                                                        />
-                                                                        <DocField
-                                                                            isLocked={isLocked}
-                                                                            rows={2}
-                                                                            label="Shared resort amenities"
-                                                                            value={foundation.sharedAmenities}
-                                                                            placeholder="Anything guests share across the site"
-                                                                            onChange={(v) => patchFoundation({ sharedAmenities: v })}
-                                                                        />
-                                                                    </div>
-                                                                </DocSection>
-
-                                                                {/* ── 3. Location ── */}
-                                                                <DocSection
-                                                                    id="location"
-                                                                    label="Location"
-                                                                    badge={isTeam ? <SourceBadge>From onboarding form</SourceBadge> : undefined}
-                                                                >
-                                                                    <DocField
-                                                                        isLocked={isLocked}
-                                                                        label="Exact location"
-                                                                        value={foundation.exactLocation}
-                                                                        placeholder="Address or coordinates"
-                                                                        onChange={(v) => patchFoundation({ exactLocation: v })}
-                                                                    />
-                                                                    <div className="mt-5 grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2">
-                                                                        <DocField
-                                                                            isLocked={isLocked}
-                                                                            rows={2}
-                                                                            label="Proximity to popular cities"
-                                                                            value={foundation.proximityCities}
-                                                                            placeholder="City — drive time"
-                                                                            onChange={(v) => patchFoundation({ proximityCities: v })}
-                                                                        />
-                                                                        <DocField
-                                                                            isLocked={isLocked}
-                                                                            rows={2}
-                                                                            label="Proximity to airports"
-                                                                            value={foundation.proximityAirports}
-                                                                            placeholder="Airport code — drive time"
-                                                                            onChange={(v) => patchFoundation({ proximityAirports: v })}
-                                                                        />
-                                                                    </div>
-                                                                </DocSection>
-
-                                                                {/* ── 4. Target audience profile ── */}
-                                                                <DocSection
-                                                                    id="audience"
-                                                                    label="Target audience profile"
-                                                                    badge={isTeam ? <WorkflowBadge /> : undefined}
-                                                                >
-                                                                    <DocField
-                                                                        isLocked={isLocked}
-                                                                        rows={3}
-                                                                        value={foundation.targetAudience}
-                                                                        placeholder={
-                                                                            isTeam
-                                                                                ? "Paste the target audience profile from the workflow output."
-                                                                                : "Who your ideal guests are, as a group."
-                                                                        }
-                                                                        onChange={(v) => patchFoundation({ targetAudience: v })}
-                                                                    />
-                                                                </DocSection>
-
-                                                                {/* ── 5. Unique value proposition ── */}
-                                                                <DocSection
-                                                                    id="uvp"
-                                                                    label="Unique value proposition"
-                                                                    badge={isTeam ? <WorkflowBadge /> : undefined}
-                                                                >
-                                                                    <DocField
-                                                                        isLocked={isLocked}
-                                                                        rows={3}
-                                                                        value={foundation.uvp}
-                                                                        placeholder={
-                                                                            isTeam
-                                                                                ? "Paste the UVP from the workflow output."
-                                                                                : "What makes this stay worth choosing over any other."
-                                                                        }
-                                                                        onChange={(v) => patchFoundation({ uvp: v })}
-                                                                    />
-                                                                </DocSection>
-
-                                                                {/* ── 6. About the brand ── */}
-                                                                <DocSection id="brand" label="About the brand" badge={isTeam ? <WorkflowBadge /> : undefined}>
-                                                                    <DocField
-                                                                        isLocked={isLocked}
-                                                                        rows={2}
-                                                                        label="Brand voice"
-                                                                        value={foundation.brandVoice}
-                                                                        placeholder="How the brand sounds, and what it never sounds like."
-                                                                        onChange={(v) => patchFoundation({ brandVoice: v })}
-                                                                    />
-
-                                                                    <div className="mt-5">
-                                                                        <p className="text-sm font-medium text-secondary">Taglines</p>
-                                                                        <div className="mt-2 flex flex-col gap-2">
-                                                                            {foundation.taglines.map((t, i) => (
-                                                                                <div key={i} className="flex items-center gap-3">
-                                                                                    <span className="w-6 shrink-0 font-mono text-xs text-quaternary tabular-nums">
-                                                                                        {String(i + 1).padStart(2, "0")}
+                                                                    <div className="mt-2 flex flex-col gap-2">
+                                                                        {orphanedPending.map((s) => (
+                                                                            <div key={s.id} className="flex flex-wrap items-center justify-between gap-2">
+                                                                                <p className="min-w-0 text-sm text-tertiary">
+                                                                                    <span className="font-medium text-secondary">
+                                                                                        {s.field_label || s.field_key}
                                                                                     </span>
-                                                                                    {isLocked ? (
-                                                                                        <span
-                                                                                            className={cx(
-                                                                                                "text-md",
-                                                                                                filled(t) ? "text-tertiary" : "text-quaternary italic",
-                                                                                            )}
-                                                                                        >
-                                                                                            {filled(t) ? t : "2–6 words"}
+                                                                                    {" — "}
+                                                                                    {s.suggested_value.trim() || "(cleared)"}
+                                                                                    <span className="text-quaternary"> · {s.suggested_by}</span>
+                                                                                </p>
+                                                                                <Button size="sm" color="secondary" onClick={() => declineSuggestion(s)}>
+                                                                                    Decline
+                                                                                </Button>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+
+                                                            {/* Team-only: draft it from the client's own material, compile it for review,
+                                                            or export it. */}
+                                                            {isTeam && (
+                                                                <div className="mt-4 flex flex-wrap items-center gap-3">
+                                                                    {!isTemplate && (
+                                                                        <Button
+                                                                            size="sm"
+                                                                            color="primary"
+                                                                            iconLeading={Stars02}
+                                                                            isDisabled={isLocked}
+                                                                            isLoading={!!masterDraftStep}
+                                                                            showTextWhileLoading
+                                                                            onClick={() => void draftMasterDocument()}
+                                                                        >
+                                                                            {masterDraftStep ? `${masterDraftStep}…` : "Draft from forms & website"}
+                                                                        </Button>
+                                                                    )}
+                                                                    <Button
+                                                                        size="sm"
+                                                                        color="secondary"
+                                                                        iconLeading={FileCheck02}
+                                                                        onClick={() => setShowMasterDocModal(true)}
+                                                                    >
+                                                                        Generate for AM review
+                                                                    </Button>
+                                                                    <Button
+                                                                        size="sm"
+                                                                        color="secondary"
+                                                                        iconLeading={headerDocCopied ? Check : Copy01}
+                                                                        onClick={() => void copyMasterDocForDocs()}
+                                                                    >
+                                                                        {headerDocCopied ? "Copied!" : "Copy document"}
+                                                                    </Button>
+                                                                </div>
+                                                            )}
+                                                            {/* What landed, as it lands. A run is ~7 calls over about a minute, so the
+                                                            AM needs to see progress rather than one long spinner. */}
+                                                            {isTeam && masterDraftDone.length > 0 && (
+                                                                <p className="mt-2 flex items-start gap-1.5 text-sm text-success-primary">
+                                                                    <Check className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                                                                    Drafted {masterDraftDone.join(", ")}. Review it, then Save changes — nothing is saved yet.
+                                                                </p>
+                                                            )}
+                                                            {isTeam && masterDraftError && (
+                                                                <p className="mt-2 flex items-start gap-1.5 text-sm text-error-primary" role="alert">
+                                                                    <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                                                                    {masterDraftError}
+                                                                </p>
+                                                            )}
+                                                            {isTeam && !isTemplate && isLocked && (
+                                                                <p className="mt-2 text-xs text-quaternary">
+                                                                    Unlock the dashboard to draft — a draft fills empty boxes and never changes what's already
+                                                                    written.
+                                                                </p>
+                                                            )}
+                                                            {/* Team-gated: a client can't unlock anything — their route is Suggest edits above. */}
+                                                            {isTeam && isLocked && (
+                                                                <p className="mt-2 text-xs text-quaternary">Unlock the dashboard to edit this document.</p>
+                                                            )}
+
+                                                            {/* Rail beside the document on wide screens; above it on narrow ones, where a
+                                                            sticky column would eat the reading width. */}
+                                                            <div className="mt-8 flex flex-col gap-8 lg:flex-row lg:items-start lg:gap-10">
+                                                                <DocRail sections={FOUNDATION_SECTIONS} progress={foundationFilledMap} />
+
+                                                                <div className="flex min-w-0 flex-1 flex-col gap-8">
+                                                                    {/* ── 1. About the hosts ── */}
+                                                                    <DocSection
+                                                                        id="hosts"
+                                                                        label="About the hosts"
+                                                                        badge={isTeam ? <SourceBadge>From onboarding form</SourceBadge> : undefined}
+                                                                    >
+                                                                        <DocField
+                                                                            isLocked={isLocked}
+                                                                            rows={3}
+                                                                            value={foundation.hosts}
+                                                                            placeholder="Who they are, how they came to hosting, what they care about."
+                                                                            sKey="hosts"
+                                                                            onChange={(v) => patchFoundation({ hosts: v })}
+                                                                        />
+                                                                    </DocSection>
+
+                                                                    {/* ── 2. About the properties ── */}
+                                                                    <DocSection
+                                                                        id="properties"
+                                                                        label="About the properties"
+                                                                        badge={isTeam ? <SourceBadge>From onboarding form + website</SourceBadge> : undefined}
+                                                                    >
+                                                                        <p className="text-md text-tertiary">
+                                                                            If it's a micro resort or separate properties, what type of properties they have
+                                                                            (e.g. treehouses, cabins, domes), general amenities, shared resort amenities, etc.
+                                                                        </p>
+                                                                        <div className="mt-4 grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2">
+                                                                            <DocField
+                                                                                isLocked={isLocked}
+                                                                                label="Property type"
+                                                                                value={foundation.propertyType}
+                                                                                placeholder="e.g. treehouses, cabins, domes"
+                                                                                sKey="propertyType"
+                                                                                onChange={(v) => patchFoundation({ propertyType: v })}
+                                                                            />
+                                                                            <DocField
+                                                                                isLocked={isLocked}
+                                                                                label="Structure"
+                                                                                value={foundation.structure}
+                                                                                placeholder="Micro resort or separate properties"
+                                                                                sKey="structure"
+                                                                                onChange={(v) => patchFoundation({ structure: v })}
+                                                                            />
+                                                                            <DocField
+                                                                                isLocked={isLocked}
+                                                                                rows={2}
+                                                                                label="General amenities"
+                                                                                value={foundation.generalAmenities}
+                                                                                placeholder="What every stay includes"
+                                                                                sKey="generalAmenities"
+                                                                                onChange={(v) => patchFoundation({ generalAmenities: v })}
+                                                                            />
+                                                                            <DocField
+                                                                                isLocked={isLocked}
+                                                                                rows={2}
+                                                                                label="Shared resort amenities"
+                                                                                value={foundation.sharedAmenities}
+                                                                                placeholder="Anything guests share across the site"
+                                                                                sKey="sharedAmenities"
+                                                                                onChange={(v) => patchFoundation({ sharedAmenities: v })}
+                                                                            />
+                                                                        </div>
+                                                                    </DocSection>
+
+                                                                    {/* ── 3. Location ── */}
+                                                                    <DocSection
+                                                                        id="location"
+                                                                        label="Location"
+                                                                        badge={isTeam ? <SourceBadge>From onboarding form</SourceBadge> : undefined}
+                                                                    >
+                                                                        <DocField
+                                                                            isLocked={isLocked}
+                                                                            label="Exact location"
+                                                                            value={foundation.exactLocation}
+                                                                            placeholder="Address or coordinates"
+                                                                            sKey="exactLocation"
+                                                                            onChange={(v) => patchFoundation({ exactLocation: v })}
+                                                                        />
+                                                                        <div className="mt-5 grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2">
+                                                                            <DocField
+                                                                                isLocked={isLocked}
+                                                                                rows={2}
+                                                                                label="Proximity to popular cities"
+                                                                                value={foundation.proximityCities}
+                                                                                placeholder="City — drive time"
+                                                                                sKey="proximityCities"
+                                                                                onChange={(v) => patchFoundation({ proximityCities: v })}
+                                                                            />
+                                                                            <DocField
+                                                                                isLocked={isLocked}
+                                                                                rows={2}
+                                                                                label="Proximity to airports"
+                                                                                value={foundation.proximityAirports}
+                                                                                placeholder="Airport code — drive time"
+                                                                                sKey="proximityAirports"
+                                                                                onChange={(v) => patchFoundation({ proximityAirports: v })}
+                                                                            />
+                                                                        </div>
+                                                                    </DocSection>
+
+                                                                    {/* ── 4. Target audience profile ── */}
+                                                                    <DocSection
+                                                                        id="audience"
+                                                                        label="Target audience profile"
+                                                                        badge={isTeam ? <WorkflowBadge /> : undefined}
+                                                                    >
+                                                                        <DocField
+                                                                            isLocked={isLocked}
+                                                                            rows={3}
+                                                                            value={foundation.targetAudience}
+                                                                            placeholder={
+                                                                                isTeam
+                                                                                    ? "Paste the target audience profile from the workflow output."
+                                                                                    : "Who your ideal guests are, as a group."
+                                                                            }
+                                                                            sKey="targetAudience"
+                                                                            onChange={(v) => patchFoundation({ targetAudience: v })}
+                                                                        />
+                                                                    </DocSection>
+
+                                                                    {/* ── 5. Unique value proposition ── */}
+                                                                    <DocSection
+                                                                        id="uvp"
+                                                                        label="Unique value proposition"
+                                                                        badge={isTeam ? <WorkflowBadge /> : undefined}
+                                                                    >
+                                                                        <DocField
+                                                                            isLocked={isLocked}
+                                                                            rows={3}
+                                                                            value={foundation.uvp}
+                                                                            placeholder={
+                                                                                isTeam
+                                                                                    ? "Paste the UVP from the workflow output."
+                                                                                    : "What makes this stay worth choosing over any other."
+                                                                            }
+                                                                            sKey="uvp"
+                                                                            onChange={(v) => patchFoundation({ uvp: v })}
+                                                                        />
+                                                                    </DocSection>
+
+                                                                    {/* ── 6. About the brand ── */}
+                                                                    <DocSection
+                                                                        id="brand"
+                                                                        label="About the brand"
+                                                                        badge={isTeam ? <WorkflowBadge /> : undefined}
+                                                                    >
+                                                                        <DocField
+                                                                            isLocked={isLocked}
+                                                                            rows={2}
+                                                                            label="Brand voice"
+                                                                            value={foundation.brandVoice}
+                                                                            placeholder="How the brand sounds, and what it never sounds like."
+                                                                            sKey="brandVoice"
+                                                                            onChange={(v) => patchFoundation({ brandVoice: v })}
+                                                                        />
+
+                                                                        <div className="mt-5">
+                                                                            <p className="text-sm font-medium text-secondary">Taglines</p>
+                                                                            <div className="mt-2 flex flex-col gap-2">
+                                                                                {foundation.taglines.map((t, i) => (
+                                                                                    <div key={i} className="flex items-start gap-3">
+                                                                                        <span className="mt-1 w-6 shrink-0 font-mono text-xs text-quaternary tabular-nums">
+                                                                                            {String(i + 1).padStart(2, "0")}
                                                                                         </span>
-                                                                                    ) : (
-                                                                                        <input
-                                                                                            placeholder="2–6 words"
-                                                                                            value={t}
-                                                                                            onChange={(e) =>
-                                                                                                patchFoundation({
-                                                                                                    taglines: foundation.taglines.map((x, j) =>
-                                                                                                        j === i ? e.target.value : x,
+                                                                                        <div className="min-w-0 flex-1">
+                                                                                            {suggestMode ? (
+                                                                                                <input
+                                                                                                    placeholder="2–6 words"
+                                                                                                    value={suggestDraft[`taglines.${i}`] ?? t}
+                                                                                                    onChange={(e) =>
+                                                                                                        setSuggestDraft((d) => ({
+                                                                                                            ...d,
+                                                                                                            [`taglines.${i}`]: e.target.value,
+                                                                                                        }))
+                                                                                                    }
+                                                                                                    className={editInput("border-brand")}
+                                                                                                />
+                                                                                            ) : isLocked ? (
+                                                                                                <span
+                                                                                                    className={cx(
+                                                                                                        "text-md",
+                                                                                                        filled(t) ? "text-tertiary" : "text-quaternary italic",
+                                                                                                    )}
+                                                                                                >
+                                                                                                    {filled(t) ? t : "2–6 words"}
+                                                                                                </span>
+                                                                                            ) : (
+                                                                                                <input
+                                                                                                    placeholder="2–6 words"
+                                                                                                    value={t}
+                                                                                                    onChange={(e) =>
+                                                                                                        patchFoundation({
+                                                                                                            taglines: foundation.taglines.map((x, j) =>
+                                                                                                                j === i ? e.target.value : x,
+                                                                                                            ),
+                                                                                                        })
+                                                                                                    }
+                                                                                                    className={editInput()}
+                                                                                                />
+                                                                                            )}
+                                                                                            <SuggestionBox sKey={`taglines.${i}`} liveValue={t} />
+                                                                                        </div>
+                                                                                    </div>
+                                                                                ))}
+                                                                            </div>
+                                                                        </div>
+
+                                                                        <DocField
+                                                                            className="mt-5"
+                                                                            isLocked={isLocked}
+                                                                            rows={3}
+                                                                            label="Brand bio"
+                                                                            value={foundation.brandBio}
+                                                                            placeholder="The short paragraph that introduces the brand."
+                                                                            sKey="brandBio"
+                                                                            onChange={(v) => patchFoundation({ brandBio: v })}
+                                                                        />
+                                                                    </DocSection>
+
+                                                                    {/* ── 7. Personas ── */}
+                                                                    <DocSection
+                                                                        id="personas"
+                                                                        label="Personas"
+                                                                        badge={isTeam ? <WorkflowBadge /> : undefined}
+                                                                        action={
+                                                                            !isLocked && (
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() =>
+                                                                                        patchFoundation({
+                                                                                            personas: [
+                                                                                                ...foundation.personas,
+                                                                                                emptyPersona(
+                                                                                                    foundation.personas.length === 0 ? "Primary" : "Secondary",
+                                                                                                ),
+                                                                                            ],
+                                                                                        })
+                                                                                    }
+                                                                                    className="text-sm font-semibold text-brand-secondary transition duration-100 ease-linear hover:underline"
+                                                                                >
+                                                                                    + Add persona
+                                                                                </button>
+                                                                            )
+                                                                        }
+                                                                    >
+                                                                        <div className="flex flex-col gap-4">
+                                                                            {foundation.personas.length === 0 && (
+                                                                                <p className="rounded-xl border border-dashed border-secondary px-4 py-3 text-sm text-quaternary italic">
+                                                                                    No personas yet.
+                                                                                </p>
+                                                                            )}
+                                                                            {foundation.personas.map((p) => (
+                                                                                <div
+                                                                                    key={p.id}
+                                                                                    className="overflow-hidden rounded-2xl bg-primary ring-1 ring-secondary"
+                                                                                >
+                                                                                    {/* Card head — who this persona is, and where they rank. */}
+                                                                                    <div className="bg-secondary_subtle flex flex-wrap items-start justify-between gap-3 border-b border-secondary px-4 py-3">
+                                                                                        <div className="min-w-0 flex-1">
+                                                                                            {suggestMode ? (
+                                                                                                <div className="flex flex-col gap-1.5">
+                                                                                                    <input
+                                                                                                        placeholder="Persona name"
+                                                                                                        value={suggestDraft[`personas.${p.id}.name`] ?? p.name}
+                                                                                                        onChange={(e) =>
+                                                                                                            setSuggestDraft((d) => ({
+                                                                                                                ...d,
+                                                                                                                [`personas.${p.id}.name`]: e.target.value,
+                                                                                                            }))
+                                                                                                        }
+                                                                                                        className={editInput("border-brand font-semibold")}
+                                                                                                    />
+                                                                                                    <input
+                                                                                                        placeholder="One-line summary of who they are"
+                                                                                                        value={
+                                                                                                            suggestDraft[`personas.${p.id}.summary`] ??
+                                                                                                            p.summary
+                                                                                                        }
+                                                                                                        onChange={(e) =>
+                                                                                                            setSuggestDraft((d) => ({
+                                                                                                                ...d,
+                                                                                                                [`personas.${p.id}.summary`]: e.target.value,
+                                                                                                            }))
+                                                                                                        }
+                                                                                                        className={editInput("border-brand")}
+                                                                                                    />
+                                                                                                </div>
+                                                                                            ) : isLocked ? (
+                                                                                                <>
+                                                                                                    <p
+                                                                                                        className={cx(
+                                                                                                            "text-md font-semibold",
+                                                                                                            filled(p.name)
+                                                                                                                ? "text-primary"
+                                                                                                                : "text-quaternary italic",
+                                                                                                        )}
+                                                                                                    >
+                                                                                                        {filled(p.name) ? p.name : "Persona name"}
+                                                                                                    </p>
+                                                                                                    <p
+                                                                                                        className={cx(
+                                                                                                            "mt-0.5 text-sm",
+                                                                                                            filled(p.summary)
+                                                                                                                ? "text-tertiary"
+                                                                                                                : "text-quaternary italic",
+                                                                                                        )}
+                                                                                                    >
+                                                                                                        {filled(p.summary)
+                                                                                                            ? p.summary
+                                                                                                            : "One-line summary of who they are"}
+                                                                                                    </p>
+                                                                                                </>
+                                                                                            ) : (
+                                                                                                <div className="flex flex-col gap-1.5">
+                                                                                                    <input
+                                                                                                        placeholder="Persona name"
+                                                                                                        value={p.name}
+                                                                                                        onChange={(e) =>
+                                                                                                            patchPersona(p.id, { name: e.target.value })
+                                                                                                        }
+                                                                                                        className={editInput("font-semibold")}
+                                                                                                    />
+                                                                                                    <input
+                                                                                                        placeholder="One-line summary of who they are"
+                                                                                                        value={p.summary}
+                                                                                                        onChange={(e) =>
+                                                                                                            patchPersona(p.id, { summary: e.target.value })
+                                                                                                        }
+                                                                                                        className={editInput()}
+                                                                                                    />
+                                                                                                </div>
+                                                                                            )}
+                                                                                            <SuggestionBox sKey={`personas.${p.id}.name`} liveValue={p.name} />
+                                                                                            <SuggestionBox
+                                                                                                sKey={`personas.${p.id}.summary`}
+                                                                                                liveValue={p.summary}
+                                                                                            />
+                                                                                        </div>
+                                                                                        <div className="flex shrink-0 items-center gap-1.5">
+                                                                                            {isLocked ? (
+                                                                                                filled(p.rank) && (
+                                                                                                    <Badge
+                                                                                                        color={
+                                                                                                            p.rank.trim().toLowerCase() === "primary"
+                                                                                                                ? "brand"
+                                                                                                                : "gray"
+                                                                                                        }
+                                                                                                        size="sm"
+                                                                                                        type="pill-color"
+                                                                                                    >
+                                                                                                        {p.rank}
+                                                                                                    </Badge>
+                                                                                                )
+                                                                                            ) : (
+                                                                                                <>
+                                                                                                    <input
+                                                                                                        placeholder="Primary"
+                                                                                                        value={p.rank}
+                                                                                                        onChange={(e) =>
+                                                                                                            patchPersona(p.id, { rank: e.target.value })
+                                                                                                        }
+                                                                                                        className={editInput("w-28 text-center")}
+                                                                                                    />
+                                                                                                    <button
+                                                                                                        type="button"
+                                                                                                        title={`Remove ${p.name.trim() || "persona"}`}
+                                                                                                        onClick={() =>
+                                                                                                            patchFoundation({
+                                                                                                                personas: foundation.personas.filter(
+                                                                                                                    (x) => x.id !== p.id,
+                                                                                                                ),
+                                                                                                            })
+                                                                                                        }
+                                                                                                        className="flex size-7 items-center justify-center rounded-lg text-fg-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-error-primary"
+                                                                                                    >
+                                                                                                        <Trash01 className="size-3.5" aria-hidden="true" />
+                                                                                                    </button>
+                                                                                                </>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    </div>
+
+                                                                                    <div className="px-4 py-4">
+                                                                                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                                                                                            <DocStat
+                                                                                                label="Age"
+                                                                                                value={p.age}
+                                                                                                isLocked={isLocked}
+                                                                                                sKey={`personas.${p.id}.age`}
+                                                                                                onChange={(v) => patchPersona(p.id, { age: v })}
+                                                                                            />
+                                                                                            <DocStat
+                                                                                                label="Relationship status"
+                                                                                                value={p.relationship}
+                                                                                                isLocked={isLocked}
+                                                                                                sKey={`personas.${p.id}.relationship`}
+                                                                                                onChange={(v) => patchPersona(p.id, { relationship: v })}
+                                                                                            />
+                                                                                            <DocStat
+                                                                                                label="Location"
+                                                                                                value={p.location}
+                                                                                                isLocked={isLocked}
+                                                                                                sKey={`personas.${p.id}.location`}
+                                                                                                onChange={(v) => patchPersona(p.id, { location: v })}
+                                                                                            />
+                                                                                        </div>
+
+                                                                                        <div className="mt-4 grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
+                                                                                            <DocField
+                                                                                                isLocked={isLocked}
+                                                                                                rows={2}
+                                                                                                label="Interests"
+                                                                                                value={p.interests}
+                                                                                                placeholder="What they follow, buy and care about"
+                                                                                                sKey={`personas.${p.id}.interests`}
+                                                                                                onChange={(v) => patchPersona(p.id, { interests: v })}
+                                                                                            />
+                                                                                            <DocField
+                                                                                                isLocked={isLocked}
+                                                                                                rows={2}
+                                                                                                label="Pain points"
+                                                                                                value={p.painPoints}
+                                                                                                placeholder="What makes travel hard for them today"
+                                                                                                sKey={`personas.${p.id}.painPoints`}
+                                                                                                onChange={(v) => patchPersona(p.id, { painPoints: v })}
+                                                                                            />
+                                                                                            <DocField
+                                                                                                className="sm:col-span-2"
+                                                                                                isLocked={isLocked}
+                                                                                                rows={2}
+                                                                                                label="What they're seeking"
+                                                                                                value={p.seeking}
+                                                                                                placeholder="The stay they are actually shopping for"
+                                                                                                sKey={`personas.${p.id}.seeking`}
+                                                                                                onChange={(v) => patchPersona(p.id, { seeking: v })}
+                                                                                            />
+                                                                                            <DocField
+                                                                                                className="sm:col-span-2"
+                                                                                                isLocked={isLocked}
+                                                                                                rows={2}
+                                                                                                label="How they book"
+                                                                                                value={p.howTheyBook}
+                                                                                                placeholder="Where they discover, how far ahead, what tips the decision"
+                                                                                                sKey={`personas.${p.id}.howTheyBook`}
+                                                                                                onChange={(v) => patchPersona(p.id, { howTheyBook: v })}
+                                                                                            />
+                                                                                        </div>
+
+                                                                                        {/* Keywords — the search terms this persona actually types. */}
+                                                                                        <div className="mt-4">
+                                                                                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                                                                                <p className="text-sm font-medium text-secondary">Keywords</p>
+                                                                                                <span className="text-xs text-quaternary">
+                                                                                                    Search terms this persona uses
+                                                                                                </span>
+                                                                                            </div>
+                                                                                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                                                                                                {p.keywords.length === 0 && isLocked && (
+                                                                                                    <span className="text-sm text-quaternary italic">
+                                                                                                        None yet.
+                                                                                                    </span>
+                                                                                                )}
+                                                                                                {p.keywords.map((k, ki) =>
+                                                                                                    isLocked ? (
+                                                                                                        filled(k) && (
+                                                                                                            <span
+                                                                                                                key={ki}
+                                                                                                                className="rounded-full px-3 py-1 text-sm text-tertiary ring-1 ring-secondary"
+                                                                                                            >
+                                                                                                                {k}
+                                                                                                            </span>
+                                                                                                        )
+                                                                                                    ) : (
+                                                                                                        <span
+                                                                                                            key={ki}
+                                                                                                            className="flex items-center gap-1 rounded-full py-0.5 pr-1 pl-2 ring-1 ring-secondary"
+                                                                                                        >
+                                                                                                            <input
+                                                                                                                placeholder="keyword"
+                                                                                                                value={k}
+                                                                                                                onChange={(e) =>
+                                                                                                                    patchPersona(p.id, {
+                                                                                                                        keywords: p.keywords.map((x, j) =>
+                                                                                                                            j === ki ? e.target.value : x,
+                                                                                                                        ),
+                                                                                                                    })
+                                                                                                                }
+                                                                                                                className="w-28 border-0 bg-transparent p-0 text-sm text-primary outline-none placeholder:text-placeholder"
+                                                                                                            />
+                                                                                                            <button
+                                                                                                                type="button"
+                                                                                                                title="Remove keyword"
+                                                                                                                onClick={() =>
+                                                                                                                    patchPersona(p.id, {
+                                                                                                                        keywords: p.keywords.filter(
+                                                                                                                            (_, j) => j !== ki,
+                                                                                                                        ),
+                                                                                                                    })
+                                                                                                                }
+                                                                                                                className="flex size-5 items-center justify-center rounded-full text-fg-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-error-primary"
+                                                                                                            >
+                                                                                                                <XClose className="size-3" aria-hidden="true" />
+                                                                                                            </button>
+                                                                                                        </span>
                                                                                                     ),
-                                                                                                })
-                                                                                            }
-                                                                                            className={editInput()}
-                                                                                        />
-                                                                                    )}
+                                                                                                )}
+                                                                                                {!isLocked && (
+                                                                                                    <button
+                                                                                                        type="button"
+                                                                                                        onClick={() =>
+                                                                                                            patchPersona(p.id, {
+                                                                                                                keywords: [...p.keywords, ""],
+                                                                                                            })
+                                                                                                        }
+                                                                                                        className="text-sm font-semibold text-brand-secondary transition duration-100 ease-linear hover:underline"
+                                                                                                    >
+                                                                                                        + Add
+                                                                                                    </button>
+                                                                                                )}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </div>
                                                                                 </div>
                                                                             ))}
                                                                         </div>
-                                                                    </div>
 
-                                                                    <DocField
-                                                                        className="mt-5"
-                                                                        isLocked={isLocked}
-                                                                        rows={3}
-                                                                        label="Brand bio"
-                                                                        value={foundation.brandBio}
-                                                                        placeholder="The short paragraph that introduces the brand."
-                                                                        onChange={(v) => patchFoundation({ brandBio: v })}
-                                                                    />
-                                                                </DocSection>
+                                                                        {/* The paragraph an AM reads out when presenting the personas back. */}
+                                                                        <div className="mt-5 border-l-2 border-brand pl-4">
+                                                                            <DocField
+                                                                                isLocked={isLocked}
+                                                                                rows={2}
+                                                                                label="Why the brand resonates with this audience"
+                                                                                value={foundation.personaResonance}
+                                                                                placeholder="The tension these personas share, and how the brand resolves it."
+                                                                                sKey="personaResonance"
+                                                                                onChange={(v) => patchFoundation({ personaResonance: v })}
+                                                                            />
+                                                                        </div>
+                                                                    </DocSection>
 
-                                                                {/* ── 7. Personas ── */}
-                                                                <DocSection
-                                                                    id="personas"
-                                                                    label="Personas"
-                                                                    badge={isTeam ? <WorkflowBadge /> : undefined}
-                                                                    action={
-                                                                        !isLocked && (
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={() =>
-                                                                                    patchFoundation({
-                                                                                        personas: [
-                                                                                            ...foundation.personas,
-                                                                                            emptyPersona(
-                                                                                                foundation.personas.length === 0 ? "Primary" : "Secondary",
-                                                                                            ),
-                                                                                        ],
-                                                                                    })
-                                                                                }
-                                                                                className="text-sm font-semibold text-brand-secondary transition duration-100 ease-linear hover:underline"
-                                                                            >
-                                                                                + Add persona
-                                                                            </button>
-                                                                        )
-                                                                    }
-                                                                >
-                                                                    <div className="flex flex-col gap-4">
-                                                                        {foundation.personas.length === 0 && (
-                                                                            <p className="rounded-xl border border-dashed border-secondary px-4 py-3 text-sm text-quaternary italic">
-                                                                                No personas yet.
-                                                                            </p>
-                                                                        )}
-                                                                        {foundation.personas.map((p) => (
-                                                                            <div
-                                                                                key={p.id}
-                                                                                className="overflow-hidden rounded-2xl bg-primary ring-1 ring-secondary"
-                                                                            >
-                                                                                {/* Card head — who this persona is, and where they rank. */}
-                                                                                <div className="bg-secondary_subtle flex flex-wrap items-start justify-between gap-3 border-b border-secondary px-4 py-3">
-                                                                                    <div className="min-w-0 flex-1">
-                                                                                        {isLocked ? (
-                                                                                            <>
+                                                                    {/* ── 8. Focus properties ── */}
+                                                                    <DocSection
+                                                                        id="focus"
+                                                                        label="Focus properties"
+                                                                        badge={isTeam ? <SourceBadge>From client's website</SourceBadge> : undefined}
+                                                                        action={
+                                                                            !isLocked && (
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() =>
+                                                                                        patchFoundation({
+                                                                                            focusProperties: [
+                                                                                                ...foundation.focusProperties,
+                                                                                                emptyFocusProperty(),
+                                                                                            ],
+                                                                                        })
+                                                                                    }
+                                                                                    className="text-sm font-semibold text-brand-secondary transition duration-100 ease-linear hover:underline"
+                                                                                >
+                                                                                    + Add focus property
+                                                                                </button>
+                                                                            )
+                                                                        }
+                                                                    >
+                                                                        <div className="flex flex-col gap-4">
+                                                                            {foundation.focusProperties.length === 0 && (
+                                                                                <p className="rounded-xl border border-dashed border-secondary px-4 py-3 text-sm text-quaternary italic">
+                                                                                    No focus properties yet.
+                                                                                </p>
+                                                                            )}
+                                                                            {foundation.focusProperties.map((p, i) => (
+                                                                                <div
+                                                                                    key={p.id}
+                                                                                    className="overflow-hidden rounded-2xl bg-primary ring-1 ring-secondary"
+                                                                                >
+                                                                                    <div className="bg-secondary_subtle flex items-center gap-3 border-b border-secondary px-4 py-3">
+                                                                                        <span className="font-mono text-xs text-quaternary tabular-nums">
+                                                                                            {String(i + 1).padStart(2, "0")}
+                                                                                        </span>
+                                                                                        {suggestMode ? (
+                                                                                            <div className="min-w-0 flex-1">
+                                                                                                <input
+                                                                                                    placeholder="Property name"
+                                                                                                    value={
+                                                                                                        suggestDraft[`focusProperties.${p.id}.name`] ?? p.name
+                                                                                                    }
+                                                                                                    onChange={(e) =>
+                                                                                                        setSuggestDraft((d) => ({
+                                                                                                            ...d,
+                                                                                                            [`focusProperties.${p.id}.name`]: e.target.value,
+                                                                                                        }))
+                                                                                                    }
+                                                                                                    className={editInput("border-brand font-semibold")}
+                                                                                                />
+                                                                                                <SuggestionBox
+                                                                                                    sKey={`focusProperties.${p.id}.name`}
+                                                                                                    liveValue={p.name}
+                                                                                                />
+                                                                                            </div>
+                                                                                        ) : isLocked ? (
+                                                                                            <div className="min-w-0 flex-1">
                                                                                                 <p
                                                                                                     className={cx(
                                                                                                         "text-md font-semibold",
@@ -3265,782 +3974,657 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                                                             : "text-quaternary italic",
                                                                                                     )}
                                                                                                 >
-                                                                                                    {filled(p.name) ? p.name : "Persona name"}
+                                                                                                    {filled(p.name) ? p.name : "Property name"}
                                                                                                 </p>
-                                                                                                <p
-                                                                                                    className={cx(
-                                                                                                        "mt-0.5 text-sm",
-                                                                                                        filled(p.summary)
-                                                                                                            ? "text-tertiary"
-                                                                                                            : "text-quaternary italic",
-                                                                                                    )}
-                                                                                                >
-                                                                                                    {filled(p.summary)
-                                                                                                        ? p.summary
-                                                                                                        : "One-line summary of who they are"}
-                                                                                                </p>
-                                                                                            </>
-                                                                                        ) : (
-                                                                                            <div className="flex flex-col gap-1.5">
-                                                                                                <input
-                                                                                                    placeholder="Persona name"
-                                                                                                    value={p.name}
-                                                                                                    onChange={(e) =>
-                                                                                                        patchPersona(p.id, { name: e.target.value })
-                                                                                                    }
-                                                                                                    className={editInput("font-semibold")}
-                                                                                                />
-                                                                                                <input
-                                                                                                    placeholder="One-line summary of who they are"
-                                                                                                    value={p.summary}
-                                                                                                    onChange={(e) =>
-                                                                                                        patchPersona(p.id, { summary: e.target.value })
-                                                                                                    }
-                                                                                                    className={editInput()}
+                                                                                                <SuggestionBox
+                                                                                                    sKey={`focusProperties.${p.id}.name`}
+                                                                                                    liveValue={p.name}
                                                                                                 />
                                                                                             </div>
-                                                                                        )}
-                                                                                    </div>
-                                                                                    <div className="flex shrink-0 items-center gap-1.5">
-                                                                                        {isLocked ? (
-                                                                                            filled(p.rank) && (
-                                                                                                <Badge
-                                                                                                    color={
-                                                                                                        p.rank.trim().toLowerCase() === "primary"
-                                                                                                            ? "brand"
-                                                                                                            : "gray"
-                                                                                                    }
-                                                                                                    size="sm"
-                                                                                                    type="pill-color"
-                                                                                                >
-                                                                                                    {p.rank}
-                                                                                                </Badge>
-                                                                                            )
                                                                                         ) : (
                                                                                             <>
                                                                                                 <input
-                                                                                                    placeholder="Primary"
-                                                                                                    value={p.rank}
-                                                                                                    onChange={(e) =>
-                                                                                                        patchPersona(p.id, { rank: e.target.value })
-                                                                                                    }
-                                                                                                    className={editInput("w-28 text-center")}
+                                                                                                    placeholder="Property name"
+                                                                                                    value={p.name}
+                                                                                                    onChange={(e) => patchFocus(p.id, { name: e.target.value })}
+                                                                                                    className={editInput("font-semibold")}
                                                                                                 />
                                                                                                 <button
                                                                                                     type="button"
-                                                                                                    title={`Remove ${p.name.trim() || "persona"}`}
+                                                                                                    title={`Remove ${p.name.trim() || "property"}`}
                                                                                                     onClick={() =>
                                                                                                         patchFoundation({
-                                                                                                            personas: foundation.personas.filter(
+                                                                                                            focusProperties: foundation.focusProperties.filter(
                                                                                                                 (x) => x.id !== p.id,
                                                                                                             ),
                                                                                                         })
                                                                                                     }
-                                                                                                    className="flex size-7 items-center justify-center rounded-lg text-fg-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-error-primary"
+                                                                                                    className="flex size-7 shrink-0 items-center justify-center rounded-lg text-fg-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-error-primary"
                                                                                                 >
                                                                                                     <Trash01 className="size-3.5" aria-hidden="true" />
                                                                                                 </button>
                                                                                             </>
                                                                                         )}
                                                                                     </div>
-                                                                                </div>
 
-                                                                                <div className="px-4 py-4">
-                                                                                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                                                                                        <DocStat
-                                                                                            label="Age"
-                                                                                            value={p.age}
-                                                                                            isLocked={isLocked}
-                                                                                            onChange={(v) => patchPersona(p.id, { age: v })}
-                                                                                        />
-                                                                                        <DocStat
-                                                                                            label="Relationship status"
-                                                                                            value={p.relationship}
-                                                                                            isLocked={isLocked}
-                                                                                            onChange={(v) => patchPersona(p.id, { relationship: v })}
-                                                                                        />
-                                                                                        <DocStat
-                                                                                            label="Location"
-                                                                                            value={p.location}
-                                                                                            isLocked={isLocked}
-                                                                                            onChange={(v) => patchPersona(p.id, { location: v })}
-                                                                                        />
-                                                                                    </div>
-
-                                                                                    <div className="mt-4 grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
-                                                                                        <DocField
-                                                                                            isLocked={isLocked}
-                                                                                            rows={2}
-                                                                                            label="Interests"
-                                                                                            value={p.interests}
-                                                                                            placeholder="What they follow, buy and care about"
-                                                                                            onChange={(v) => patchPersona(p.id, { interests: v })}
-                                                                                        />
-                                                                                        <DocField
-                                                                                            isLocked={isLocked}
-                                                                                            rows={2}
-                                                                                            label="Pain points"
-                                                                                            value={p.painPoints}
-                                                                                            placeholder="What makes travel hard for them today"
-                                                                                            onChange={(v) => patchPersona(p.id, { painPoints: v })}
-                                                                                        />
-                                                                                        <DocField
-                                                                                            className="sm:col-span-2"
-                                                                                            isLocked={isLocked}
-                                                                                            rows={2}
-                                                                                            label="What they're seeking"
-                                                                                            value={p.seeking}
-                                                                                            placeholder="The stay they are actually shopping for"
-                                                                                            onChange={(v) => patchPersona(p.id, { seeking: v })}
-                                                                                        />
-                                                                                        <DocField
-                                                                                            className="sm:col-span-2"
-                                                                                            isLocked={isLocked}
-                                                                                            rows={2}
-                                                                                            label="How they book"
-                                                                                            value={p.howTheyBook}
-                                                                                            placeholder="Where they discover, how far ahead, what tips the decision"
-                                                                                            onChange={(v) => patchPersona(p.id, { howTheyBook: v })}
-                                                                                        />
-                                                                                    </div>
-
-                                                                                    {/* Keywords — the search terms this persona actually types. */}
-                                                                                    <div className="mt-4">
-                                                                                        <div className="flex flex-wrap items-center justify-between gap-2">
-                                                                                            <p className="text-sm font-medium text-secondary">Keywords</p>
-                                                                                            <span className="text-xs text-quaternary">
-                                                                                                Search terms this persona uses
-                                                                                            </span>
-                                                                                        </div>
-                                                                                        <div className="mt-2 flex flex-wrap items-center gap-2">
-                                                                                            {p.keywords.length === 0 && isLocked && (
-                                                                                                <span className="text-sm text-quaternary italic">
-                                                                                                    None yet.
-                                                                                                </span>
-                                                                                            )}
-                                                                                            {p.keywords.map((k, ki) =>
-                                                                                                isLocked ? (
-                                                                                                    filled(k) && (
-                                                                                                        <span
-                                                                                                            key={ki}
-                                                                                                            className="rounded-full px-3 py-1 text-sm text-tertiary ring-1 ring-secondary"
-                                                                                                        >
-                                                                                                            {k}
-                                                                                                        </span>
-                                                                                                    )
-                                                                                                ) : (
-                                                                                                    <span
-                                                                                                        key={ki}
-                                                                                                        className="flex items-center gap-1 rounded-full py-0.5 pr-1 pl-2 ring-1 ring-secondary"
-                                                                                                    >
-                                                                                                        <input
-                                                                                                            placeholder="keyword"
-                                                                                                            value={k}
-                                                                                                            onChange={(e) =>
-                                                                                                                patchPersona(p.id, {
-                                                                                                                    keywords: p.keywords.map((x, j) =>
-                                                                                                                        j === ki ? e.target.value : x,
-                                                                                                                    ),
-                                                                                                                })
-                                                                                                            }
-                                                                                                            className="w-28 border-0 bg-transparent p-0 text-sm text-primary outline-none placeholder:text-placeholder"
-                                                                                                        />
-                                                                                                        <button
-                                                                                                            type="button"
-                                                                                                            title="Remove keyword"
-                                                                                                            onClick={() =>
-                                                                                                                patchPersona(p.id, {
-                                                                                                                    keywords: p.keywords.filter(
-                                                                                                                        (_, j) => j !== ki,
-                                                                                                                    ),
-                                                                                                                })
-                                                                                                            }
-                                                                                                            className="flex size-5 items-center justify-center rounded-full text-fg-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-error-primary"
-                                                                                                        >
-                                                                                                            <XClose className="size-3" aria-hidden="true" />
-                                                                                                        </button>
-                                                                                                    </span>
-                                                                                                ),
-                                                                                            )}
-                                                                                            {!isLocked && (
-                                                                                                <button
-                                                                                                    type="button"
-                                                                                                    onClick={() =>
-                                                                                                        patchPersona(p.id, { keywords: [...p.keywords, ""] })
-                                                                                                    }
-                                                                                                    className="text-sm font-semibold text-brand-secondary transition duration-100 ease-linear hover:underline"
-                                                                                                >
-                                                                                                    + Add
-                                                                                                </button>
-                                                                                            )}
-                                                                                        </div>
-                                                                                    </div>
-                                                                                </div>
-                                                                            </div>
-                                                                        ))}
-                                                                    </div>
-
-                                                                    {/* The paragraph an AM reads out when presenting the personas back. */}
-                                                                    <div className="mt-5 border-l-2 border-brand pl-4">
-                                                                        <DocField
-                                                                            isLocked={isLocked}
-                                                                            rows={2}
-                                                                            label="Why the brand resonates with this audience"
-                                                                            value={foundation.personaResonance}
-                                                                            placeholder="The tension these personas share, and how the brand resolves it."
-                                                                            onChange={(v) => patchFoundation({ personaResonance: v })}
-                                                                        />
-                                                                    </div>
-                                                                </DocSection>
-
-                                                                {/* ── 8. Focus properties ── */}
-                                                                <DocSection
-                                                                    id="focus"
-                                                                    label="Focus properties"
-                                                                    badge={isTeam ? <SourceBadge>From client's website</SourceBadge> : undefined}
-                                                                    action={
-                                                                        !isLocked && (
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={() =>
-                                                                                    patchFoundation({
-                                                                                        focusProperties: [...foundation.focusProperties, emptyFocusProperty()],
-                                                                                    })
-                                                                                }
-                                                                                className="text-sm font-semibold text-brand-secondary transition duration-100 ease-linear hover:underline"
-                                                                            >
-                                                                                + Add focus property
-                                                                            </button>
-                                                                        )
-                                                                    }
-                                                                >
-                                                                    <div className="flex flex-col gap-4">
-                                                                        {foundation.focusProperties.length === 0 && (
-                                                                            <p className="rounded-xl border border-dashed border-secondary px-4 py-3 text-sm text-quaternary italic">
-                                                                                No focus properties yet.
-                                                                            </p>
-                                                                        )}
-                                                                        {foundation.focusProperties.map((p, i) => (
-                                                                            <div
-                                                                                key={p.id}
-                                                                                className="overflow-hidden rounded-2xl bg-primary ring-1 ring-secondary"
-                                                                            >
-                                                                                <div className="bg-secondary_subtle flex items-center gap-3 border-b border-secondary px-4 py-3">
-                                                                                    <span className="font-mono text-xs text-quaternary tabular-nums">
-                                                                                        {String(i + 1).padStart(2, "0")}
-                                                                                    </span>
-                                                                                    {isLocked ? (
-                                                                                        <p
-                                                                                            className={cx(
-                                                                                                "text-md font-semibold",
-                                                                                                filled(p.name) ? "text-primary" : "text-quaternary italic",
-                                                                                            )}
-                                                                                        >
-                                                                                            {filled(p.name) ? p.name : "Property name"}
-                                                                                        </p>
-                                                                                    ) : (
-                                                                                        <>
-                                                                                            <input
-                                                                                                placeholder="Property name"
-                                                                                                value={p.name}
-                                                                                                onChange={(e) => patchFocus(p.id, { name: e.target.value })}
-                                                                                                className={editInput("font-semibold")}
+                                                                                    <div className="px-4 py-4">
+                                                                                        <div className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
+                                                                                            <DocField
+                                                                                                isLocked={isLocked}
+                                                                                                label="Link to property listing"
+                                                                                                value={p.link}
+                                                                                                placeholder="https://"
+                                                                                                sKey={`focusProperties.${p.id}.link`}
+                                                                                                onChange={(v) => patchFocus(p.id, { link: v })}
                                                                                             />
-                                                                                            <button
-                                                                                                type="button"
-                                                                                                title={`Remove ${p.name.trim() || "property"}`}
-                                                                                                onClick={() =>
-                                                                                                    patchFoundation({
-                                                                                                        focusProperties: foundation.focusProperties.filter(
-                                                                                                            (x) => x.id !== p.id,
-                                                                                                        ),
-                                                                                                    })
-                                                                                                }
-                                                                                                className="flex size-7 shrink-0 items-center justify-center rounded-lg text-fg-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-error-primary"
-                                                                                            >
-                                                                                                <Trash01 className="size-3.5" aria-hidden="true" />
-                                                                                            </button>
-                                                                                        </>
-                                                                                    )}
-                                                                                </div>
-
-                                                                                <div className="px-4 py-4">
-                                                                                    <div className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
-                                                                                        <DocField
-                                                                                            isLocked={isLocked}
-                                                                                            label="Link to property listing"
-                                                                                            value={p.link}
-                                                                                            placeholder="https://"
-                                                                                            onChange={(v) => patchFocus(p.id, { link: v })}
-                                                                                        />
-                                                                                        <DocField
-                                                                                            isLocked={isLocked}
-                                                                                            label="Location"
-                                                                                            value={p.location}
-                                                                                            placeholder="Where this one sits"
-                                                                                            onChange={(v) => patchFocus(p.id, { location: v })}
-                                                                                        />
-                                                                                    </div>
-
-                                                                                    <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                                                                                        <DocStat
-                                                                                            label="Guests"
-                                                                                            value={p.guests}
-                                                                                            isLocked={isLocked}
-                                                                                            onChange={(v) => patchFocus(p.id, { guests: v })}
-                                                                                        />
-                                                                                        <DocStat
-                                                                                            label="Bedrooms"
-                                                                                            value={p.bedrooms}
-                                                                                            isLocked={isLocked}
-                                                                                            onChange={(v) => patchFocus(p.id, { bedrooms: v })}
-                                                                                        />
-                                                                                        <DocStat
-                                                                                            label="Beds"
-                                                                                            value={p.beds}
-                                                                                            isLocked={isLocked}
-                                                                                            onChange={(v) => patchFocus(p.id, { beds: v })}
-                                                                                        />
-                                                                                        <DocStat
-                                                                                            label="Bathrooms"
-                                                                                            value={p.bathrooms}
-                                                                                            isLocked={isLocked}
-                                                                                            onChange={(v) => patchFocus(p.id, { bathrooms: v })}
-                                                                                        />
-                                                                                    </div>
-
-                                                                                    <DocField
-                                                                                        className="mt-4"
-                                                                                        isLocked={isLocked}
-                                                                                        rows={3}
-                                                                                        label="Listing description"
-                                                                                        value={p.description}
-                                                                                        placeholder="Paste the live listing copy."
-                                                                                        onChange={(v) => patchFocus(p.id, { description: v })}
-                                                                                    />
-
-                                                                                    <div className="mt-4 grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
-                                                                                        <DocField
-                                                                                            isLocked={isLocked}
-                                                                                            rows={2}
-                                                                                            label="Features & amenities"
-                                                                                            value={p.features}
-                                                                                            placeholder="What sets this property apart"
-                                                                                            onChange={(v) => patchFocus(p.id, { features: v })}
-                                                                                        />
-                                                                                        <DocField
-                                                                                            isLocked={isLocked}
-                                                                                            rows={2}
-                                                                                            label="Terms & rules"
-                                                                                            value={p.terms}
-                                                                                            placeholder="Check-in, pets, quiet hours"
-                                                                                            onChange={(v) => patchFocus(p.id, { terms: v })}
-                                                                                        />
-                                                                                    </div>
-
-                                                                                    {/* Top reviews — trend evidence, not testimonials. */}
-                                                                                    <div className="mt-4">
-                                                                                        <div className="flex flex-wrap items-center justify-between gap-2">
-                                                                                            <p className="text-sm font-medium text-secondary">Top reviews</p>
-                                                                                            <span className="text-xs text-quaternary">
-                                                                                                3–5, look for trends
-                                                                                            </span>
+                                                                                            <DocField
+                                                                                                isLocked={isLocked}
+                                                                                                label="Location"
+                                                                                                value={p.location}
+                                                                                                placeholder="Where this one sits"
+                                                                                                sKey={`focusProperties.${p.id}.location`}
+                                                                                                onChange={(v) => patchFocus(p.id, { location: v })}
+                                                                                            />
                                                                                         </div>
-                                                                                        <div className="mt-2 flex flex-col gap-2">
-                                                                                            {p.reviews.map((r, ri) => (
-                                                                                                <div
-                                                                                                    key={ri}
-                                                                                                    className="flex items-start gap-2 rounded-xl px-3 py-2 ring-1 ring-secondary"
-                                                                                                >
-                                                                                                    <span
-                                                                                                        className="font-mono text-md leading-none text-quaternary"
-                                                                                                        aria-hidden="true"
+
+                                                                                        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                                                                                            <DocStat
+                                                                                                label="Guests"
+                                                                                                value={p.guests}
+                                                                                                isLocked={isLocked}
+                                                                                                sKey={`focusProperties.${p.id}.guests`}
+                                                                                                onChange={(v) => patchFocus(p.id, { guests: v })}
+                                                                                            />
+                                                                                            <DocStat
+                                                                                                label="Bedrooms"
+                                                                                                value={p.bedrooms}
+                                                                                                isLocked={isLocked}
+                                                                                                sKey={`focusProperties.${p.id}.bedrooms`}
+                                                                                                onChange={(v) => patchFocus(p.id, { bedrooms: v })}
+                                                                                            />
+                                                                                            <DocStat
+                                                                                                label="Beds"
+                                                                                                value={p.beds}
+                                                                                                isLocked={isLocked}
+                                                                                                sKey={`focusProperties.${p.id}.beds`}
+                                                                                                onChange={(v) => patchFocus(p.id, { beds: v })}
+                                                                                            />
+                                                                                            <DocStat
+                                                                                                label="Bathrooms"
+                                                                                                value={p.bathrooms}
+                                                                                                isLocked={isLocked}
+                                                                                                sKey={`focusProperties.${p.id}.bathrooms`}
+                                                                                                onChange={(v) => patchFocus(p.id, { bathrooms: v })}
+                                                                                            />
+                                                                                        </div>
+
+                                                                                        <DocField
+                                                                                            className="mt-4"
+                                                                                            isLocked={isLocked}
+                                                                                            rows={3}
+                                                                                            label="Listing description"
+                                                                                            value={p.description}
+                                                                                            placeholder="Paste the live listing copy."
+                                                                                            sKey={`focusProperties.${p.id}.description`}
+                                                                                            onChange={(v) => patchFocus(p.id, { description: v })}
+                                                                                        />
+
+                                                                                        <div className="mt-4 grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
+                                                                                            <DocField
+                                                                                                isLocked={isLocked}
+                                                                                                rows={2}
+                                                                                                label="Features & amenities"
+                                                                                                value={p.features}
+                                                                                                placeholder="What sets this property apart"
+                                                                                                sKey={`focusProperties.${p.id}.features`}
+                                                                                                onChange={(v) => patchFocus(p.id, { features: v })}
+                                                                                            />
+                                                                                            <DocField
+                                                                                                isLocked={isLocked}
+                                                                                                rows={2}
+                                                                                                label="Terms & rules"
+                                                                                                value={p.terms}
+                                                                                                placeholder="Check-in, pets, quiet hours"
+                                                                                                sKey={`focusProperties.${p.id}.terms`}
+                                                                                                onChange={(v) => patchFocus(p.id, { terms: v })}
+                                                                                            />
+                                                                                        </div>
+
+                                                                                        {/* Top reviews — trend evidence, not testimonials. */}
+                                                                                        <div className="mt-4">
+                                                                                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                                                                                <p className="text-sm font-medium text-secondary">
+                                                                                                    Top reviews
+                                                                                                </p>
+                                                                                                <span className="text-xs text-quaternary">
+                                                                                                    3–5, look for trends
+                                                                                                </span>
+                                                                                            </div>
+                                                                                            <div className="mt-2 flex flex-col gap-2">
+                                                                                                {p.reviews.map((r, ri) => (
+                                                                                                    <div
+                                                                                                        key={ri}
+                                                                                                        className="flex items-start gap-2 rounded-xl px-3 py-2 ring-1 ring-secondary"
                                                                                                     >
-                                                                                                        &ldquo;
-                                                                                                    </span>
-                                                                                                    {isLocked ? (
                                                                                                         <span
-                                                                                                            className={cx(
-                                                                                                                "text-sm",
-                                                                                                                filled(r)
-                                                                                                                    ? "text-tertiary"
-                                                                                                                    : "text-quaternary italic",
-                                                                                                            )}
+                                                                                                            className="font-mono text-md leading-none text-quaternary"
+                                                                                                            aria-hidden="true"
                                                                                                         >
-                                                                                                            {filled(r)
-                                                                                                                ? r
-                                                                                                                : "Paste review, note the trend it supports"}
+                                                                                                            &ldquo;
                                                                                                         </span>
-                                                                                                    ) : (
-                                                                                                        <>
-                                                                                                            <textarea
-                                                                                                                rows={1}
-                                                                                                                placeholder="Paste review, note the trend it supports"
-                                                                                                                value={r}
-                                                                                                                onChange={(e) =>
-                                                                                                                    patchFocus(p.id, {
-                                                                                                                        reviews: p.reviews.map((x, j) =>
-                                                                                                                            j === ri ? e.target.value : x,
-                                                                                                                        ),
-                                                                                                                    })
-                                                                                                                }
-                                                                                                                className="w-full resize-y border-0 bg-transparent p-0 text-sm text-primary outline-none placeholder:text-placeholder"
-                                                                                                            />
-                                                                                                            <button
-                                                                                                                type="button"
-                                                                                                                title="Remove review"
-                                                                                                                onClick={() =>
-                                                                                                                    patchFocus(p.id, {
-                                                                                                                        reviews: p.reviews.filter(
-                                                                                                                            (_, j) => j !== ri,
-                                                                                                                        ),
-                                                                                                                    })
-                                                                                                                }
-                                                                                                                className="flex size-5 shrink-0 items-center justify-center rounded-full text-fg-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-error-primary"
+                                                                                                        {isLocked ? (
+                                                                                                            <span
+                                                                                                                className={cx(
+                                                                                                                    "text-sm",
+                                                                                                                    filled(r)
+                                                                                                                        ? "text-tertiary"
+                                                                                                                        : "text-quaternary italic",
+                                                                                                                )}
                                                                                                             >
-                                                                                                                <XClose className="size-3" aria-hidden="true" />
-                                                                                                            </button>
-                                                                                                        </>
-                                                                                                    )}
-                                                                                                </div>
-                                                                                            ))}
-                                                                                            {!isLocked && (
-                                                                                                <button
-                                                                                                    type="button"
-                                                                                                    onClick={() =>
-                                                                                                        patchFocus(p.id, { reviews: [...p.reviews, ""] })
-                                                                                                    }
-                                                                                                    className="self-start text-sm font-semibold text-brand-secondary transition duration-100 ease-linear hover:underline"
-                                                                                                >
-                                                                                                    + Add review
-                                                                                                </button>
-                                                                                            )}
+                                                                                                                {filled(r)
+                                                                                                                    ? r
+                                                                                                                    : "Paste review, note the trend it supports"}
+                                                                                                            </span>
+                                                                                                        ) : (
+                                                                                                            <>
+                                                                                                                <textarea
+                                                                                                                    rows={1}
+                                                                                                                    placeholder="Paste review, note the trend it supports"
+                                                                                                                    value={r}
+                                                                                                                    onChange={(e) =>
+                                                                                                                        patchFocus(p.id, {
+                                                                                                                            reviews: p.reviews.map((x, j) =>
+                                                                                                                                j === ri ? e.target.value : x,
+                                                                                                                            ),
+                                                                                                                        })
+                                                                                                                    }
+                                                                                                                    className="w-full resize-y border-0 bg-transparent p-0 text-sm text-primary outline-none placeholder:text-placeholder"
+                                                                                                                />
+                                                                                                                <button
+                                                                                                                    type="button"
+                                                                                                                    title="Remove review"
+                                                                                                                    onClick={() =>
+                                                                                                                        patchFocus(p.id, {
+                                                                                                                            reviews: p.reviews.filter(
+                                                                                                                                (_, j) => j !== ri,
+                                                                                                                            ),
+                                                                                                                        })
+                                                                                                                    }
+                                                                                                                    className="flex size-5 shrink-0 items-center justify-center rounded-full text-fg-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-error-primary"
+                                                                                                                >
+                                                                                                                    <XClose
+                                                                                                                        className="size-3"
+                                                                                                                        aria-hidden="true"
+                                                                                                                    />
+                                                                                                                </button>
+                                                                                                            </>
+                                                                                                        )}
+                                                                                                    </div>
+                                                                                                ))}
+                                                                                                {!isLocked && (
+                                                                                                    <button
+                                                                                                        type="button"
+                                                                                                        onClick={() =>
+                                                                                                            patchFocus(p.id, { reviews: [...p.reviews, ""] })
+                                                                                                        }
+                                                                                                        className="self-start text-sm font-semibold text-brand-secondary transition duration-100 ease-linear hover:underline"
+                                                                                                    >
+                                                                                                        + Add review
+                                                                                                    </button>
+                                                                                                )}
+                                                                                            </div>
                                                                                         </div>
                                                                                     </div>
                                                                                 </div>
-                                                                            </div>
-                                                                        ))}
-                                                                    </div>
-                                                                </DocSection>
+                                                                            ))}
+                                                                        </div>
+                                                                    </DocSection>
 
-                                                                {/* ── 9. Local favorites ── */}
-                                                                <DocSection
-                                                                    id="favorites"
-                                                                    label="Local favorites"
-                                                                    badge={isTeam ? <SourceBadge>From onboarding form</SourceBadge> : undefined}
-                                                                >
-                                                                    <div className="flex flex-col gap-6">
-                                                                        <FavoriteTable
-                                                                            title="Restaurants"
-                                                                            note="Name + website address"
-                                                                            rows={foundation.restaurants}
+                                                                    {/* ── 9. Local favorites ── */}
+                                                                    <DocSection
+                                                                        id="favorites"
+                                                                        label="Local favorites"
+                                                                        badge={isTeam ? <SourceBadge>From onboarding form</SourceBadge> : undefined}
+                                                                    >
+                                                                        <div className="flex flex-col gap-6">
+                                                                            <FavoriteTable
+                                                                                title="Restaurants"
+                                                                                note="Name + website address"
+                                                                                rows={foundation.restaurants}
+                                                                                isLocked={isLocked}
+                                                                                sKeyBase="restaurants"
+                                                                                onChange={patchFavorite("restaurants")}
+                                                                                onAdd={addFavorite("restaurants")}
+                                                                                onRemove={removeFavorite("restaurants")}
+                                                                            />
+                                                                            <FavoriteTable
+                                                                                title="Activities / attractions"
+                                                                                note="Name + website address"
+                                                                                rows={foundation.activities}
+                                                                                isLocked={isLocked}
+                                                                                sKeyBase="activities"
+                                                                                onChange={patchFavorite("activities")}
+                                                                                onAdd={addFavorite("activities")}
+                                                                                onRemove={removeFavorite("activities")}
+                                                                            />
+                                                                        </div>
+                                                                    </DocSection>
+
+                                                                    {/* ── 10. Reviews ── */}
+                                                                    <DocSection
+                                                                        id="reviews"
+                                                                        label="Reviews"
+                                                                        badge={isTeam ? <SourceBadge>From guest reviews</SourceBadge> : undefined}
+                                                                    >
+                                                                        <p className="text-md text-tertiary">
+                                                                            Pull guest reviews and analyze them to identify recurring themes in what guests love
+                                                                            about their stays. The goal is to gain deeper insights into the brand's strengths
+                                                                            and use these findings to inform and enhance future marketing efforts.
+                                                                        </p>
+
+                                                                        <DocField
+                                                                            className="mt-4"
                                                                             isLocked={isLocked}
-                                                                            onChange={patchFavorite("restaurants")}
-                                                                            onAdd={addFavorite("restaurants")}
-                                                                            onRemove={removeFavorite("restaurants")}
+                                                                            rows={3}
+                                                                            label="Core brand pillars & key selling points"
+                                                                            value={foundation.corePillars}
+                                                                            placeholder="Top 5–7 praised amenities, features or design elements."
+                                                                            sKey="corePillars"
+                                                                            onChange={(v) => patchFoundation({ corePillars: v })}
                                                                         />
-                                                                        <FavoriteTable
-                                                                            title="Activities / attractions"
-                                                                            note="Name + website address"
-                                                                            rows={foundation.activities}
+                                                                        <DocField
+                                                                            className="mt-4"
                                                                             isLocked={isLocked}
-                                                                            onChange={patchFavorite("activities")}
-                                                                            onAdd={addFavorite("activities")}
-                                                                            onRemove={removeFavorite("activities")}
+                                                                            rows={3}
+                                                                            label="Emotional & experiential themes"
+                                                                            value={foundation.emotionalThemes}
+                                                                            placeholder="Top 5–7 themes, plus the taglines they suggest."
+                                                                            sKey="emotionalThemes"
+                                                                            onChange={(v) => patchFoundation({ emotionalThemes: v })}
                                                                         />
-                                                                    </div>
-                                                                </DocSection>
 
-                                                                {/* ── 10. Reviews ── */}
-                                                                <DocSection
-                                                                    id="reviews"
-                                                                    label="Reviews"
-                                                                    badge={isTeam ? <SourceBadge>From guest reviews</SourceBadge> : undefined}
-                                                                >
-                                                                    <p className="text-md text-tertiary">
-                                                                        Pull guest reviews and analyze them to identify recurring themes in what guests love
-                                                                        about their stays. The goal is to gain deeper insights into the brand's strengths and
-                                                                        use these findings to inform and enhance future marketing efforts.
-                                                                    </p>
-
-                                                                    <DocField
-                                                                        className="mt-4"
-                                                                        isLocked={isLocked}
-                                                                        rows={3}
-                                                                        label="Core brand pillars & key selling points"
-                                                                        value={foundation.corePillars}
-                                                                        placeholder="Top 5–7 praised amenities, features or design elements."
-                                                                        onChange={(v) => patchFoundation({ corePillars: v })}
-                                                                    />
-                                                                    <DocField
-                                                                        className="mt-4"
-                                                                        isLocked={isLocked}
-                                                                        rows={3}
-                                                                        label="Emotional & experiential themes"
-                                                                        value={foundation.emotionalThemes}
-                                                                        placeholder="Top 5–7 themes, plus the taglines they suggest."
-                                                                        onChange={(v) => patchFoundation({ emotionalThemes: v })}
-                                                                    />
-
-                                                                    {/* Paste the reviews and the Draft button fills the two fields above, which
+                                                                        {/* Paste the reviews and the Draft button fills the two fields above, which
                                                                         replaces the copy-into-ChatGPT-and-paste-back round trip the working
                                                                         prompt below describes. Team only, and deliberately not persisted: the
                                                                         raw reviews are somebody else's copy, and the useful distillation of
                                                                         them is the two fields. Airbnb is not fetched for these — it serves
                                                                         bot-protection to datacenter IPs, so pasting is the reliable route. */}
-                                                                    {isTeam && !isTemplate && !isLocked && (
-                                                                        <div className="mt-5 rounded-2xl bg-primary p-4 ring-1 ring-secondary">
-                                                                            <label htmlFor="reviews-paste" className="text-sm font-medium text-secondary">
-                                                                                Paste guest reviews
-                                                                            </label>
-                                                                            <p className="mt-1 text-xs text-tertiary">
-                                                                                30 or more works best. Drafting reads these to fill both fields above — their
-                                                                                Airbnb profile link is in the onboarding form.
-                                                                            </p>
-                                                                            <textarea
-                                                                                id="reviews-paste"
-                                                                                rows={4}
-                                                                                value={reviewsPaste}
-                                                                                onChange={(e) => setReviewsPaste(e.target.value)}
-                                                                                placeholder="Paste the review text here — one after another is fine."
-                                                                                className={cx(editInput(), "mt-2.5 resize-y font-mono text-[12px]")}
-                                                                            />
-                                                                            {reviewsPaste.trim() && (
-                                                                                <p className="mt-1.5 text-xs text-quaternary tabular-nums">
-                                                                                    {reviewsPaste.trim().length.toLocaleString()} characters pasted — not saved,
-                                                                                    only used for drafting.
+                                                                        {isTeam && !isTemplate && !isLocked && (
+                                                                            <div className="mt-5 rounded-2xl bg-primary p-4 ring-1 ring-secondary">
+                                                                                <label htmlFor="reviews-paste" className="text-sm font-medium text-secondary">
+                                                                                    Paste guest reviews
+                                                                                </label>
+                                                                                <p className="mt-1 text-xs text-tertiary">
+                                                                                    30 or more works best. Drafting reads these to fill both fields above —
+                                                                                    their Airbnb profile link is in the onboarding form.
                                                                                 </p>
-                                                                            )}
-                                                                        </div>
-                                                                    )}
-
-                                                                    {/* The working prompt is internal process, not something a client should be
-                                                                        handed — it tells whoever reads it to go and run the analysis. Team only. */}
-                                                                    {isTeam && (
-                                                                        <div className="mt-5 overflow-hidden rounded-2xl bg-primary ring-1 ring-secondary">
-                                                                            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-secondary px-4 py-3">
-                                                                                <div className="flex flex-wrap items-center gap-2.5">
-                                                                                    <p className="font-mono text-[11px] font-semibold tracking-[0.08em] text-quaternary uppercase">
-                                                                                        Working prompt
+                                                                                <textarea
+                                                                                    id="reviews-paste"
+                                                                                    rows={4}
+                                                                                    value={reviewsPaste}
+                                                                                    onChange={(e) => setReviewsPaste(e.target.value)}
+                                                                                    placeholder="Paste the review text here — one after another is fine."
+                                                                                    className={cx(editInput(), "mt-2.5 resize-y font-mono text-[12px]")}
+                                                                                />
+                                                                                {reviewsPaste.trim() && (
+                                                                                    <p className="mt-1.5 text-xs text-quaternary tabular-nums">
+                                                                                        {reviewsPaste.trim().length.toLocaleString()} characters pasted — not
+                                                                                        saved, only used for drafting.
                                                                                     </p>
-                                                                                    <BadgeWithDot color="warning" size="sm" type="pill-color">
-                                                                                        Delete once filled
-                                                                                    </BadgeWithDot>
-                                                                                </div>
-                                                                                <div className="flex items-center gap-3">
-                                                                                    <button
-                                                                                        type="button"
-                                                                                        onClick={() => {
-                                                                                            void navigator.clipboard
-                                                                                                .writeText(REVIEW_WORKING_PROMPT)
-                                                                                                .then(() => {
-                                                                                                    setPromptCopied(true);
-                                                                                                    window.setTimeout(() => setPromptCopied(false), 1600);
-                                                                                                });
-                                                                                        }}
-                                                                                        className="text-sm font-semibold text-brand-secondary transition duration-100 ease-linear hover:underline"
-                                                                                    >
-                                                                                        {promptCopied ? "Copied" : "Copy"}
-                                                                                    </button>
-                                                                                    <button
-                                                                                        type="button"
-                                                                                        onClick={() =>
-                                                                                            patchFoundation({ promptHidden: !foundation.promptHidden })
-                                                                                        }
-                                                                                        className="text-sm font-semibold text-tertiary transition duration-100 ease-linear hover:text-secondary"
-                                                                                    >
-                                                                                        {foundation.promptHidden ? "Show" : "Hide"}
-                                                                                    </button>
-                                                                                </div>
+                                                                                )}
                                                                             </div>
-                                                                            {!foundation.promptHidden && (
-                                                                                <div className="px-4 py-4">
-                                                                                    <pre className="font-mono text-xs leading-relaxed whitespace-pre-wrap text-secondary">
-                                                                                        {REVIEW_WORKING_PROMPT}
-                                                                                    </pre>
-                                                                                    <p className="mt-3 text-xs text-quaternary">
-                                                                                        Once complete, replace the two fields above with the insight from
-                                                                                        ChatGPT / Gemini.
-                                                                                    </p>
-                                                                                </div>
-                                                                            )}
-                                                                        </div>
-                                                                    )}
-                                                                </DocSection>
+                                                                        )}
 
-                                                                {/* ── 11. Website links ── */}
-                                                                <DocSection
-                                                                    id="links"
-                                                                    label="Website links"
-                                                                    badge={isTeam ? <SourceBadge>From website sitemap</SourceBadge> : undefined}
-                                                                    action={
-                                                                        <a
-                                                                            href="https://www.xml-sitemaps.com"
-                                                                            target="_blank"
-                                                                            rel="noopener noreferrer"
-                                                                            className="text-sm font-semibold text-brand-secondary transition duration-100 ease-linear hover:underline"
-                                                                        >
-                                                                            xml-sitemaps.com
-                                                                        </a>
-                                                                    }
-                                                                >
-                                                                    <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_auto] items-center gap-3 border-b border-secondary pb-2">
-                                                                        <span className="text-xs font-medium text-quaternary">Page</span>
-                                                                        <span className="text-xs font-medium text-quaternary">URL</span>
-                                                                        <span />
-                                                                    </div>
-                                                                    {foundation.websiteLinks.length === 0 && (
-                                                                        <p className="mt-2 rounded-xl border border-dashed border-secondary px-4 py-3 text-sm text-quaternary italic">
-                                                                            No pages listed yet.
-                                                                        </p>
-                                                                    )}
-                                                                    {foundation.websiteLinks.map((l) => (
-                                                                        <div
-                                                                            key={l.id}
-                                                                            className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_auto] items-center gap-3 border-b border-secondary py-2.5"
-                                                                        >
-                                                                            {isLocked ? (
-                                                                                <>
-                                                                                    <span
-                                                                                        className={cx(
-                                                                                            "truncate text-md",
-                                                                                            filled(l.page) ? "text-primary" : "text-quaternary italic",
-                                                                                        )}
-                                                                                    >
-                                                                                        {filled(l.page) ? l.page : "Page name"}
-                                                                                    </span>
-                                                                                    {filled(l.url) ? (
-                                                                                        <a
-                                                                                            href={l.url}
-                                                                                            target="_blank"
-                                                                                            rel="noopener noreferrer"
-                                                                                            className="truncate text-md text-brand-secondary transition duration-100 ease-linear hover:underline"
+                                                                        {/* The working prompt is internal process, not something a client should be
+                                                                        handed — it tells whoever reads it to go and run the analysis. Team only. */}
+                                                                        {isTeam && (
+                                                                            <div className="mt-5 overflow-hidden rounded-2xl bg-primary ring-1 ring-secondary">
+                                                                                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-secondary px-4 py-3">
+                                                                                    <div className="flex flex-wrap items-center gap-2.5">
+                                                                                        <p className="font-mono text-[11px] font-semibold tracking-[0.08em] text-quaternary uppercase">
+                                                                                            Working prompt
+                                                                                        </p>
+                                                                                        <BadgeWithDot color="warning" size="sm" type="pill-color">
+                                                                                            Delete once filled
+                                                                                        </BadgeWithDot>
+                                                                                    </div>
+                                                                                    <div className="flex items-center gap-3">
+                                                                                        <button
+                                                                                            type="button"
+                                                                                            onClick={() => {
+                                                                                                void navigator.clipboard
+                                                                                                    .writeText(REVIEW_WORKING_PROMPT)
+                                                                                                    .then(() => {
+                                                                                                        setPromptCopied(true);
+                                                                                                        window.setTimeout(() => setPromptCopied(false), 1600);
+                                                                                                    });
+                                                                                            }}
+                                                                                            className="text-sm font-semibold text-brand-secondary transition duration-100 ease-linear hover:underline"
                                                                                         >
-                                                                                            {l.url}
-                                                                                        </a>
-                                                                                    ) : (
-                                                                                        <span className="text-md text-quaternary italic">https://</span>
-                                                                                    )}
-                                                                                    <span />
-                                                                                </>
-                                                                            ) : (
-                                                                                <>
-                                                                                    <input
-                                                                                        placeholder="Page name"
-                                                                                        value={l.page}
-                                                                                        onChange={(e) =>
-                                                                                            patchFoundation({
-                                                                                                websiteLinks: foundation.websiteLinks.map((x) =>
-                                                                                                    x.id === l.id ? { ...x, page: e.target.value } : x,
-                                                                                                ),
-                                                                                            })
-                                                                                        }
-                                                                                        className={editInput()}
-                                                                                    />
-                                                                                    <input
-                                                                                        placeholder="https://"
-                                                                                        value={l.url}
-                                                                                        onChange={(e) =>
-                                                                                            patchFoundation({
-                                                                                                websiteLinks: foundation.websiteLinks.map((x) =>
-                                                                                                    x.id === l.id ? { ...x, url: e.target.value } : x,
-                                                                                                ),
-                                                                                            })
-                                                                                        }
-                                                                                        className={editInput()}
-                                                                                    />
-                                                                                    <button
-                                                                                        type="button"
-                                                                                        title={`Remove ${l.page.trim() || "row"}`}
-                                                                                        onClick={() =>
-                                                                                            patchFoundation({
-                                                                                                websiteLinks: foundation.websiteLinks.filter(
-                                                                                                    (x) => x.id !== l.id,
-                                                                                                ),
-                                                                                            })
-                                                                                        }
-                                                                                        className="flex size-7 items-center justify-center rounded-lg text-fg-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-error-primary"
-                                                                                    >
-                                                                                        <Trash01 className="size-3.5" aria-hidden="true" />
-                                                                                    </button>
-                                                                                </>
-                                                                            )}
-                                                                        </div>
-                                                                    ))}
-                                                                    <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-                                                                        <p className="text-xs text-quaternary">
-                                                                            Paste the full sitemap export, one row per page.
-                                                                        </p>
-                                                                        {!isLocked && (
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={() =>
-                                                                                    patchFoundation({
-                                                                                        websiteLinks: [...foundation.websiteLinks, emptyWebsiteLink()],
-                                                                                    })
-                                                                                }
+                                                                                            {promptCopied ? "Copied" : "Copy"}
+                                                                                        </button>
+                                                                                        <button
+                                                                                            type="button"
+                                                                                            onClick={() =>
+                                                                                                patchFoundation({ promptHidden: !foundation.promptHidden })
+                                                                                            }
+                                                                                            className="text-sm font-semibold text-tertiary transition duration-100 ease-linear hover:text-secondary"
+                                                                                        >
+                                                                                            {foundation.promptHidden ? "Show" : "Hide"}
+                                                                                        </button>
+                                                                                    </div>
+                                                                                </div>
+                                                                                {!foundation.promptHidden && (
+                                                                                    <div className="px-4 py-4">
+                                                                                        <pre className="font-mono text-xs leading-relaxed whitespace-pre-wrap text-secondary">
+                                                                                            {REVIEW_WORKING_PROMPT}
+                                                                                        </pre>
+                                                                                        <p className="mt-3 text-xs text-quaternary">
+                                                                                            Once complete, replace the two fields above with the insight from
+                                                                                            ChatGPT / Gemini.
+                                                                                        </p>
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                        )}
+                                                                    </DocSection>
+
+                                                                    {/* ── 11. Website links ── */}
+                                                                    <DocSection
+                                                                        id="links"
+                                                                        label="Website links"
+                                                                        badge={isTeam ? <SourceBadge>From website sitemap</SourceBadge> : undefined}
+                                                                        action={
+                                                                            <a
+                                                                                href="https://www.xml-sitemaps.com"
+                                                                                target="_blank"
+                                                                                rel="noopener noreferrer"
                                                                                 className="text-sm font-semibold text-brand-secondary transition duration-100 ease-linear hover:underline"
                                                                             >
-                                                                                + Add row
-                                                                            </button>
+                                                                                xml-sitemaps.com
+                                                                            </a>
+                                                                        }
+                                                                    >
+                                                                        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_auto] items-center gap-3 border-b border-secondary pb-2">
+                                                                            <span className="text-xs font-medium text-quaternary">Page</span>
+                                                                            <span className="text-xs font-medium text-quaternary">URL</span>
+                                                                            <span />
+                                                                        </div>
+                                                                        {foundation.websiteLinks.length === 0 && (
+                                                                            <p className="mt-2 rounded-xl border border-dashed border-secondary px-4 py-3 text-sm text-quaternary italic">
+                                                                                No pages listed yet.
+                                                                            </p>
                                                                         )}
-                                                                    </div>
-                                                                </DocSection>
+                                                                        {foundation.websiteLinks.map((l) => (
+                                                                            <div
+                                                                                key={l.id}
+                                                                                className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_auto] items-start gap-3 border-b border-secondary py-2.5"
+                                                                            >
+                                                                                {suggestMode ? (
+                                                                                    <>
+                                                                                        <div className="min-w-0">
+                                                                                            <input
+                                                                                                placeholder="Page name"
+                                                                                                value={suggestDraft[`websiteLinks.${l.id}.page`] ?? l.page}
+                                                                                                onChange={(e) =>
+                                                                                                    setSuggestDraft((d) => ({
+                                                                                                        ...d,
+                                                                                                        [`websiteLinks.${l.id}.page`]: e.target.value,
+                                                                                                    }))
+                                                                                                }
+                                                                                                className={editInput("border-brand")}
+                                                                                            />
+                                                                                            <SuggestionBox
+                                                                                                sKey={`websiteLinks.${l.id}.page`}
+                                                                                                liveValue={l.page}
+                                                                                            />
+                                                                                        </div>
+                                                                                        <div className="min-w-0">
+                                                                                            <input
+                                                                                                placeholder="https://"
+                                                                                                value={suggestDraft[`websiteLinks.${l.id}.url`] ?? l.url}
+                                                                                                onChange={(e) =>
+                                                                                                    setSuggestDraft((d) => ({
+                                                                                                        ...d,
+                                                                                                        [`websiteLinks.${l.id}.url`]: e.target.value,
+                                                                                                    }))
+                                                                                                }
+                                                                                                className={editInput("border-brand")}
+                                                                                            />
+                                                                                            <SuggestionBox
+                                                                                                sKey={`websiteLinks.${l.id}.url`}
+                                                                                                liveValue={l.url}
+                                                                                            />
+                                                                                        </div>
+                                                                                        <span />
+                                                                                    </>
+                                                                                ) : isLocked ? (
+                                                                                    <>
+                                                                                        <div className="min-w-0">
+                                                                                            <span
+                                                                                                className={cx(
+                                                                                                    "block truncate text-md",
+                                                                                                    filled(l.page) ? "text-primary" : "text-quaternary italic",
+                                                                                                )}
+                                                                                            >
+                                                                                                {filled(l.page) ? l.page : "Page name"}
+                                                                                            </span>
+                                                                                            <SuggestionBox
+                                                                                                sKey={`websiteLinks.${l.id}.page`}
+                                                                                                liveValue={l.page}
+                                                                                            />
+                                                                                        </div>
+                                                                                        <div className="min-w-0">
+                                                                                            {filled(l.url) ? (
+                                                                                                <a
+                                                                                                    href={l.url}
+                                                                                                    target="_blank"
+                                                                                                    rel="noopener noreferrer"
+                                                                                                    className="block truncate text-md text-brand-secondary transition duration-100 ease-linear hover:underline"
+                                                                                                >
+                                                                                                    {l.url}
+                                                                                                </a>
+                                                                                            ) : (
+                                                                                                <span className="text-md text-quaternary italic">https://</span>
+                                                                                            )}
+                                                                                            <SuggestionBox
+                                                                                                sKey={`websiteLinks.${l.id}.url`}
+                                                                                                liveValue={l.url}
+                                                                                            />
+                                                                                        </div>
+                                                                                        <span />
+                                                                                    </>
+                                                                                ) : (
+                                                                                    <>
+                                                                                        <div className="min-w-0">
+                                                                                            <input
+                                                                                                placeholder="Page name"
+                                                                                                value={l.page}
+                                                                                                onChange={(e) =>
+                                                                                                    patchFoundation({
+                                                                                                        websiteLinks: foundation.websiteLinks.map((x) =>
+                                                                                                            x.id === l.id ? { ...x, page: e.target.value } : x,
+                                                                                                        ),
+                                                                                                    })
+                                                                                                }
+                                                                                                className={editInput()}
+                                                                                            />
+                                                                                            <SuggestionBox
+                                                                                                sKey={`websiteLinks.${l.id}.page`}
+                                                                                                liveValue={l.page}
+                                                                                            />
+                                                                                        </div>
+                                                                                        <div className="min-w-0">
+                                                                                            <input
+                                                                                                placeholder="https://"
+                                                                                                value={l.url}
+                                                                                                onChange={(e) =>
+                                                                                                    patchFoundation({
+                                                                                                        websiteLinks: foundation.websiteLinks.map((x) =>
+                                                                                                            x.id === l.id ? { ...x, url: e.target.value } : x,
+                                                                                                        ),
+                                                                                                    })
+                                                                                                }
+                                                                                                className={editInput()}
+                                                                                            />
+                                                                                            <SuggestionBox
+                                                                                                sKey={`websiteLinks.${l.id}.url`}
+                                                                                                liveValue={l.url}
+                                                                                            />
+                                                                                        </div>
+                                                                                        <button
+                                                                                            type="button"
+                                                                                            title={`Remove ${l.page.trim() || "row"}`}
+                                                                                            onClick={() =>
+                                                                                                patchFoundation({
+                                                                                                    websiteLinks: foundation.websiteLinks.filter(
+                                                                                                        (x) => x.id !== l.id,
+                                                                                                    ),
+                                                                                                })
+                                                                                            }
+                                                                                            className="flex size-7 items-center justify-center rounded-lg text-fg-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-error-primary"
+                                                                                        >
+                                                                                            <Trash01 className="size-3.5" aria-hidden="true" />
+                                                                                        </button>
+                                                                                    </>
+                                                                                )}
+                                                                            </div>
+                                                                        ))}
+                                                                        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                                                                            <p className="text-xs text-quaternary">
+                                                                                Paste the full sitemap export, one row per page.
+                                                                            </p>
+                                                                            {!isLocked && (
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() =>
+                                                                                        patchFoundation({
+                                                                                            websiteLinks: [...foundation.websiteLinks, emptyWebsiteLink()],
+                                                                                        })
+                                                                                    }
+                                                                                    className="text-sm font-semibold text-brand-secondary transition duration-100 ease-linear hover:underline"
+                                                                                >
+                                                                                    + Add row
+                                                                                </button>
+                                                                            )}
+                                                                        </div>
+                                                                    </DocSection>
 
-                                                                {/* ── Answers from the previous Master Document ──
+                                                                    {/* ── Answers from the previous Master Document ──
                                                                     The redesign replaced six free-text fields and the FAQ bank with the
                                                                     eleven sections above. Rows written before it still hold whatever the
                                                                     client typed, and mergeContent keeps saving it, so it is shown here
                                                                     read-only rather than left invisible in the JSON. Team-only: it's
                                                                     migration debris, not part of the document. Disappears by itself once
                                                                     an AM has moved the content up and cleared the old fields. */}
-                                                                {isTeam && (legacyFoundation.length > 0 || legacyFaqs.length > 0) && (
-                                                                    <section className="bg-secondary_subtle rounded-2xl p-5 ring-1 ring-secondary">
-                                                                        <div className="flex flex-wrap items-center gap-2.5">
-                                                                            <p className="font-mono text-[11px] font-semibold tracking-[0.08em] text-quaternary uppercase">
-                                                                                Earlier Master Document
+                                                                    {isTeam && (legacyFoundation.length > 0 || legacyFaqs.length > 0) && (
+                                                                        <section className="bg-secondary_subtle rounded-2xl p-5 ring-1 ring-secondary">
+                                                                            <div className="flex flex-wrap items-center gap-2.5">
+                                                                                <p className="font-mono text-[11px] font-semibold tracking-[0.08em] text-quaternary uppercase">
+                                                                                    Earlier Master Document
+                                                                                </p>
+                                                                                <BadgeWithDot color="gray" size="sm" type="pill-color">
+                                                                                    Team only
+                                                                                </BadgeWithDot>
+                                                                            </div>
+                                                                            <p className="mt-2 text-sm text-tertiary">
+                                                                                Answers this client gave against the previous version of this page. Move
+                                                                                anything worth keeping into the sections above — nothing here feeds the exports
+                                                                                or the chat widget.
                                                                             </p>
-                                                                            <BadgeWithDot color="gray" size="sm" type="pill-color">
-                                                                                Team only
-                                                                            </BadgeWithDot>
-                                                                        </div>
-                                                                        <p className="mt-2 text-sm text-tertiary">
-                                                                            Answers this client gave against the previous version of this page. Move anything
-                                                                            worth keeping into the sections above — nothing here feeds the exports or the chat
-                                                                            widget.
-                                                                        </p>
-                                                                        <div className="mt-4 flex flex-col gap-4">
-                                                                            {legacyFoundation.map((f) => (
-                                                                                <div key={f.key}>
-                                                                                    <p className="text-sm font-medium text-secondary">{f.label}</p>
-                                                                                    <p className="mt-1 text-md whitespace-pre-wrap text-tertiary">{f.value}</p>
-                                                                                </div>
-                                                                            ))}
-                                                                            {legacyFaqs.length > 0 && (
-                                                                                <div>
-                                                                                    <p className="text-sm font-medium text-secondary">
-                                                                                        FAQ bank ({legacyFaqs.length})
-                                                                                    </p>
-                                                                                    <div className="mt-2 flex flex-col gap-2">
-                                                                                        {legacyFaqs.map((q) => (
-                                                                                            <div key={q.id}>
-                                                                                                <p className="text-sm font-semibold text-primary">
-                                                                                                    {q.question.trim() || "Untitled question"}
-                                                                                                </p>
-                                                                                                <p className="text-sm whitespace-pre-wrap text-tertiary">
-                                                                                                    {q.answer.trim() || "No answer given."}
-                                                                                                </p>
-                                                                                            </div>
-                                                                                        ))}
+                                                                            <div className="mt-4 flex flex-col gap-4">
+                                                                                {legacyFoundation.map((f) => (
+                                                                                    <div key={f.key}>
+                                                                                        <p className="text-sm font-medium text-secondary">{f.label}</p>
+                                                                                        <p className="mt-1 text-md whitespace-pre-wrap text-tertiary">
+                                                                                            {f.value}
+                                                                                        </p>
                                                                                     </div>
-                                                                                </div>
-                                                                            )}
-                                                                        </div>
-                                                                    </section>
-                                                                )}
+                                                                                ))}
+                                                                                {legacyFaqs.length > 0 && (
+                                                                                    <div>
+                                                                                        <p className="text-sm font-medium text-secondary">
+                                                                                            FAQ bank ({legacyFaqs.length})
+                                                                                        </p>
+                                                                                        <div className="mt-2 flex flex-col gap-2">
+                                                                                            {legacyFaqs.map((q) => (
+                                                                                                <div key={q.id}>
+                                                                                                    <p className="text-sm font-semibold text-primary">
+                                                                                                        {q.question.trim() || "Untitled question"}
+                                                                                                    </p>
+                                                                                                    <p className="text-sm whitespace-pre-wrap text-tertiary">
+                                                                                                        {q.answer.trim() || "No answer given."}
+                                                                                                    </p>
+                                                                                                </div>
+                                                                                            ))}
+                                                                                        </div>
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                        </section>
+                                                                    )}
+                                                                </div>
                                                             </div>
-                                                        </div>
-                                                    </Reveal>
+
+                                                            {/* Sticky bar — the send controls, and the outcome of a send.
+                                                                It reports success and failure IN PLACE: the button is pinned to the
+                                                                bottom of the viewport, so a message rendered up beside the section
+                                                                heading is off-screen exactly when it's needed, and a failed send
+                                                                looks like nothing happened. */}
+                                                            {(suggestMode || sendState === "sent" || sendState === "error") && (
+                                                                <div className="fixed bottom-5 left-1/2 z-40 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-3 rounded-2xl bg-primary px-4 py-3 shadow-lg ring-1 ring-secondary">
+                                                                    {sendState === "sent" ? (
+                                                                        <p className="flex items-center gap-1.5 text-sm font-medium text-success-primary">
+                                                                            <Check className="size-4 shrink-0" aria-hidden="true" />
+                                                                            Sent! Your account manager will review your suggestions.
+                                                                        </p>
+                                                                    ) : (
+                                                                        <>
+                                                                            <p
+                                                                                className={cx(
+                                                                                    "min-w-0 text-sm tabular-nums",
+                                                                                    sendState === "error" ? "text-error-primary" : "text-tertiary",
+                                                                                )}
+                                                                                role={sendState === "error" ? "alert" : undefined}
+                                                                            >
+                                                                                {sendState === "error"
+                                                                                    ? sendError || "Nothing was sent — please try again."
+                                                                                    : suggestDraftCount === 0
+                                                                                      ? "No changes yet — type into any field"
+                                                                                      : `${suggestDraftCount} change${suggestDraftCount === 1 ? "" : "s"}`}
+                                                                            </p>
+                                                                            {/* Buttons share one non-shrinking row: letting them wrap put Cancel
+                                                                                on a second line, which read as a broken bar. */}
+                                                                            <div className="flex shrink-0 items-center gap-2">
+                                                                                <Button
+                                                                                    size="sm"
+                                                                                    color="primary"
+                                                                                    isDisabled={suggestDraftCount === 0}
+                                                                                    isLoading={sendState === "sending"}
+                                                                                    showTextWhileLoading
+                                                                                    onClick={() => void submitSuggestions()}
+                                                                                >
+                                                                                    {sendState === "error" ? "Try again" : `Send suggestion${suggestDraftCount === 1 ? "" : "s"}`}
+                                                                                </Button>
+                                                                                <Button
+                                                                                    size="sm"
+                                                                                    color="secondary"
+                                                                                    onClick={() => {
+                                                                                        setSuggestMode(false);
+                                                                                        setSuggestDraft({});
+                                                                                        setSendState("idle");
+                                                                                        setSendError("");
+                                                                                    }}
+                                                                                >
+                                                                                    Cancel
+                                                                                </Button>
+                                                                            </div>
+                                                                        </>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </Reveal>
+                                                    </SuggestionContext.Provider>
                                                 )}
 
                                                 {/* ── Brand Kit ── */}
