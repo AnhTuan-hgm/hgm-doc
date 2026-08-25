@@ -55,7 +55,7 @@ import {
     ensureClientOnboardingForm,
 } from "@/pages/client/client-onboarding-form-page";
 import { ShadeScales } from "@/pages/client/dashboard/brand-kit-shades";
-import { FontPreviews, TypeScale } from "@/pages/client/dashboard/brand-kit-typography";
+import { TypeScale, TypographyCards } from "@/pages/client/dashboard/brand-kit-typography";
 import {
     ClientSearchBar,
     DashboardAccessGate,
@@ -289,6 +289,25 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
         } catch {
             /* keep the current background if compression fails */
         }
+    };
+
+    /** Brand Kit custom font upload — stored as a data URL like the logos. Fonts can't be
+     *  compressed the way images can, so a 1.5MB cap keeps a stray 4MB TTF from bloating
+     *  the row every dashboard load pulls down; .woff2 files are far under it. */
+    const onPickFontFile = async (role: "heading" | "body", file: File) => {
+        if (file.size > 1_500_000) {
+            window.alert("That font file is over 1.5MB — export it as .woff2 (much smaller) and try again.");
+            return;
+        }
+        const url = await new Promise<string>((resolve, reject) => {
+            const r = new FileReader();
+            r.onload = () => resolve(String(r.result));
+            r.onerror = () => reject(r.error);
+            r.readAsDataURL(file);
+        }).catch(() => "");
+        if (!url) return;
+        const name = file.name.replace(/\.[^.]+$/, "").trim() || "Custom font";
+        patchBrand({ font_files: { ...content.brand.font_files, [role]: { name, url } } });
     };
 
     /** Brand Kit logo upload. compressImageFile passes SVG straight through, so a vector
@@ -4205,19 +4224,21 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
 
                                                             {/* ── Typography — the fonts, previewed in the typefaces themselves. ── */}
                                                             <DocSection id="typography" label="Typography" icon={Type01}>
-                                                                {!isLocked && (
-                                                                    <input
-                                                                        type="text"
-                                                                        placeholder="e.g. Inter, Playfair Display"
-                                                                        value={content.brand.fonts}
-                                                                        onChange={(e) => patchBrand({ fonts: e.target.value })}
-                                                                        className={cx(editInput("max-w-72"), "mb-4")}
-                                                                    />
-                                                                )}
-                                                                <FontPreviews fonts={content.brand.fonts} />
+                                                                <TypographyCards
+                                                                    fonts={content.brand.fonts}
+                                                                    files={content.brand.font_files}
+                                                                    isLocked={isLocked}
+                                                                    onFonts={(v) => patchBrand({ fonts: v })}
+                                                                    onUpload={(role, file) => void onPickFontFile(role, file)}
+                                                                    onClearUpload={(role) =>
+                                                                        patchBrand({ font_files: { ...content.brand.font_files, [role]: undefined } })
+                                                                    }
+                                                                />
 
                                                                 {/* The Untitled UI type scale in the brand's own fonts, px + fluid clamp(). */}
-                                                                {content.brand.fonts.trim() && (
+                                                                {(content.brand.fonts.trim() ||
+                                                                    content.brand.font_files?.heading ||
+                                                                    content.brand.font_files?.body) && (
                                                                     <div className="mt-8">
                                                                         <div className="flex flex-wrap items-center justify-between gap-2">
                                                                             <p className="text-sm font-semibold text-primary">Type scale</p>
@@ -4226,7 +4247,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                             </span>
                                                                         </div>
                                                                         <div className="mt-2">
-                                                                            <TypeScale fonts={content.brand.fonts} />
+                                                                            <TypeScale fonts={content.brand.fonts} files={content.brand.font_files} />
                                                                         </div>
                                                                     </div>
                                                                 )}

@@ -193,6 +193,9 @@ export interface DashboardContent {
         /** Logo files the AM uploads — SVG stays vector (compressImageFile passes it
          *  through), raster is compressed to WebP. Optional: older rows predate it. */
         logos?: { id: string; name: string; url: string }[];
+        /** Uploaded font files (data URLs), one per role. When set, the upload overrides
+         *  the typed name for that role. Optional: older rows predate it. */
+        font_files?: { heading?: { name: string; url: string }; body?: { name: string; url: string } };
     };
     instagram: {
         profile_url: string;
