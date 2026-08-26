@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowRight, ArrowUpRight, BookOpen01, Check, CheckDone01, ChevronDown, ChevronUp, ClipboardCheck, Database01, Edit02, Flag05, HelpCircle, Hourglass01, Image01, LayoutAlt01, Lock01, LockUnlocked01, MessageChatCircle, Plus, Send01, Stars01, Trash01, Zap } from "@untitledui/icons";
+import { ArrowRight, ArrowUpRight, BookOpen01, Check, CheckDone01, ChevronDown, ChevronUp, Database01, Edit02, Flag05, HelpCircle, Hourglass01, Image01, LayoutAlt01, Lock01, LockUnlocked01, MessageChatCircle, Plus, Send01, Stars01, Trash01, Zap } from "@untitledui/icons";
 import { MilestonesPanel, type Milestone, type WaitingItem } from "@/components/application/milestones-panel";
 import { PageBanner } from "@/components/application/page-banner";
 import { AppShell, CollapsedTopBar, IconRail, NavCollapseButton, RailBottom, useNavCollapsed } from "@/components/application/icon-rail";
@@ -537,7 +537,7 @@ export const ChatWidgetOverviewScreen = () => {
             rail={!navCollapsed && <IconRail activeDept="docs" bottom={<RailBottom editing={editing} onToggleEditing={() => setEditing((e) => !e)} />} />}
             breadcrumb={[
                 { label: "Dashboard", to: "/dashboard", icon: LayoutAlt01 },
-                { label: "Project Logs", to: "/dashboard?dept=docs&tab=project-logs", icon: ClipboardCheck },
+                { label: "Manual", to: "/manual", icon: BookOpen01 },
                 { label: "AI Chat Widget" },
             ]}
         >
@@ -590,7 +590,7 @@ export const ChatWidgetOverviewScreen = () => {
                 <PageBanner
                     breadcrumb={[
                         { label: "Dashboard", to: "/dashboard", icon: LayoutAlt01 },
-                        { label: "Project Logs", to: "/dashboard?dept=docs&tab=project-logs", icon: ClipboardCheck },
+                        { label: "Manual", to: "/manual", icon: BookOpen01 },
                         { label: "AI Chat Widget" },
                     ]}
                     title="AI Chat Widget — Overview"

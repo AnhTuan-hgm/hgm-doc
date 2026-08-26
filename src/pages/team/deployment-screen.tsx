@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, CheckCircle, ClipboardCheck, HelpCircle, LayoutAlt01, LinkExternal01, Rocket01, XCircle } from "@untitledui/icons";
+import { AlertTriangle, BookOpen01, CheckCircle, HelpCircle, LayoutAlt01, LinkExternal01, Rocket01, XCircle } from "@untitledui/icons";
 import { AppShell, CollapsedTopBar, IconRail, RailBottom, useNavCollapsed } from "@/components/application/icon-rail";
 import { Badge, BadgeWithDot } from "@/components/base/badges/badges";
 import { useEditShortcuts } from "@/hooks/use-edit-shortcuts";
@@ -190,7 +190,7 @@ export const DeploymentScreen = () => {
             rail={!navCollapsed && <IconRail activeDept="docs" bottom={<RailBottom editing={editing} onToggleEditing={() => setEditing((e) => !e)} />} />}
             breadcrumb={[
                 { label: "Dashboard", to: "/dashboard", icon: LayoutAlt01 },
-                { label: "Project Logs", to: "/dashboard?dept=docs&tab=project-logs", icon: ClipboardCheck },
+                { label: "Manual", to: "/manual", icon: BookOpen01 },
                 { label: "Deployments" },
             ]}
         >

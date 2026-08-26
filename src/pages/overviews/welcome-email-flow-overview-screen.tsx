@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowRight, ArrowUpRight, BookOpen01, Check, CheckDone01, ChevronDown, ClipboardCheck, Copy01, Flag05, HelpCircle, Hourglass01, LayoutAlt01, Mail01, Plus, Send01, Trash01, Users01 } from "@untitledui/icons";
+import { ArrowRight, ArrowUpRight, BookOpen01, Check, CheckDone01, ChevronDown, Copy01, Flag05, HelpCircle, Hourglass01, LayoutAlt01, Mail01, Plus, Send01, Trash01, Users01 } from "@untitledui/icons";
 import { MilestonesPanel, type Milestone, type WaitingItem } from "@/components/application/milestones-panel";
 import { PageBanner } from "@/components/application/page-banner";
 import { AppShell, CollapsedTopBar, IconRail, NavCollapseButton, RailBottom, useNavCollapsed } from "@/components/application/icon-rail";
@@ -428,7 +428,7 @@ export const WelcomeEmailFlowOverviewScreen = () => {
             rail={!navCollapsed && <IconRail activeDept="docs" bottom={<RailBottom editing={editing} onToggleEditing={() => setEditing((e) => !e)} />} />}
             breadcrumb={[
                 { label: "Dashboard", to: "/dashboard", icon: LayoutAlt01 },
-                { label: "Project Logs", to: "/dashboard?dept=docs&tab=project-logs", icon: ClipboardCheck },
+                { label: "Manual", to: "/manual", icon: BookOpen01 },
                 { label: "Welcome Email Flow" },
             ]}
         >
@@ -480,7 +480,7 @@ export const WelcomeEmailFlowOverviewScreen = () => {
                 <PageBanner
                     breadcrumb={[
                         { label: "Dashboard", to: "/dashboard", icon: LayoutAlt01 },
-                        { label: "Project Logs", to: "/dashboard?dept=docs&tab=project-logs", icon: ClipboardCheck },
+                        { label: "Manual", to: "/manual", icon: BookOpen01 },
                         { label: "Welcome Email Flow" },
                     ]}
                     title="Welcome Email Flow — Overview"

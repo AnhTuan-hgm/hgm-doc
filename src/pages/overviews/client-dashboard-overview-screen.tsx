@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowRight, ArrowUpRight, BookOpen01, Briefcase01, Check, CheckDone01, ChevronDown, ChevronUp, ClipboardCheck, Database01, FileCheck02, Flag05, HelpCircle, Hourglass01, LayoutAlt01, Plus, Send01, Stars01, Trash01, Users01, Zap } from "@untitledui/icons";
+import { ArrowRight, ArrowUpRight, BookOpen01, Briefcase01, Check, CheckDone01, ChevronDown, ChevronUp, Database01, FileCheck02, Flag05, HelpCircle, Hourglass01, LayoutAlt01, Plus, Send01, Stars01, Trash01, Users01, Zap } from "@untitledui/icons";
 import { MilestonesPanel, type Milestone, type WaitingItem } from "@/components/application/milestones-panel";
 import { PageBanner } from "@/components/application/page-banner";
 import { AppShell, CollapsedTopBar, IconRail, NavCollapseButton, RailBottom, useNavCollapsed } from "@/components/application/icon-rail";
@@ -440,7 +440,7 @@ export const ClientDashboardOverviewScreen = () => {
             rail={!navCollapsed && <IconRail activeDept="docs" bottom={<RailBottom editing={editing} onToggleEditing={() => setEditing((e) => !e)} />} />}
             breadcrumb={[
                 { label: "Dashboard", to: "/dashboard", icon: LayoutAlt01 },
-                { label: "Project Logs", to: "/dashboard?dept=docs&tab=project-logs", icon: ClipboardCheck },
+                { label: "Manual", to: "/manual", icon: BookOpen01 },
                 { label: "Client Dashboard" },
             ]}
         >
@@ -493,7 +493,7 @@ export const ClientDashboardOverviewScreen = () => {
                 <PageBanner
                     breadcrumb={[
                         { label: "Dashboard", to: "/dashboard", icon: LayoutAlt01 },
-                        { label: "Project Logs", to: "/dashboard?dept=docs&tab=project-logs", icon: ClipboardCheck },
+                        { label: "Manual", to: "/manual", icon: BookOpen01 },
                         { label: "Client Dashboard" },
                     ]}
                     title="Client Dashboard — Overview"

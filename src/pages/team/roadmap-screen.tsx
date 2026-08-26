@@ -7,7 +7,6 @@ import {
     CheckDone01,
     ChevronDown,
     ChevronRight,
-    ClipboardCheck,
     Flag05,
     HelpCircle,
     Hourglass01,
@@ -699,7 +698,7 @@ export const RoadmapScreen = () => {
             rail={!navCollapsed && <IconRail activeDept="docs" bottom={<RailBottom editing={editing} onToggleEditing={() => setEditing((e) => !e)} />} />}
             breadcrumb={[
                 { label: "Dashboard", to: "/dashboard", icon: LayoutAlt01 },
-                { label: "Project Logs", to: "/dashboard?dept=docs&tab=project-logs", icon: ClipboardCheck },
+                { label: "Manual", to: "/manual", icon: BookOpen01 },
                 { label: "Project Management" },
             ]}
         >
@@ -758,7 +757,7 @@ export const RoadmapScreen = () => {
                         <PageBanner
                             breadcrumb={[
                                 { label: "Dashboard", to: "/dashboard", icon: LayoutAlt01 },
-                                { label: "Project Logs", to: "/dashboard?dept=docs&tab=project-logs", icon: ClipboardCheck },
+                                { label: "Manual", to: "/manual", icon: BookOpen01 },
                                 { label: "Project Management" },
                             ]}
                             title="Project Management"

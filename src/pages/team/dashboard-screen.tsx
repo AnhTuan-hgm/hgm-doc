@@ -159,6 +159,8 @@ interface DeptTab {
     id: string;
     label: string;
     icon: typeof Share07;
+    /** Set ⇒ the row is a link to its own page rather than a card grid inside this one. */
+    to?: string;
 }
 
 interface Department {
@@ -252,7 +254,11 @@ const DEPARTMENTS: Department[] = [
         sectionLabel: "Create Docs",
         kind: "docs",
         tabs: [
-            { id: "project-logs", label: "Project Logs", icon: ClipboardCheck },
+            // The manual is the site's own reference and now carries the live project-log
+            // status too, which is what the "Project Logs" card grid used to be for — so it
+            // sits first and that tab is gone. The log pages themselves are untouched and
+            // still reachable from the manual (and by their own URLs).
+            { id: "manual", label: "Manual", icon: BookOpen01, to: "/manual" },
             { id: "owner-guides", label: "Owner Guides", icon: BookOpen01 },
             { id: "host-onboarding", label: "Brand Vision Form", icon: Home02 },
             { id: "popups", label: "Popups", icon: Mail01 },
@@ -3298,6 +3304,7 @@ const ClientListContent = ({
 /* ── Dashboard layout ─────────────────────────────────────────────── */
 
 const DashboardLayout = () => {
+    const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const initialDeptId = (() => {
         const p = searchParams.get("dept");
@@ -3306,7 +3313,8 @@ const DashboardLayout = () => {
     const [department, setDepartment] = useState(initialDeptId);
     const [activeSection, setActiveSection] = useState(() => {
         const d = DEPARTMENTS.find((x) => x.id === initialDeptId) ?? DEPARTMENTS[0];
-        const fallback = d.tabs[0]?.id ?? "";
+        // Link rows (Manual) render no content of their own, so they can't be the landing tab.
+        const fallback = (d.tabs.find((x) => !x.to) ?? d.tabs[0])?.id ?? "";
         // Restore the tab from the URL so the browser Back button lands on the same
         // section. Static tabs are validated; a card-department custom tab id is
         // accepted optimistically and matches once overview_tabs load.
@@ -3362,10 +3370,21 @@ const DashboardLayout = () => {
             ? [...dept.tabs, ...customTabs.map((t) => ({ id: t.id, label: t.label, icon: LayoutAlt01 }))]
             : dept.tabs;
 
+    /** The first tab that actually renders something here — link rows (Manual) have no
+     *  content of their own, so landing on one would show an empty department. */
+    const firstContentTab = (d: Department) => (d.tabs.find((t) => !t.to) ?? d.tabs[0])?.id ?? "";
+
     const selectDept = (id: string) => {
         const d = DEPARTMENTS.find((x) => x.id === id) ?? DEPARTMENTS[0];
         setDepartment(id);
-        setActiveSection(d.tabs[0]?.id ?? "");
+        setActiveSection(firstContentTab(d));
+    };
+
+    /** A tab either switches the section or, when it carries `to`, opens its own page. */
+    const selectTab = (id: string) => {
+        const t = tabs.find((x) => x.id === id);
+        if (t?.to) navigate(t.to);
+        else setActiveSection(id);
     };
 
     const addTab = async (label: string) => {
@@ -3416,7 +3435,7 @@ const DashboardLayout = () => {
                             department={dept}
                             tabs={tabs}
                             activeSection={activeSection}
-                            onSelect={setActiveSection}
+                            onSelect={selectTab}
                             editing={editing}
                             canEditTabs={dept.kind === "cards"}
                             customTabIds={customTabs.map((t) => t.id)}
@@ -3434,9 +3453,7 @@ const DashboardLayout = () => {
                                     ? <ChatWidgetContent />
                                     : activeSection === "host-onboarding"
                                         ? <HostOnboardingContent />
-                                        : activeSection === "project-logs"
-                                            ? <OverviewContent key={dept.id + ":" + activeSection} department={dept} tab={activeSection} editing={editing} isOwner={isOwner} />
-                                            : <MetaPixelContent />
+                                        : <MetaPixelContent />
                             : <OverviewContent key={dept.id + ":" + activeSection} department={dept} tab={activeSection} editing={editing} isOwner={isOwner} />}
                 </>
             )}

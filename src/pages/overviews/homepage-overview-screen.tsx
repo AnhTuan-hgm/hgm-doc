@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { BarChartSquare02, Camera01, Check, CheckDone01, ChevronDown, ClipboardCheck, FilterFunnel01, Flag05, HelpCircle, Home02, Hourglass01, LayoutAlt01, Lightbulb01, PenTool01, Plus, Rocket02, Settings01, Trash01, Users01 } from "@untitledui/icons";
+import { BarChartSquare02, BookOpen01, Camera01, Check, CheckDone01, ChevronDown, FilterFunnel01, Flag05, HelpCircle, Home02, Hourglass01, LayoutAlt01, Lightbulb01, PenTool01, Plus, Rocket02, Settings01, Trash01, Users01 } from "@untitledui/icons";
 import { MilestonesPanel, type Milestone, type WaitingItem } from "@/components/application/milestones-panel";
 import { PageBanner } from "@/components/application/page-banner";
 import { AppShell, CollapsedTopBar, IconRail, NavCollapseButton, RailBottom, useNavCollapsed } from "@/components/application/icon-rail";
@@ -458,7 +458,7 @@ export const HomepageOverviewScreen = () => {
             rail={!navCollapsed && <IconRail activeDept="docs" bottom={<RailBottom editing={editing} onToggleEditing={() => setEditing((e) => !e)} />} />}
             breadcrumb={[
                 { label: "Dashboard", to: "/dashboard", icon: LayoutAlt01 },
-                { label: "Project Logs", to: "/dashboard?dept=docs&tab=project-logs", icon: ClipboardCheck },
+                { label: "Manual", to: "/manual", icon: BookOpen01 },
                 { label: "Homepage" },
             ]}
         >
@@ -511,7 +511,7 @@ export const HomepageOverviewScreen = () => {
                 <PageBanner
                     breadcrumb={[
                         { label: "Dashboard", to: "/dashboard", icon: LayoutAlt01 },
-                        { label: "Project Logs", to: "/dashboard?dept=docs&tab=project-logs", icon: ClipboardCheck },
+                        { label: "Manual", to: "/manual", icon: BookOpen01 },
                         { label: "Homepage" },
                     ]}
                     title="Homepage — Overview"

@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle, ClipboardCheck, LayoutAlt01, LinkExternal01 } from "@untitledui/icons";
+import { AlertTriangle, BookOpen01, CheckCircle, LayoutAlt01, LinkExternal01 } from "@untitledui/icons";
 
 import { AppShell, CollapsedTopBar, IconRail, useNavCollapsed } from "@/components/application/icon-rail";
 import { BadgeWithDot } from "@/components/base/badges/badges";
@@ -82,7 +82,7 @@ export const SafeBrowsingScreen = () => {
             rail={!navCollapsed && <IconRail activeDept="docs" />}
             breadcrumb={[
                 { label: "Dashboard", to: "/dashboard", icon: LayoutAlt01 },
-                { label: "Project Logs", to: "/dashboard?dept=docs&tab=project-logs", icon: ClipboardCheck },
+                { label: "Manual", to: "/manual", icon: BookOpen01 },
                 { label: "Safe Browsing" },
             ]}
         >
