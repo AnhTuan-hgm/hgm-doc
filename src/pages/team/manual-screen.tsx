@@ -1,7 +1,9 @@
+import { useEffect, useState } from "react";
 import { ArrowRight, BookOpen01, ChevronDown, LayoutAlt01 } from "@untitledui/icons";
 
 import { AppShell, CollapsedTopBar, IconRail, useNavCollapsed } from "@/components/application/icon-rail";
 import { Badge } from "@/components/base/badges/badges";
+import { supabase } from "@/lib/supabase";
 import { DocRail, DocSection } from "@/pages/client/dashboard/master-brand-fields";
 import { cx } from "@/utils/cx";
 
@@ -19,6 +21,7 @@ const SECTIONS = [
     { id: "client-pages", label: "Client pages" },
     { id: "dashboard", label: "The client dashboard" },
     { id: "links", label: "All links" },
+    { id: "logs", label: "Project logs" },
     { id: "editing", label: "Editing & saving" },
     { id: "data", label: "Database & storage" },
     { id: "ai", label: "AI features" },
@@ -197,6 +200,147 @@ const LINK_GROUPS: { group: string; links: { to: string; what: string }[] }[] = 
         ],
     },
 ];
+
+/**
+ * The project logs, in the order the Docs → Project Logs tab lists them.
+ *
+ * These are the six with a real `sop_pages` row behind them — the same set /wrapup writes
+ * to and /questions reads from. Keep this list in step with those skills' lists: a log
+ * missing here is a log nobody sees the status of.
+ */
+const LOG_PAGES: { slug: string; label: string; to: string; what: string }[] = [
+    { slug: "client-dashboard-overview", label: "Client Dashboard", to: "/client-dashboard-overview", what: "Master Brand Document & the client info hub" },
+    { slug: "roadmap", label: "Project Management", to: "/roadmap", what: "Roadmap, to-dos & timeline for the whole site" },
+    { slug: "chat-widget-overview", label: "AI Chat Widget", to: "/chat-widget-overview", what: "Claude-answered chat for client websites" },
+    { slug: "welcome-email-flow-overview", label: "Welcome Email Flow", to: "/welcome-email-flow-overview", what: "The AM email-flow builder & templates" },
+    { slug: "owner-guide-overview", label: "Owner Guide", to: "/owner-guide-overview", what: "Client onboarding & credential collection" },
+    { slug: "homepage-overview", label: "Homepage", to: "/homepage-overview", what: "Mission Control — the company-wide home screen" },
+];
+
+interface LogStatus {
+    entries: number;
+    latest?: { date: string; title: string };
+    todosOpen: number;
+    todosTotal: number;
+    questionsOpen: number;
+    questionsTotal: number;
+}
+
+/** Same rule the notification bell uses, so the two never disagree about what's open. */
+const questionIsOpen = (q: { answer?: string; resolved?: boolean }) => !(q.resolved ?? !!(q.answer || "").trim());
+
+const shortDate = (iso: string) => {
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+};
+
+/**
+ * Live status of every project log, read straight from the rows the logs themselves save
+ * to. Read-only by design: editing stays on each log page, so there's exactly one place a
+ * timeline entry or an answer can be written and no chance of two pages disagreeing.
+ */
+const ProjectLogs = () => {
+    const [status, setStatus] = useState<Record<string, LogStatus> | null>(null);
+    const [failed, setFailed] = useState(false);
+
+    useEffect(() => {
+        let cancelled = false;
+        void supabase
+            .from("sop_pages")
+            .select("slug, data")
+            .in(
+                "slug",
+                LOG_PAGES.map((p) => p.slug),
+            )
+            .then(({ data, error }) => {
+                if (cancelled) return;
+                if (error || !data) {
+                    setFailed(true);
+                    return;
+                }
+                const next: Record<string, LogStatus> = {};
+                for (const row of data) {
+                    const d = (row.data ?? {}) as {
+                        log?: { date: string; title: string }[];
+                        todos?: { done?: boolean }[];
+                        questions?: { answer?: string; resolved?: boolean }[];
+                    };
+                    const entries = [...(d.log ?? [])].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+                    const todos = d.todos ?? [];
+                    const questions = d.questions ?? [];
+                    next[row.slug as string] = {
+                        entries: entries.length,
+                        latest: entries.at(-1),
+                        todosOpen: todos.filter((t) => !t.done).length,
+                        todosTotal: todos.length,
+                        questionsOpen: questions.filter(questionIsOpen).length,
+                        questionsTotal: questions.length,
+                    };
+                }
+                setStatus(next);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    return (
+        <div className="flex flex-col gap-2">
+            {LOG_PAGES.map((p) => {
+                const s = status?.[p.slug];
+                return (
+                    <a
+                        key={p.slug}
+                        href={p.to}
+                        className="group flex flex-col gap-2 rounded-xl bg-secondary p-4 ring-1 ring-secondary transition duration-100 ease-linear hover:bg-primary_hover sm:flex-row sm:items-center sm:justify-between"
+                    >
+                        <div className="min-w-0">
+                            <p className="flex items-center gap-1.5 text-sm font-semibold text-primary">
+                                {p.label}
+                                <ArrowRight
+                                    className="size-3.5 shrink-0 text-fg-quaternary transition-transform duration-100 ease-linear group-hover:translate-x-0.5"
+                                    aria-hidden="true"
+                                />
+                            </p>
+                            <p className="mt-0.5 text-xs text-tertiary">{p.what}</p>
+                            <p className="mt-1.5 text-sm text-secondary">
+                                {s?.latest ? (
+                                    <>
+                                        <span className="font-mono text-xs text-quaternary">{shortDate(s.latest.date)}</span> · {s.latest.title}
+                                    </>
+                                ) : status ? (
+                                    <span className="text-quaternary italic">No timeline entries yet</span>
+                                ) : (
+                                    <span className="text-quaternary">Loading…</span>
+                                )}
+                            </p>
+                        </div>
+                        {/* Counts, not badges-for-their-own-sake: open questions block work, so
+                            they read as a warning; a drained queue reads as done. */}
+                        {s && (
+                            <div className="flex shrink-0 flex-wrap items-center gap-2">
+                                <Badge color={s.questionsOpen > 0 ? "warning" : "success"} size="sm" type="pill-color">
+                                    {s.questionsOpen > 0 ? `${s.questionsOpen} open question${s.questionsOpen === 1 ? "" : "s"}` : "Questions answered"}
+                                </Badge>
+                                <Badge color="gray" size="sm" type="pill-color">
+                                    {s.todosOpen}/{s.todosTotal} to-dos left
+                                </Badge>
+                                <Badge color="gray" size="sm" type="modern">
+                                    {s.entries} entries
+                                </Badge>
+                            </div>
+                        )}
+                    </a>
+                );
+            })}
+            {failed && (
+                <p className="text-sm text-tertiary">
+                    Couldn't load the live status — the logs themselves are unaffected, open any page above to read it directly.
+                </p>
+            )}
+        </div>
+    );
+};
 
 /** A left-to-right chain of boxes with arrows — the manual's diagram vocabulary.
  *  Scrolls sideways inside its own container on narrow screens instead of wrapping,
@@ -470,6 +614,27 @@ export const ManualScreen = () => {
                                         </details>
                                     ))}
                                 </div>
+                            </DocSection>
+
+                            <DocSection
+                                id="logs"
+                                label="Project logs"
+                                number={num("logs")}
+                                action={<span className="text-xs text-quaternary">Live from Supabase</span>}
+                            >
+                                <p className="mb-3 text-md text-tertiary">
+                                    Every feature has its own log page: what it is, how it works, a dated timeline, build to-dos, and the
+                                    open questions blocking it. Below is each one's live status — the newest timeline entry, how many
+                                    to-dos are left, and whether any questions are still waiting on a decision. Editing stays on the log
+                                    pages themselves, so a timeline entry or an answer has exactly one place it can be written.{" "}
+                                    <a href="/questions" className="font-semibold text-brand-secondary hover:underline">
+                                        /questions
+                                    </a>{" "}
+                                    is the one inbox for answering across all of them, and{" "}
+                                    <span className="font-mono text-sm">/wrapup</span> appends the day's entries and snapshots each page
+                                    before writing.
+                                </p>
+                                <ProjectLogs />
                             </DocSection>
 
                             <DocSection id="editing" label="Editing & saving" number={num("editing")}>
