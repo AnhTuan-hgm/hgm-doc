@@ -179,7 +179,17 @@ export const DocStat = ({
  * rootMargin keeps the highlight on the section you are reading rather than the one just
  * entering from below.
  */
-export const DocRail = <Id extends string>({ sections, progress }: { sections: readonly { id: Id; label: string }[]; progress: Record<Id, boolean> }) => {
+export const DocRail = <Id extends string>({
+    sections,
+    progress,
+    action,
+}: {
+    sections: readonly { id: Id; label: string }[];
+    progress: Record<Id, boolean>;
+    /** Optional control pinned above the section list (e.g. the client's Suggest edits
+     *  button), separated from it by a divider so it reads as chrome, not a section. */
+    action?: ReactNode;
+}) => {
     const [active, setActive] = useState<Id>(sections[0].id);
     const onScreen = useRef(new Set<Id>());
 
@@ -210,6 +220,7 @@ export const DocRail = <Id extends string>({ sections, progress }: { sections: r
 
     return (
         <nav aria-label="Document sections" className="lg:sticky lg:top-6 lg:w-56 lg:shrink-0">
+            {action && <div className="mb-4 border-b border-secondary pb-4">{action}</div>}
             <p className="font-mono text-[11px] font-semibold tracking-[0.08em] text-quaternary uppercase">Sections</p>
             <ul className="mt-3 flex flex-col gap-0.5">
                 {sections.map((s, i) => (

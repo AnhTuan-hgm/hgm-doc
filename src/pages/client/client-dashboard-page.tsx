@@ -3245,33 +3245,6 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                 {!isTeam && " Spot something off? Suggest an edit and your account manager will review it."}
                                                             </p>
 
-                                                            {/* Client-only: suggestion mode. Reads identically in ?preview=client — the
-                                                            standing "Viewing as client" banner already says you're previewing, so this
-                                                            surface stays in the client's voice rather than explaining itself to an AM.
-                                                            A send from preview is attributed to the team member's own address. */}
-                                                            {canSuggest && (
-                                                                <div className="mt-4 flex flex-wrap items-center gap-3">
-                                                                    <Button
-                                                                        size="sm"
-                                                                        color={suggestMode ? "secondary" : "primary"}
-                                                                        onClick={() => {
-                                                                            setSuggestMode((v) => !v);
-                                                                            if (suggestMode) setSuggestDraft({});
-                                                                        }}
-                                                                    >
-                                                                        {suggestMode ? "Cancel suggesting" : "Suggest edits"}
-                                                                    </Button>
-                                                                    {suggestMode && (
-                                                                        <p className="text-sm text-tertiary">
-                                                                            Type into any field, then send — your team reviews every suggestion before it goes
-                                                                            live.
-                                                                        </p>
-                                                                    )}
-                                                                    {/* Sent / failed is reported by the sticky bar at the bottom, next to the
-                                                                        button that was actually pressed — not up here, off-screen. */}
-                                                                </div>
-                                                            )}
-
                                                             {/* Team-only: pending suggestions whose row was deleted since — no field exists
                                                             to hang them on, so they're listed here with Decline as the only exit. */}
                                                             {orphanedPending.length > 0 && (
@@ -3362,7 +3335,37 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                             {/* Rail beside the document on wide screens; above it on narrow ones, where a
                                                             sticky column would eat the reading width. */}
                                                             <div className="mt-8 flex flex-col gap-8 lg:flex-row lg:items-start lg:gap-10">
-                                                                <DocRail sections={FOUNDATION_SECTIONS} progress={foundationFilledMap} />
+                                                                <DocRail
+                                                                    sections={FOUNDATION_SECTIONS}
+                                                                    progress={foundationFilledMap}
+                                                                    action={
+                                                                        /* Client-only: suggestion mode. Reads identically in ?preview=client —
+                                                                           the standing "Viewing as client" banner already says you're
+                                                                           previewing, so this stays in the client's voice rather than
+                                                                           explaining itself to an AM. Sent / failed is reported by the sticky
+                                                                           bar, next to the button actually pressed. */
+                                                                        canSuggest ? (
+                                                                            <div className="flex flex-col items-start gap-2">
+                                                                                <Button
+                                                                                    size="sm"
+                                                                                    color={suggestMode ? "secondary" : "primary"}
+                                                                                    onClick={() => {
+                                                                                        setSuggestMode((v) => !v);
+                                                                                        if (suggestMode) setSuggestDraft({});
+                                                                                    }}
+                                                                                >
+                                                                                    {suggestMode ? "Cancel suggesting" : "Suggest edits"}
+                                                                                </Button>
+                                                                                {suggestMode && (
+                                                                                    <p className="text-xs text-tertiary">
+                                                                                        Type into any field, then send — your team reviews every
+                                                                                        suggestion.
+                                                                                    </p>
+                                                                                )}
+                                                                            </div>
+                                                                        ) : undefined
+                                                                    }
+                                                                />
 
                                                                 <div className="flex min-w-0 flex-1 flex-col gap-8">
                                                                     {/* ── 1. About the hosts ── */}
