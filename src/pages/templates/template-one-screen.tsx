@@ -35,7 +35,11 @@ type Step = { id: string; heading: string; tools: string[]; command: string; not
 type Stage = { id: string; name: string; steps: Step[]; parentId?: string | null; hidden?: boolean };
 /** Doc-level open question — same shape as the overview pages' QA (answered = resolved). */
 type QA = { id: string; question: string; answer: string; video?: string };
-type SOPState = { stages: Stage[]; selectedId: string | null; locked: boolean; questions?: QA[] };
+type SOPState = { stages: Stage[]; selectedId: string | null; locked: boolean; questions?: QA[]; title?: string };
+
+/** Sidebar heading. Per-doc, so a copy made for another team can be renamed;
+ *  absent on docs written before it was editable, which is what the fallback is for. */
+const DEFAULT_TITLE = "Web Team";
 
 /** Top-level menus; a stage whose parent went missing is promoted rather than lost. */
 const topStages = (stages: Stage[]) => stages.filter((s) => !s.parentId || !stages.some((p) => p.id === s.parentId));
@@ -592,61 +596,13 @@ const StageRow = ({ stage, num, sub, active, locked, editing, onSelect, onMoveSt
     </motion.div>
 );
 
-/** One open-question card — mirrors the overview pages' Open Questions cards. */
-const QuestionCard = ({ q, editing, resolved, onChange, onRemove }: {
-    q: QA;
-    editing: boolean;
-    resolved?: boolean;
-    onChange: (patch: Partial<QA>) => void;
-    onRemove: () => void;
-}) => (
-    <div className={cx("rounded-2xl p-5 ring-1 ring-secondary", resolved ? "bg-secondary" : "bg-primary")}>
-        <div className="flex items-start justify-between gap-3">
-            <div className="flex min-w-0 flex-1 items-start gap-2">
-                {resolved && (
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 shrink-0 text-fg-success-primary"><path d="M20 6L9 17l-5-5" /></svg>
-                )}
-                {editing ? (
-                    <input
-                        type="text"
-                        value={q.question}
-                        onChange={(e) => onChange({ question: e.target.value })}
-                        placeholder="Question…"
-                        className="w-full bg-transparent font-medium text-primary outline-none placeholder:text-placeholder"
-                    />
-                ) : (
-                    <p className="min-w-0 flex-1 font-medium text-primary">{q.question}</p>
-                )}
-            </div>
-            {editing && (
-                <button type="button" title="Remove question" onClick={onRemove} className="shrink-0 text-fg-quaternary transition duration-100 ease-linear hover:text-fg-error-secondary">
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" /></svg>
-                </button>
-            )}
-        </div>
-        <div className={cx("mt-3 border-l-2 pl-3", resolved ? "border-success" : "border-brand")}>
-            {editing ? (
-                <textarea
-                    value={q.answer}
-                    onChange={(e) => onChange({ answer: e.target.value })}
-                    placeholder="Unanswered — type the decision here."
-                    rows={2}
-                    className="w-full resize-y bg-transparent text-[14px] leading-relaxed text-secondary outline-none placeholder:italic placeholder:text-placeholder"
-                />
-            ) : q.answer.trim() ? (
-                <p className="whitespace-pre-wrap text-[14px] leading-relaxed text-secondary">{q.answer}</p>
-            ) : (
-                <p className="text-[14px] italic text-placeholder">Unanswered — type the decision here.</p>
-            )}
-        </div>
-        {editing ? <VideoAttach value={q.video} onChange={(v) => onChange({ video: v })} className="mt-3" /> : q.video && <VideoEmbed url={q.video} className="mt-3" />}
-    </div>
-);
-
 const Sidebar = ({
+    title, onTitleChange,
     stages, selectedId, locked, editing,
     onSelect, onAddStage, onAddSubStage, onDeleteStage, onMoveStage, onToggleHidden, onCollapse,
 }: {
+    title: string;
+    onTitleChange: (v: string) => void;
     stages: Stage[];
     selectedId: string | null;
     locked: boolean;
@@ -664,7 +620,18 @@ const Sidebar = ({
     <aside className="flex h-full w-[300px] shrink-0 flex-col border-r border-secondary bg-primary">
         {/* header */}
         <div className="flex h-[73px] shrink-0 items-center justify-between border-b border-secondary px-5">
-            <h2 className="text-md font-semibold text-primary">Web Team</h2>
+            {editing ? (
+                <input
+                    type="text"
+                    value={title}
+                    onChange={(e) => onTitleChange(e.target.value)}
+                    placeholder={DEFAULT_TITLE}
+                    aria-label="Page title"
+                    className="min-w-0 flex-1 rounded-md bg-transparent px-1.5 py-1 text-md font-semibold text-primary outline-none ring-1 ring-secondary focus:ring-brand placeholder:text-placeholder"
+                />
+            ) : (
+                <h2 className="truncate text-md font-semibold text-primary">{title}</h2>
+            )}
             {onCollapse && <NavCollapseButton onClick={onCollapse} />}
         </div>
 
@@ -774,6 +741,8 @@ export const TemplateOneScreen = ({
     }, []);
 
     const { stages, selectedId, locked } = state;
+    const title = state.title ?? DEFAULT_TITLE;
+    const setTitle = (v: string) => update((d) => { d.title = v; });
 
     // Auto-publish every edit (stages, steps and all step details) to Supabase, debounced,
     // so nothing is trapped in one browser even if the user forgets to click Save.
@@ -918,18 +887,6 @@ export const TemplateOneScreen = ({
         if (d.selectedId && removed.has(d.selectedId)) d.selectedId = d.stages[0]?.id ?? null;
     });
 
-    /* ── Open Questions (doc-level, same behavior as the overview pages) ── */
-    const [showResolved, setShowResolved] = useState(false);
-    const questions = state.questions ?? [];
-    const isAnswered = (q: QA) => !!q.answer.trim();
-    const openQuestions = questions.filter((q) => !isAnswered(q));
-    const resolvedQuestions = questions.filter(isAnswered);
-    const setQuestion = (id: string, patch: Partial<QA>) => update((d) => {
-        const q = (d.questions ?? []).find((x) => x.id === id);
-        if (q) Object.assign(q, patch);
-    });
-    const rmQuestion = (id: string) => update((d) => { d.questions = (d.questions ?? []).filter((x) => x.id !== id); });
-    const addQuestion = () => update((d) => { (d.questions ??= []).push({ id: uid(), question: "", answer: "" }); });
 
     // Reorders within siblings only — menus swap among menus, subs among their parent's subs.
     const handleMoveStage = (id: string, dir: -1 | 1) => update((d) => {
@@ -995,10 +952,12 @@ export const TemplateOneScreen = ({
             rail={!navCollapsed && <IconRail activeDept="" bottom={<RailBottom editing={editing} onToggleEditing={handleToggleLock} />} />}
             headerRight={!navCollapsed && <HeaderAvatar />}
         >
-            {navCollapsed && <CollapsedTopBar title="Web Team" onExpand={toggleNav} />}
+            {navCollapsed && <CollapsedTopBar title={title} onExpand={toggleNav} />}
             <div className="flex min-h-0 flex-1">
             {!navCollapsed && (
             <Sidebar
+                title={title}
+                onTitleChange={setTitle}
                 stages={visibleStages}
                 selectedId={selectedId}
                 locked={locked}
@@ -1105,71 +1064,6 @@ export const TemplateOneScreen = ({
                             </button>
                         )}
 
-                        {/* Open Questions — doc-level (shared across all menus), same pattern as the overview pages */}
-                        <hr className="my-10 border-secondary" />
-                        <section>
-                            <h2 className="text-xl font-semibold text-primary">Open Questions</h2>
-                            <p className="mt-1 text-sm text-tertiary">
-                                Answer inline — decisions live here so nothing gets lost in chat. Answered questions move to Resolved / History below (nothing is deleted).
-                            </p>
-                            <div className="mt-4 flex flex-col gap-4">
-                                {openQuestions.length === 0 ? (
-                                    <p className="rounded-2xl bg-primary p-5 text-sm italic text-quaternary ring-1 ring-secondary">
-                                        No open questions right now — everything's been answered.
-                                    </p>
-                                ) : (
-                                    openQuestions.map((q) => (
-                                        <QuestionCard key={q.id} q={q} editing={editing} onChange={(patch) => setQuestion(q.id, patch)} onRemove={() => rmQuestion(q.id)} />
-                                    ))
-                                )}
-                            </div>
-                            {editing && (
-                                <button type="button" onClick={addQuestion}
-                                    className="mt-3 flex items-center gap-1.5 text-sm font-semibold text-brand-secondary hover:underline">
-                                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
-                                    Add question
-                                </button>
-                            )}
-
-                            {/* Resolved / History — answered questions collapse here so the open list stays focused. */}
-                            {resolvedQuestions.length > 0 && (
-                                <div className="mt-6">
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowResolved((s) => !s)}
-                                        aria-expanded={showResolved || editing}
-                                        className="flex w-full items-center gap-2.5 rounded-xl bg-secondary px-4 py-3 text-left text-sm font-semibold text-secondary transition duration-100 ease-linear hover:bg-secondary_hover"
-                                    >
-                                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
-                                            className={cx("shrink-0 text-fg-quaternary transition-transform duration-200", (showResolved || editing) && "rotate-180")}>
-                                            <path d="M6 9l6 6 6-6" />
-                                        </svg>
-                                        <span className="flex-1">Resolved / History</span>
-                                        <span className="rounded-full bg-primary px-2 py-0.5 text-xs font-semibold text-tertiary tabular-nums ring-1 ring-secondary">
-                                            {resolvedQuestions.length}
-                                        </span>
-                                    </button>
-                                    <AnimatePresence initial={false}>
-                                        {(showResolved || editing) && (
-                                            <motion.div
-                                                key="resolved"
-                                                initial={{ height: 0, opacity: 0 }}
-                                                animate={{ height: "auto", opacity: 1 }}
-                                                exit={{ height: 0, opacity: 0 }}
-                                                transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-                                                className="overflow-hidden"
-                                            >
-                                                <div className="mt-3 flex flex-col gap-4">
-                                                    {resolvedQuestions.map((q) => (
-                                                        <QuestionCard key={q.id} q={q} editing={editing} resolved onChange={(patch) => setQuestion(q.id, patch)} onRemove={() => rmQuestion(q.id)} />
-                                                    ))}
-                                                </div>
-                                            </motion.div>
-                                        )}
-                                    </AnimatePresence>
-                                </div>
-                            )}
-                        </section>
                     </motion.div>
                 ) : (
                     <motion.div
