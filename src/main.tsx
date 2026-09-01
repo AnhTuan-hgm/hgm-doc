@@ -1,43 +1,47 @@
 import { StrictMode, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate, useSearchParams } from "react-router";
-import { LandingScreen } from "@/pages/landing-screen";
-
-import { TemplateScreen } from "@/pages/templates/template-screen";
-import { DashboardScreen } from "@/pages/team/dashboard-screen";
-import { AiWebsiteSetupScreen } from "@/pages/team/ai-website-setup-screen";
-import { ComponentLibraryArchitectureScreen } from "@/pages/team/component-library-architecture-screen";
-import { ReadingYourClientsScreen } from "@/pages/team/reading-your-clients-screen";
-import { TemplateOneScreen } from "@/pages/templates/template-one-screen";
-import { WelcomeEmailFlowOverviewScreen } from "@/pages/overviews/welcome-email-flow-overview-screen";
-import { PromptLibraryScreen } from "@/pages/team/prompt-library-screen";
+import { AiChatWidget } from "@/components/application/ai-chat-widget";
+import { HelpMenu } from "@/components/application/help-menu";
+import { ThemeToggle } from "@/components/base/theme-toggle/theme-toggle";
+import { useAuthUser } from "@/hooks/use-auth-user";
+import { ChatWidgetScreen } from "@/pages/client/chat-widget-screen";
+import { ClientOnboardingFormPage } from "@/pages/client/client-onboarding-form-page";
+import { ClientScreen } from "@/pages/client/client-screen";
+import { HostOnboardingFormPage } from "@/pages/client/host-onboarding-form-page";
 import { OwnerGuideScreen } from "@/pages/client/owner-guide-screen";
 import { PopupPage } from "@/pages/client/popup-page";
-import { HostOnboardingFormPage } from "@/pages/client/host-onboarding-form-page";
-import { ClientOnboardingFormPage } from "@/pages/client/client-onboarding-form-page";
-import { RequestsScreen } from "@/pages/team/requests-screen";
-import { DesignSystemScreen } from "@/pages/team/design-system-screen";
-import { HomeTwoScreen } from "@/pages/team/home-two-screen";
-import { ClientScreen } from "@/pages/client/client-screen";
-import { ChatWidgetScreen } from "@/pages/client/chat-widget-screen";
+import { LandingScreen } from "@/pages/landing-screen";
+import { NotFound } from "@/pages/not-found";
 import { ChatWidgetOverviewScreen } from "@/pages/overviews/chat-widget-overview-screen";
 import { ClientDashboardOverviewScreen } from "@/pages/overviews/client-dashboard-overview-screen";
-import { OwnerGuideOverviewScreen } from "@/pages/overviews/owner-guide-overview-screen";
 import { HomepageOverviewScreen } from "@/pages/overviews/homepage-overview-screen";
 import { MasterDocumentLogScreen } from "@/pages/overviews/master-document-log-screen";
-import { HomeScreen } from "@/pages/team/home-screen";
-import { QuestionsScreen } from "@/pages/team/questions-screen";
-import { SettingsScreen } from "@/pages/team/settings-screen";
+import { OwnerGuideOverviewScreen } from "@/pages/overviews/owner-guide-overview-screen";
+import { WelcomeEmailFlowOverviewScreen } from "@/pages/overviews/welcome-email-flow-overview-screen";
+import { AiWebsiteSetupScreen } from "@/pages/team/ai-website-setup-screen";
+import { AnimationScreen } from "@/pages/team/animation-screen";
+import { BackgroundScreen } from "@/pages/team/background-screen";
+import { ComponentLibraryArchitectureScreen } from "@/pages/team/component-library-architecture-screen";
+import { DashboardScreen } from "@/pages/team/dashboard-screen";
 import { DeploymentScreen } from "@/pages/team/deployment-screen";
-import { SafeBrowsingScreen } from "@/pages/team/safe-browsing-screen";
-import { ManualScreen } from "@/pages/team/manual-screen";
+import { DesignSystemScreen } from "@/pages/team/design-system-screen";
+import { HomeScreen } from "@/pages/team/home-screen";
+import { HomeTwoScreen } from "@/pages/team/home-two-screen";
 import { LogScriptScreen } from "@/pages/team/log-script-screen";
+import { ManualScreen } from "@/pages/team/manual-screen";
+import { MockupIgScreen } from "@/pages/team/mockup-ig/mockup-ig-screen";
+import { MockupScreen } from "@/pages/team/mockup/mockup-screen";
+import { PromptLibraryScreen } from "@/pages/team/prompt-library-screen";
+import { QuestionsScreen } from "@/pages/team/questions-screen";
+import { ReadingYourClientsScreen } from "@/pages/team/reading-your-clients-screen";
+import { RequestsScreen } from "@/pages/team/requests-screen";
 import { RoadmapScreen } from "@/pages/team/roadmap-screen";
-import { ThemeToggle } from "@/components/base/theme-toggle/theme-toggle";
-import { HelpMenu } from "@/components/application/help-menu";
-import { AiChatWidget } from "@/components/application/ai-chat-widget";
-import { NotFound } from "@/pages/not-found";
-import { useAuthUser } from "@/hooks/use-auth-user";
+import { SafeBrowsingScreen } from "@/pages/team/safe-browsing-screen";
+import { SettingsScreen } from "@/pages/team/settings-screen";
+import { TestScreen } from "@/pages/team/test-screen";
+import { TemplateOneScreen } from "@/pages/templates/template-one-screen";
+import { TemplateScreen } from "@/pages/templates/template-screen";
 import { RouteProvider } from "@/providers/router-provider";
 import { ThemeProvider, useTheme } from "@/providers/theme-provider";
 import "@/styles/globals.css";
@@ -46,7 +50,29 @@ import "@/styles/globals.css";
 // floating toggle is hidden there to avoid duplicates. The account avatar is NOT
 // shown globally — it's a team-only settings shortcut that lives in the dashboard
 // rail, and it must never appear on client-facing pages (owner guides, popups, etc.).
-const PAGES_WITHOUT_FLOATING_CHROME = ["/designsystem", "/home", "/home2", "/dashboard", "/webteam/ai-website-setup", "/webteam/component-library-architecture", "/clients/reading-your-clients", "/template-1", "/welcome-email-flow-overview", "/prompt-library", "/settings", "/roadmap", "/chat-widget-overview", "/client-dashboard-overview", "/homepage-overview", "/master-document-log", "/questions", "/deployment", "/log-script", "/fix", "/manual"];
+const PAGES_WITHOUT_FLOATING_CHROME = [
+    "/designsystem",
+    "/home",
+    "/home2",
+    "/dashboard",
+    "/webteam/ai-website-setup",
+    "/webteam/component-library-architecture",
+    "/clients/reading-your-clients",
+    "/template-1",
+    "/welcome-email-flow-overview",
+    "/prompt-library",
+    "/settings",
+    "/roadmap",
+    "/chat-widget-overview",
+    "/client-dashboard-overview",
+    "/homepage-overview",
+    "/master-document-log",
+    "/questions",
+    "/deployment",
+    "/log-script",
+    "/fix",
+    "/manual",
+];
 
 // The floating "?" help menu is a team tool. It renders ONLY on internal team
 // pages and is hidden on every client-facing page — all client slugs
@@ -182,6 +208,12 @@ createRoot(document.getElementById("root")!).render(
                         <Route path="/deployment" element={<DeploymentScreen />} />
                         <Route path="/fix" element={<SafeBrowsingScreen />} />
                         <Route path="/manual" element={<ManualScreen />} />
+                        <Route path="/test" element={<TestScreen />} />
+                        {/* The motion reference — team-internal, like /test. */}
+                        <Route path="/animation" element={<AnimationScreen />} />
+                        <Route path="/mockup-ig" element={<MockupIgScreen />} />
+                        <Route path="/mockup" element={<MockupScreen />} />
+                        <Route path="/background" element={<BackgroundScreen />} />
                         <Route path="/log-script" element={<LogScriptScreen />} />
                         <Route path="/chat-widget" element={<ChatWidgetScreen isTemplate />} />
                         <Route path="/chat-widget-overview" element={<ChatWidgetOverviewScreen />} />

@@ -264,6 +264,9 @@ const DEPARTMENTS: Department[] = [
             { id: "popups", label: "Popups", icon: Mail01 },
             { id: "meta-pixel", label: "Meta Pixel", icon: Share07 },
             { id: "chat-widget", label: "Chat Widget", icon: MessageChatCircle },
+            // Scratch bench for device mockups and drawn backdrops — a reference
+            // surface, so it links out rather than rendering a card grid here.
+            { id: "mockups", label: "Mockups & backdrops", icon: Image01, to: "/test" },
         ],
     },
 ];
