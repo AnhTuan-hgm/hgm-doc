@@ -89,6 +89,14 @@
 
     --drop-shadow-iphone-mockup: 20px 12px 18px rgba(16, 24, 40, 0.2);
 
+    /* EASING — the three curves the /animation motion reference tokenises.
+       ease-enter: decelerate, for anything entering the frame.
+       ease-state: Apple's workhorse, for on-screen state changes.
+       ease-overshoot: passes the target and settles back — SMALL elements only. */
+    --ease-enter: cubic-bezier(0, 0, 0.2, 1);
+    --ease-state: cubic-bezier(0.4, 0, 0.6, 1);
+    --ease-overshoot: cubic-bezier(0.4, 0, 0.3, 2);
+
     /* ANIMATIONS */
     --animate-marquee: marquee 60s linear infinite;
     --animate-caret-blink: caret-blink 1s infinite;

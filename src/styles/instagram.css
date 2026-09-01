@@ -1,0 +1,51 @@
+/*
+ * INSTAGRAM PALETTE — this project's one sanctioned exception to the
+ * semantic-token rule in CLAUDE.md. Used only by src/pages/team/mockup-ig/.
+ *
+ * Ported from the hiddengem-media marketing site (src/styles/instagram.css)
+ * together with the /Mockup-IG page it serves.
+ *
+ * WHY AN EXCEPTION AT ALL. Every other surface on this site is ours, so a token
+ * gets to decide what colour it is. This one is a recreation of somebody else's
+ * product: the Follow button is #0095F6 or it is wrong, and there is no HGM
+ * token that means "Instagram's Follow blue". Inventing one would put a
+ * competitor's brand value into our design system, which is the actual leak the
+ * rule exists to prevent.
+ *
+ * WHY IT CANNOT SPREAD. These are private custom properties, not `@theme`
+ * entries, so Tailwind generates no `bg-ig-*` utilities and nothing outside a
+ * `.ig-surface` subtree can resolve them — a stray `bg-(--ig-blue)` elsewhere
+ * computes to nothing and fails loudly rather than quietly shipping a blue
+ * button.
+ *
+ * NO THEME, ON PURPOSE. Instagram dark mode is a fixed appearance, not a
+ * preference that follows the visitor, so `.ig-surface` reads no theme value
+ * and has no light variant. The app's `.dark-mode` class is inert here because
+ * nothing inside the surface uses a semantic token.
+ *
+ * PROVENANCE — READ BEFORE CALLING IT AUTHENTIC. Values marked [fig] are read
+ * off the supplied Figma screenshots. Values marked [recall] are from memory of
+ * the iOS app and are NOT verified: they are in the right family and may be a
+ * shade out.
+ */
+.ig-surface {
+    /* SURFACES */
+    --ig-canvas: #000000; /* [fig] iOS dark is true black, not near-black */
+    --ig-elevated: #262626; /* [fig] secondary buttons, empty tiles, sheets */
+    --ig-separator: #262626; /* [fig] hairlines — same value, different job */
+    --ig-scrim: #00000059; /* [recall] gradient over reel video */
+
+    /* TEXT */
+    --ig-text: #ffffff; /* [fig] */
+    --ig-text-secondary: #a8a8a8; /* [fig] 8.83:1 on canvas — computed */
+    --ig-text-tertiary: #737373; /* [fig] 4.43:1 — FAILS AA, see the role="img" note */
+
+    /* ACTIONS */
+    --ig-blue: #0095f6; /* [fig] Follow button, bio link, active dot */
+    --ig-verified: #0095f6; /* [recall] the badge may be #3797f0 — CHECK */
+    --ig-like: #ff3040; /* [recall] iOS; web uses #ed4956 — CHECK */
+
+    /* STORY RING — orange bottom-left to purple top-right, five stops. */
+    --ig-story-ring: linear-gradient(45deg, #ffc800 0%, #ff6c00 25%, #ff0069 50%, #d300c5 75%, #7638fa 100%);
+    --ig-story-seen: #363636; /* [recall] a watched story loses the gradient */
+}

@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "./theme.css";
 @import "./typography.css";
+@import "./instagram.css";
 
 @plugin "@tailwindcss/typography";
 @plugin "tailwindcss-react-aria-components";
@@ -46,6 +47,8 @@ code {
 
 html,
 body {
+    margin: 0;
+    padding: 0;
     font-family: var(--font-body);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -55,9 +58,49 @@ body {
     font-kerning: normal;
 }
 
+body,
+#root {
+    min-height: 100vh;
+}
+
 @keyframes globe-scroll {
-    from { transform: translateX(0); }
-    to { transform: translateX(-50%); }
+    from {
+        transform: translateX(0);
+    }
+    to {
+        transform: translateX(-50%);
+    }
+}
+
+/* FloatingMarks (shared-assets/floating-marks.tsx) — ported with backdrops.tsx
+   from the HiddenGem marketing site. Two nested loops at unrelated periods:
+   the outer span drifts, the inner sways, which is what stops a field of
+   marks reading as a marching column. Both animate transform and opacity
+   only, so neither triggers layout. */
+@keyframes hgm-drift {
+    0% {
+        transform: translateY(var(--from));
+        opacity: 0;
+    }
+    12% {
+        opacity: var(--peak);
+    }
+    72% {
+        opacity: var(--peak);
+    }
+    100% {
+        transform: translateY(var(--to));
+        opacity: 0;
+    }
+}
+
+@keyframes hgm-sway {
+    from {
+        transform: translateX(calc(-1 * var(--sway)));
+    }
+    to {
+        transform: translateX(var(--sway));
+    }
 }
 
 /*
@@ -77,7 +120,9 @@ body {
 }
 
 @keyframes beam-travel {
-    to { --beam-angle: 360deg; }
+    to {
+        --beam-angle: 360deg;
+    }
 }
 
 .step-beam::after {
@@ -102,14 +147,10 @@ body {
        shorthand resets mask-composite, and the production minifier reorders declarations: it
        hoisted the composite above the shorthand, which reset it to `add`, and the gradient flooded
        the whole card instead of tracing its border. It only broke in the built CSS, never in dev. */
-    mask-image:
-        linear-gradient(#000 0 0),
-        linear-gradient(#000 0 0);
+    mask-image: linear-gradient(#000 0 0), linear-gradient(#000 0 0);
     mask-clip: content-box, border-box;
     mask-composite: exclude;
-    -webkit-mask-image:
-        linear-gradient(#000 0 0),
-        linear-gradient(#000 0 0);
+    -webkit-mask-image: linear-gradient(#000 0 0), linear-gradient(#000 0 0);
     -webkit-mask-clip: content-box, border-box;
     -webkit-mask-composite: xor;
     /* The card underneath already carries a flat brand ring, so a brand-coloured band alone is
@@ -156,4 +197,99 @@ input[type="search"]::-webkit-search-cancel-button {
 .recharts-surface g,
 .recharts-surface path {
     outline: none;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Skeleton shimmer (/animation section 15)                                    */
+/* -------------------------------------------------------------------------- */
+/*
+ * A loading placeholder's sweep. Linear, 1.6s, and both are deliberate: eased
+ * motion reads as an object sliding past, and a skeleton is the opposite of an
+ * object — it is an absence. Under about 1.2s it reads as urgency, which is
+ * the wrong feeling to give someone who is already waiting.
+ *
+ * It stops entirely under reduced motion, leaving a flat block. The block is
+ * the useful part — it holds the shape of what is coming so nothing jumps when
+ * the content lands — and the sweep is only there to say "still working".
+ */
+@keyframes hgm-shimmer {
+    from {
+        background-position: 200% 0;
+    }
+    to {
+        background-position: -200% 0;
+    }
+}
+
+.hgm-shimmer {
+    background-image: linear-gradient(90deg, var(--color-bg-tertiary) 0%, var(--color-bg-quaternary) 50%, var(--color-bg-tertiary) 100%);
+    background-size: 200% 100%;
+    animation: hgm-shimmer 1.6s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .hgm-shimmer {
+        animation: none;
+    }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Native dialog entrance (/animation section 19)                              */
+/* -------------------------------------------------------------------------- */
+/*
+ * A `<dialog>` opened with showModal() cannot simply be transitioned: it goes
+ * from `display: none` to the top layer in one step, and `display` is not an
+ * animatable property. `@starting-style` declares the state to animate FROM,
+ * and listing `display` and `overlay` in `transition-behavior: allow-discrete`
+ * lets the browser hold both across the transition.
+ *
+ * The panel scales from 0.96, not from 0: a dialog growing out of nothing
+ * reads as a magic trick, one arriving slightly small reads as it coming
+ * forward. Where these features are missing the dialog still opens and closes
+ * correctly, with no animation — the same failure reduced motion asks for
+ * explicitly below.
+ */
+.hgm-dialog,
+.hgm-dialog::backdrop {
+    transition:
+        opacity 240ms var(--ease-enter),
+        scale 240ms var(--ease-enter),
+        display 240ms allow-discrete,
+        overlay 240ms allow-discrete;
+}
+
+.hgm-dialog {
+    opacity: 0;
+    scale: 0.96;
+}
+
+.hgm-dialog[open] {
+    opacity: 1;
+    scale: 1;
+}
+
+.hgm-dialog::backdrop {
+    opacity: 0;
+}
+
+.hgm-dialog[open]::backdrop {
+    opacity: 1;
+}
+
+@starting-style {
+    .hgm-dialog[open] {
+        opacity: 0;
+        scale: 0.96;
+    }
+
+    .hgm-dialog[open]::backdrop {
+        opacity: 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .hgm-dialog,
+    .hgm-dialog::backdrop {
+        transition: none;
+    }
 }
