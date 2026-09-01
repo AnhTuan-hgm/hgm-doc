@@ -281,7 +281,9 @@ export const SectionNavItem = ({
     onClick,
     action,
 }: {
-    icon: FC<{ className?: string }>;
+    /** Optional: numbered rows in the funnel groups carry a number instead, and an
+     *  icon beside it is one redundant marker too many. */
+    icon?: FC<{ className?: string }>;
     label: string;
     current: boolean;
     disabled?: boolean;
@@ -304,21 +306,28 @@ export const SectionNavItem = ({
                 "group/item relative flex min-h-9 w-full cursor-pointer items-center rounded-md p-2 text-left outline-focus-ring transition duration-100 ease-linear select-none focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-2",
                 indent && "pl-4",
                 action && "pr-8",
-                current ? "bg-secondary hover:bg-secondary_hover" : "hover:bg-primary_hover",
+                // The rail sits on bg-secondary, so a row lifts by moving TOWARD the
+                // content colour. bg-secondary here would be invisible — same value as
+                // the rail — which is what it was before the rail was darkened.
+                current ? "bg-primary" : "hover:bg-primary",
                 disabled && "cursor-not-allowed opacity-60 hover:bg-transparent",
             )}
         >
-            <Icon
-                aria-hidden="true"
-                className={cx(
-                    "mr-2 size-5 shrink-0 transition-inherit-all",
-                    current ? "text-fg-brand-primary" : "text-fg-quaternary group-hover/item:text-fg-quaternary_hover",
-                )}
-            />
+            {Icon && (
+                <Icon
+                    aria-hidden="true"
+                    className={cx(
+                        "mr-2 size-5 shrink-0 transition-inherit-all",
+                        current ? "text-fg-brand-primary" : "text-fg-quaternary group-hover/item:text-fg-quaternary_hover",
+                    )}
+                />
+            )}
             <span
                 className={cx(
-                    "flex-1 truncate text-sm font-semibold transition-inherit-all",
-                    current ? "text-primary" : "text-secondary group-hover/item:text-secondary_hover",
+                    // Weight carries the state, not just colour: only the open row is
+                    // semibold. Everything semibold means nothing is emphasised.
+                    "flex-1 truncate text-sm transition-inherit-all",
+                    current ? "font-semibold text-primary" : "font-normal text-secondary group-hover/item:text-secondary_hover",
                 )}
             >
                 {label}

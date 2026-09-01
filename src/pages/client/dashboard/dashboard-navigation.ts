@@ -23,6 +23,7 @@ import {
     Target04,
     TrendUp01,
     Users01,
+    Announcement02,
 } from "@untitledui-pro/icons/line";
 import type { SectionId } from "@/pages/client/dashboard/dashboard-model";
 
@@ -149,6 +150,8 @@ export const OVERVIEW_ITEM = { id: "overview" as const, label: "Overview", icon:
 export const NAV_GROUPS: {
     label: string;
     phase: PhaseId;
+    /** Shown on the group row, so a collapsed menu still says what each group is. */
+    icon?: typeof LayoutAlt01;
     items: {
         id: SectionId;
         label: string;
@@ -169,6 +172,7 @@ export const NAV_GROUPS: {
     {
         label: "Your forms",
         phase: "input",
+        icon: ClipboardCheck,
         items: [
             { id: "intake", label: "Onboarding form", icon: ClipboardCheck },
             { id: "onboarding", label: "Brand Vision Form", icon: FileCheck02 },
@@ -177,6 +181,7 @@ export const NAV_GROUPS: {
     {
         label: "Brand foundation",
         phase: "brandwork",
+        icon: FileCheck02,
         items: [
             { id: "overviewdoc", label: "Overview Document", icon: ClipboardCheck, teamOnly: true },
             { id: "foundation", label: "Master Brand", icon: FileCheck02 },
@@ -186,6 +191,7 @@ export const NAV_GROUPS: {
     {
         label: "Marketing",
         phase: "marketing",
+        icon: Announcement02,
         items: [
             { id: "landing", label: "Landing page", icon: Globe01, soon: true },
             { id: "flow", label: "Welcome Flow", icon: Mail01 },
@@ -197,6 +203,7 @@ export const NAV_GROUPS: {
     {
         label: "Resources",
         phase: "resources",
+        icon: Folder,
         items: [
             // Both are links, not sections: the folder opens the client's own content
             // drive, the owner guide opens THAT client's guide (never the shared

@@ -17,7 +17,6 @@ import {
     Edit01,
     FileCheck02,
     Image01,
-    Link01,
     LinkExternal01,
     MessageChatCircle,
     Moon01,
@@ -1012,6 +1011,88 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
         );
     };
 
+    /** Nav rows number continuously across the whole menu — the second group starts
+     *  where the first left off. Built from the rows actually rendered, so a team-only
+     *  row hidden from a client doesn't leave a gap in their numbering. */
+    const numberedNavItems = NAV_GROUPS.flatMap((g) => g.items.filter((s) => isTeam || !s.teamOnly));
+    const navNumber = (id: SectionId) => numberedNavItems.findIndex((s) => s.id === id) + 1;
+
+    /* ── Resizable side menu ──
+       The divider IS the handle: a wide invisible hit strip centred on the border, so
+       the thing you grab is the thing you see. Width lives in one place and the content
+       is simply flex-1, so the two cannot drift apart.
+
+       Clamp measured on this page rather than picked: below RAIL_MIN "Pinned Posts /
+       Story" and "Website Setup Guide" start to truncate; past RAIL_MAX the reading
+       column on a 1280px laptop is narrower than the menu beside it. */
+    const RAIL_DEFAULT = 276;
+    const RAIL_MIN = 240;
+    const RAIL_MAX = 420;
+    const RAIL_KEY = "hgm_dashboard_rail_width";
+    const clampRail = (v: number) => Math.min(RAIL_MAX, Math.max(RAIL_MIN, Math.round(v)));
+
+    const [railWidth, setRailWidth] = useState(RAIL_DEFAULT);
+    const [dragging, setDragging] = useState(false);
+    const railRef = useRef<HTMLElement>(null);
+
+    // Read after mount only, never during render, and tolerate a blocked/empty store.
+    useEffect(() => {
+        try {
+            const saved = Number(localStorage.getItem(RAIL_KEY));
+            if (Number.isFinite(saved) && saved > 0) setRailWidth(clampRail(saved));
+        } catch {
+            /* private browsing — the default width is correct, just not remembered */
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    /* The listeners go on the WINDOW, not the handle. A pointer capture can be lost, and
+       if the end of the drag were bound to the handle's own pointerup the page would stay
+       stuck in `select-none` until a reload. Both are torn down in the same effect. */
+    useEffect(() => {
+        if (!dragging) return;
+        const onMove = (e: PointerEvent) => {
+            const left = railRef.current?.getBoundingClientRect().left ?? 0;
+            setRailWidth(clampRail(e.clientX - left));
+        };
+        const stop = () => {
+            setDragging(false);
+            setRailWidth((w) => {
+                try {
+                    localStorage.setItem(RAIL_KEY, String(w));
+                } catch {
+                    /* nothing to do — the width still applies for this session */
+                }
+                return w;
+            });
+        };
+        window.addEventListener("pointermove", onMove);
+        window.addEventListener("pointerup", stop);
+        window.addEventListener("pointercancel", stop);
+        return () => {
+            window.removeEventListener("pointermove", onMove);
+            window.removeEventListener("pointerup", stop);
+            window.removeEventListener("pointercancel", stop);
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [dragging]);
+
+    const nudgeRail = (delta: number) => {
+        setRailWidth((w) => {
+            const next = clampRail(w + delta);
+            try {
+                localStorage.setItem(RAIL_KEY, String(next));
+            } catch {
+                /* not persisted; still applied */
+            }
+            return next;
+        });
+    };
+
+    /** True when the open section lives in this group — drives the group row's chip. */
+    const groupHoldsActive = (phase: string) =>
+        (NAV_GROUPS.find((g) => g.phase === phase)?.items ?? []).some((s) => s.id === activeSection);
+
     /** Nav rows are mostly section switches; the two Resources rows are links out. */
     const openNavItem = (id: SectionId) => {
         if (id === "contentfolder") {
@@ -1650,18 +1731,16 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
 
     return (
         <>
-            {/* Nested containers, matching the Client List's AppShell chrome: a page
-                canvas, then one rounded "window" holding the whole dashboard, then the
-                side menu and body as separate cards inside it. The inner canvas stays
-                bg-quaternary (not the barely-off-white bg-secondary) so those white
-                cards clearly pop — this is the client's own dashboard. */}
-            <div className="flex h-dvh flex-col overflow-hidden bg-tertiary p-2.5 sm:p-3">
+            {/* Full-bleed shell: no page padding, no window, no cards. The side menu's
+                right hairline is the only division, so the dashboard runs edge to edge
+                the way an app does rather than sitting on a tray. */}
+            <div className="flex h-dvh flex-col overflow-hidden bg-primary">
                 {/* Preview banner — only ever rendered for a signed-in team member, so the
                     client can never see it. Without it the preview is a trap: Shift+E just
                     stops working and every team-only control disappears, which reads as
                     broken permissions rather than a deliberate mode. */}
                 {previewAsClient && (
-                    <div className="mb-2 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg bg-brand-solid px-3.5 py-2 text-sm text-white shadow-sm">
+                    <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 bg-brand-solid px-3.5 py-2 text-sm text-white">
                         <span className="flex items-center gap-2 font-semibold">
                             <EyeGlyph />
                             Viewing as client
@@ -1678,15 +1757,65 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                         </button>
                     </div>
                 )}
-                <div className="flex min-h-0 flex-1 overflow-hidden rounded-2xl shadow-xl ring-1 ring-secondary">
-                    <div className="flex min-h-0 w-full flex-col gap-2 overflow-hidden bg-quaternary p-2 md:flex-row">
+                <div className="flex min-h-0 flex-1 overflow-hidden">
+                    <div className="flex min-h-0 w-full flex-col overflow-hidden bg-primary md:flex-row">
                         {/* ── Client side menu (no icon rail — client-facing) ── */}
-                        <aside // 276px matches MAIN_SIDEBAR_WIDTH in the Untitled UI sidebar kit
-                            // (app-navigation/sidebar-navigation). Nothing truncated at 256px, but the
-                            // phase groups read better with the extra breathing room, and the body is
-                            // capped at 1240px so it gives up nothing on a large screen.
-                            className="flex w-full shrink-0 flex-col overflow-hidden rounded-lg bg-primary shadow-sm md:h-full md:w-[276px]"
+                        <aside
+                            ref={railRef}
+                            // Width is state, not a class: `md:w-[276px]` would be a lie the moment
+                            // anyone dragged the divider. 276 matches MAIN_SIDEBAR_WIDTH in the
+                            // Untitled UI sidebar kit and stays the default.
+                            style={{ ["--rail" as string]: `${railWidth}px` } as React.CSSProperties}
+                            className={cx(
+                                // The rail sits on its own background, one step off the content — the
+                                // hairline then separates two surfaces rather than splitting one.
+                                "relative flex w-full shrink-0 flex-col overflow-visible border-secondary bg-secondary md:h-full md:w-[var(--rail)] md:border-r",
+                                // Never transition width during a drag — it lags the pointer.
+                                !dragging && "md:transition-[width] md:duration-100 md:ease-linear",
+                            )}
                         >
+                            {/* The divider doubles as the drag handle: a 12px invisible hit strip
+                                centred on the 1px border, so the grab target is generous while the
+                                thing you see stays a hairline. Desktop only — below md the menu is
+                                full width and there is nothing to resize. */}
+                            <div
+                                role="separator"
+                                aria-orientation="vertical"
+                                aria-label="Resize side menu"
+                                aria-valuenow={railWidth}
+                                aria-valuemin={RAIL_MIN}
+                                aria-valuemax={RAIL_MAX}
+                                tabIndex={0}
+                                onPointerDown={(e) => {
+                                    e.preventDefault();
+                                    setDragging(true);
+                                }}
+                                onDoubleClick={() => {
+                                    setRailWidth(RAIL_DEFAULT);
+                                    try {
+                                        localStorage.setItem(RAIL_KEY, String(RAIL_DEFAULT));
+                                    } catch {
+                                        /* not persisted; still applied */
+                                    }
+                                }}
+                                onKeyDown={(e) => {
+                                    if (e.key === "ArrowLeft") {
+                                        e.preventDefault();
+                                        nudgeRail(-16);
+                                    }
+                                    if (e.key === "ArrowRight") {
+                                        e.preventDefault();
+                                        nudgeRail(16);
+                                    }
+                                }}
+                                className={cx(
+                                    "absolute top-0 -right-1.5 z-20 hidden h-full w-3 cursor-col-resize md:block",
+                                    "outline-focus-ring focus-visible:outline-2 focus-visible:outline-offset-0",
+                                    "after:absolute after:inset-y-0 after:left-1/2 after:w-0.5 after:-translate-x-1/2 after:transition after:duration-100 after:ease-linear",
+                                    dragging ? "after:bg-brand-solid" : "after:bg-transparent hover:after:bg-border-brand",
+                                )}
+                            />
+
                             {/* Client identity */}
                             <div className="flex items-center gap-3 border-b border-secondary px-4 py-4 md:px-5">
                                 <button
@@ -1777,10 +1906,8 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                 animate="show"
                                 variants={{ show: { transition: { staggerChildren: 0.04 } } }}
                             >
-                                {NAV_GROUPS.map((group, gi) => (
-                                    <div key={group.label} role="group" aria-labelledby={`nav-group-${group.phase}`} className="mt-2.5 first:mt-1">
-                                        {/* Divider between groups (approved template-lab layout) */}
-                                        {gi > 0 && <div className="mx-1 mb-2.5 h-px bg-border-secondary" />}
+                                {NAV_GROUPS.map((group) => (
+                                    <div key={group.label} role="group" aria-labelledby={`nav-group-${group.phase}`} className="mt-3 first:mt-1">
                                         {/* Finder-sidebar heading: small, semibold, secondary gray, sentence
                                             case. No uppercase and no colored number pill — the heading is a
                                             quiet label for the rows under it, not a badge competing with them. */}
@@ -1789,9 +1916,28 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                             id={`nav-group-${group.phase}`}
                                             onClick={() => toggleGroup(group.phase)}
                                             aria-expanded={!isGroupCollapsed(group.phase)}
-                                            className="mb-0.5 flex w-full items-center gap-1.5 rounded-md px-3 py-1 text-left text-[11.5px] font-semibold text-tertiary transition duration-100 ease-linear hover:bg-primary_hover"
+                                            aria-controls={`nav-list-${group.phase}`}
+                                            className={cx(
+                                                "mb-0.5 flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[13px] font-medium transition duration-100 ease-linear",
+                                                // Tier one of the active state: the group holding the open
+                                                // section is a raised chip with a brand-coloured icon.
+                                                groupHoldsActive(group.phase)
+                                                    ? "bg-primary text-primary shadow-xs"
+                                                    : "text-secondary hover:bg-primary",
+                                            )}
                                         >
-                                            <span className="flex-1 truncate">{group.label}</span>
+                                            {group.icon && (
+                                                <group.icon
+                                                    aria-hidden="true"
+                                                    className={cx("size-4 shrink-0", groupHoldsActive(group.phase) ? "text-fg-brand-primary" : "text-fg-quaternary")}
+                                                />
+                                            )}
+                                            <span className="min-w-0 flex-1 truncate">{group.label}</span>
+                                            {/* Fixed-width right-aligned slot, so the counts read as a column
+                                                down the edge rather than as debris after each label. */}
+                                            <span className="w-4 shrink-0 text-right font-mono text-[10px] text-quaternary tabular-nums">
+                                                {group.items.filter((s) => isTeam || !s.teamOnly).length}
+                                            </span>
                                             {/* Folded groups still flag outstanding work — otherwise collapsing
                                                 could hide the one thing we need from the client. */}
                                             {isGroupCollapsed(group.phase) && groupHasTodo(group.phase) && (
@@ -1806,13 +1952,31 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                             />
                                         </button>
                                         {!isGroupCollapsed(group.phase) && (
-                                            <div className="flex flex-col gap-1">
+                                            <div id={`nav-list-${group.phase}`} className="ml-3 flex flex-col">
                                                 {group.items
                                                     .filter((s) => isTeam || !s.teamOnly)
                                                     .map((s) => (
-                                                        <motion.div key={s.id} variants={{ hidden: { opacity: 0, x: -8 }, show: { opacity: 1, x: 0 } }}>
+                                                        <motion.div
+                                                            key={s.id}
+                                                            variants={{ hidden: { opacity: 0, x: -8 }, show: { opacity: 1, x: 0 } }}
+                                                            /* Tier two: the open section brightens its own segment
+                                                               of the connector the children hang off. */
+                                                            className={cx(
+                                                                "flex items-stretch gap-1.5 border-l-2 pl-1",
+                                                                activeSection === s.id ? "border-brand" : "border-secondary",
+                                                            )}
+                                                        >
+                                                            <span
+                                                                aria-hidden="true"
+                                                                className={cx(
+                                                                    "w-5 shrink-0 self-center text-right font-mono text-[10px] tabular-nums",
+                                                                    activeSection === s.id ? "text-brand-secondary" : "text-quaternary",
+                                                                )}
+                                                            >
+                                                                {String(navNumber(s.id)).padStart(2, "0")}
+                                                            </span>
+                                                            <div className="min-w-0 flex-1">
                                                             <SectionNavItem
-                                                                icon={s.icon}
                                                                 label={s.label}
                                                                 current={activeSection === s.id}
                                                                 // Team can open anything that exists; a client can only
@@ -1859,6 +2023,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                 }
                                                                 onClick={() => openNavItem(s.id)}
                                                             />
+                                                            </div>
                                                         </motion.div>
                                                     ))}
                                                 {/* ── Custom Resources rows — AM-added links (e.g. a Claude project). Clients
@@ -1911,7 +2076,6 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                 ) : (
                                                                     <SectionNavItem
                                                                         key={r.id}
-                                                                        icon={Link01}
                                                                         label={r.label.trim() || "Untitled resource"}
                                                                         current={false}
                                                                         disabled={!r.url.trim()}
@@ -2134,8 +2298,9 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                 {/* flex-1 + min-h-full wrapper: short sections still fill the canvas
                             height, so the card's bottom edge lines up with the side menu's. */}
                                 <motion.article
-                                    // rounded-lg matches the side menu's corner radius exactly.
-                                    className="w-full flex-1 rounded-lg bg-primary shadow-sm ring-1 ring-secondary"
+                                    // Flat, borderless shell: the side menu's hairline is the only
+                                    // division on the page, so the content is a plain column, not a card.
+                                    className="w-full flex-1 bg-primary"
                                     initial={{ opacity: 0, y: 16 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
