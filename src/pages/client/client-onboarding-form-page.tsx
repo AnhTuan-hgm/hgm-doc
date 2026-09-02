@@ -1,8 +1,25 @@
 import { type ChangeEvent, type ReactNode, useEffect, useRef, useState } from "react";
+import {
+    AlertCircle,
+    ArrowLeft,
+    ArrowRight,
+    Check,
+    Home02,
+    InfoCircle,
+    Mail01,
+    Microphone01,
+    Plus,
+    Receipt,
+    Settings01,
+    Star01,
+    Users01,
+    VideoRecorder,
+    XClose,
+} from "@untitledui/icons";
 import { AnimatePresence, motion } from "motion/react";
-import { AlertCircle, ArrowLeft, ArrowRight, Check, Home02, InfoCircle, Mail01, Microphone01, Plus, Receipt, Settings01, Star01, Users01, VideoRecorder, XClose } from "@untitledui/icons";
 import { MediaAnswer, type MediaKind, RecordingPlayer } from "@/components/application/media-answer";
 import { supabase } from "@/lib/supabase";
+import { KICKOFF_CALENDLY } from "@/pages/client/dashboard/dashboard-navigation";
 import { cx } from "@/utils/cx";
 
 /**
@@ -15,7 +32,10 @@ import { cx } from "@/utils/cx";
  * Persists to client_onboarding_pages (slug = "{client}-onboarding").
  */
 
-const CALENDLY_URL = "https://calendly.com/dustin-d-baker/strategy";
+/* The Kick-off booking page is one URL, owned by dashboard-navigation.ts — the journey
+   step and this form's thank-you screen both link it, and it used to be written out
+   twice. Two copies of a booking URL is one wrong booking URL waiting to happen. */
+const CALENDLY_URL = KICKOFF_CALENDLY;
 
 /* ── Form content — verbatim from the Google Form ── */
 
@@ -156,8 +176,20 @@ const SECTIONS: SectionDef[] = [
         icon: Settings01,
         intro: "By sharing your business account login details in advance, we can smoothly navigate any Two-Factor Authentication during your Onboarding Call.",
         questions: [
-            { field: "instagramLogin", label: "Instagram Login", hint: "(If applicable)", credentials: true, handle: { label: "Instagram handle", placeholder: "@yourbusiness" } },
-            { field: "tiktokLogin", label: "TikTok Login", hint: "(If applicable)", credentials: true, handle: { label: "TikTok handle", placeholder: "@yourbusiness" } },
+            {
+                field: "instagramLogin",
+                label: "Instagram Login",
+                hint: "(If applicable)",
+                credentials: true,
+                handle: { label: "Instagram handle", placeholder: "@yourbusiness" },
+            },
+            {
+                field: "tiktokLogin",
+                label: "TikTok Login",
+                hint: "(If applicable)",
+                credentials: true,
+                handle: { label: "TikTok handle", placeholder: "@yourbusiness" },
+            },
             {
                 field: "pmsLogin",
                 label: "Your Property Management System (PMS)",
@@ -305,11 +337,7 @@ type Step =
 const QUESTION_STEPS = SECTIONS.flatMap((s) =>
     s.questions.map((q, i) => ({ q, sectionTitle: s.title, sectionIntro: i === 0 ? s.intro : undefined, icon: s.icon })),
 );
-const STEPS: Step[] = [
-    { kind: "welcome" },
-    ...QUESTION_STEPS.map((x, i) => ({ kind: "question" as const, ...x, num: i + 1 })),
-    { kind: "thankyou" },
-];
+const STEPS: Step[] = [{ kind: "welcome" }, ...QUESTION_STEPS.map((x, i) => ({ kind: "question" as const, ...x, num: i + 1 })), { kind: "thankyou" }];
 export const TOTAL_QUESTIONS = QUESTION_STEPS.length;
 
 /**
@@ -444,7 +472,7 @@ export const clientOnboardingAnswers = (partial?: Partial<ClientOnboardingData> 
                 label: q.label,
                 lines,
                 mediaPath: (data.answers[`${q.field}__media`] ?? "").trim(),
-                mediaKind: ((data.answers[`${q.field}__mediaKind`] ?? "") as MediaKind | ""),
+                mediaKind: (data.answers[`${q.field}__mediaKind`] ?? "") as MediaKind | "",
             };
         }),
     }));
@@ -609,9 +637,9 @@ const SafeNote = () => (
     <div className="mt-6 flex max-w-xl items-start gap-2.5 rounded-xl bg-secondary px-4 py-3">
         <InfoCircle className="mt-0.5 size-4 shrink-0 text-fg-quaternary" aria-hidden="true" />
         <p className="text-sm text-tertiary">
-            <span className="font-semibold text-secondary">Your details are safe.</span> Everything you enter is sent over an encrypted
-            connection, stored privately, and used only by your dedicated HiddenGem team to set up your accounts — never shared with anyone
-            else. You're welcome to update or rotate any password once setup is complete.
+            <span className="font-semibold text-secondary">Your details are safe.</span> Everything you enter is sent over an encrypted connection, stored
+            privately, and used only by your dedicated HiddenGem team to set up your accounts — never shared with anyone else. You're welcome to update or
+            rotate any password once setup is complete.
         </p>
     </div>
 );
@@ -642,9 +670,7 @@ const PlatformChips = ({ platform, value, onChange }: { platform: NonNullable<Qu
                             }}
                             className={cx(
                                 "rounded-full px-4 py-2 text-sm font-medium transition duration-100 ease-linear",
-                                active
-                                    ? "bg-brand-solid text-white"
-                                    : "bg-primary text-secondary ring-1 ring-secondary hover:bg-secondary hover:text-primary",
+                                active ? "bg-brand-solid text-white" : "bg-primary text-secondary ring-1 ring-secondary hover:bg-secondary hover:text-primary",
                             )}
                         >
                             {opt}
@@ -786,12 +812,26 @@ const CredentialsQuestion = ({
             {q.handle && (
                 <label className="block">
                     <span className="text-xs font-semibold tracking-wide text-quaternary uppercase">{q.handle.label}</span>
-                    <input data-step-autofocus type="text" placeholder={q.handle.placeholder} value={handleValue} onChange={(e) => onChange(`${q.field}__handle`, e.target.value)} className={cls} />
+                    <input
+                        data-step-autofocus
+                        type="text"
+                        placeholder={q.handle.placeholder}
+                        value={handleValue}
+                        onChange={(e) => onChange(`${q.field}__handle`, e.target.value)}
+                        className={cls}
+                    />
                 </label>
             )}
             <label className="block">
                 <span className="text-xs font-semibold tracking-wide text-quaternary uppercase">Username or email</span>
-                <input data-step-autofocus={!q.handle} type="text" placeholder="Username" value={user} onChange={(e) => onChange(`${q.field}__user`, e.target.value)} className={cls} />
+                <input
+                    data-step-autofocus={!q.handle}
+                    type="text"
+                    placeholder="Username"
+                    value={user}
+                    onChange={(e) => onChange(`${q.field}__user`, e.target.value)}
+                    className={cls}
+                />
             </label>
             <label className="block">
                 <span className="text-xs font-semibold tracking-wide text-quaternary uppercase">Password</span>
@@ -828,7 +868,11 @@ const RecordedAnswer = ({ path, kind }: { path: string; kind: MediaKind | "" }) 
             {!url ? (
                 <p className="text-xs text-quaternary">Loading…</p>
             ) : (
-                <RecordingPlayer src={url} kind={kind} className={kind === "video" ? "aspect-video w-full max-w-md rounded-lg bg-secondary" : "w-full max-w-md"} />
+                <RecordingPlayer
+                    src={url}
+                    kind={kind}
+                    className={kind === "video" ? "aspect-video w-full max-w-md rounded-lg bg-secondary" : "w-full max-w-md"}
+                />
             )}
         </div>
     );
@@ -906,7 +950,7 @@ const ReviewScreen = ({
                                                 kind={(data.answers[`${q.field}__mediaKind`] as MediaKind | "") ?? ""}
                                             />
                                         )}
-                                        {!v && !hasMedia(q, data) && <p className="mt-1.5 text-sm italic text-quaternary">Not answered yet.</p>}
+                                        {!v && !hasMedia(q, data) && <p className="mt-1.5 text-sm text-quaternary italic">Not answered yet.</p>}
                                     </div>
                                 );
                             })}
@@ -1015,16 +1059,17 @@ export const ClientOnboardingFormPage = ({
         e.target.value = "";
         if (!file || step.kind !== "question" || !step.q.upload) return;
         if (file.size > 25 * 1024 * 1024) {
-            setUploadError((er) => ({ msg: "That file is over 25 MB — please upload a smaller PDF or paste a folder link instead.", nonce: (er?.nonce ?? 0) + 1 }));
+            setUploadError((er) => ({
+                msg: "That file is over 25 MB — please upload a smaller PDF or paste a folder link instead.",
+                nonce: (er?.nonce ?? 0) + 1,
+            }));
             return;
         }
         setUploadError(null);
         setUploading(true);
         try {
             const path = `${slug || "template"}/${Date.now()}-${file.name.replace(/[^\w.-]+/g, "_")}`;
-            const { error: upErr } = await supabase.storage
-                .from("brandkits")
-                .upload(path, file, { contentType: "application/pdf", cacheControl: "31536000" });
+            const { error: upErr } = await supabase.storage.from("brandkits").upload(path, file, { contentType: "application/pdf", cacheControl: "31536000" });
             if (upErr) throw upErr;
             const url = supabase.storage.from("brandkits").getPublicUrl(path).data.publicUrl;
             const field = step.q.field;
@@ -1168,7 +1213,11 @@ export const ClientOnboardingFormPage = ({
             {embedded && onClose && (
                 <button
                     type="button"
-                    onClick={() => void saveNow().catch(() => {}).then(() => onClose())}
+                    onClick={() =>
+                        void saveNow()
+                            .catch(() => {})
+                            .then(() => onClose())
+                    }
                     title="Close"
                     className="absolute top-2.5 right-3 z-30 flex size-9 items-center justify-center rounded-lg text-fg-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-fg-secondary"
                 >
@@ -1192,7 +1241,14 @@ export const ClientOnboardingFormPage = ({
                         )
                     )}
                 </div>
-                <div className="h-1 w-full bg-quaternary" role="progressbar" aria-label="Form progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progressPct)}>
+                <div
+                    className="h-1 w-full bg-quaternary"
+                    role="progressbar"
+                    aria-label="Form progress"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={Math.round(progressPct)}
+                >
                     <motion.div
                         className="h-full bg-brand-solid"
                         initial={false}
@@ -1205,7 +1261,12 @@ export const ClientOnboardingFormPage = ({
             {/* ── Review summary ── */}
             {showReview && (
                 <div className="relative min-h-0 flex-1">
-                    <motion.div className="absolute inset-0" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}>
+                    <motion.div
+                        className="absolute inset-0"
+                        initial={{ opacity: 0, y: 16 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                    >
                         <ReviewScreen data={data} clientName={initialClientName} onEdit={editFromReview} onClose={closeReview} />
                     </motion.div>
                 </div>
@@ -1236,7 +1297,11 @@ export const ClientOnboardingFormPage = ({
                                         </div>
                                     )}
                                     <p className="text-sm font-medium text-brand-secondary">{initialClientName || "Welcome to HiddenGem Media"}</p>
-                                    <h1 data-step-heading tabIndex={-1} className="mt-3 text-display-sm font-semibold text-primary outline-none md:text-display-lg">
+                                    <h1
+                                        data-step-heading
+                                        tabIndex={-1}
+                                        className="mt-3 text-display-sm font-semibold text-primary outline-none md:text-display-lg"
+                                    >
                                         Host Onboarding Form
                                     </h1>
                                     <p className="mt-4 max-w-xl text-md text-tertiary">{ONBOARDING_INTRO}</p>
@@ -1255,9 +1320,7 @@ export const ClientOnboardingFormPage = ({
                                     <p className="mt-6 text-sm text-quaternary">
                                         {TOTAL_QUESTIONS} questions · {ESTIMATE_LABEL}
                                     </p>
-                                    <p className="mt-1 text-sm text-quaternary">
-                                        {ONBOARDING_SAVES_NOTE}
-                                    </p>
+                                    <p className="mt-1 text-sm text-quaternary">{ONBOARDING_SAVES_NOTE}</p>
                                     {CREDENTIAL_LABELS.length > 0 && (
                                         <div className="mt-6 max-w-xl rounded-xl bg-secondary px-4 py-3 ring-1 ring-secondary">
                                             <p className="text-sm text-secondary">
@@ -1289,7 +1352,12 @@ export const ClientOnboardingFormPage = ({
                                         </span>
                                     </p>
                                     {step.sectionIntro && <p className="mt-2 max-w-xl text-sm text-tertiary">{step.sectionIntro}</p>}
-                                    <h1 id="question-heading" data-step-heading tabIndex={-1} className="mt-3 text-display-xs font-semibold text-primary outline-none md:text-display-sm">
+                                    <h1
+                                        id="question-heading"
+                                        data-step-heading
+                                        tabIndex={-1}
+                                        className="mt-3 text-display-xs font-semibold text-primary outline-none md:text-display-sm"
+                                    >
                                         {step.q.label}
                                         {step.q.required && (
                                             <span className="text-error-primary" aria-hidden="true">
@@ -1334,7 +1402,13 @@ export const ClientOnboardingFormPage = ({
                                                 {uploading ? "Uploading…" : "Upload a PDF"}
                                             </button>
                                             <span className="text-xs text-quaternary">PDF up to 25 MB — its link is added to your answer above.</span>
-                                            <input ref={brandKitFileRef} type="file" accept="application/pdf" className="hidden" onChange={(e) => void onBrandKitFile(e)} />
+                                            <input
+                                                ref={brandKitFileRef}
+                                                type="file"
+                                                accept="application/pdf"
+                                                className="hidden"
+                                                onChange={(e) => void onBrandKitFile(e)}
+                                            />
                                         </div>
                                     )}
                                     {step.q.upload && uploadError && <ErrorShake key={uploadError.nonce} msg={uploadError.msg} />}
@@ -1343,7 +1417,13 @@ export const ClientOnboardingFormPage = ({
 
                                     <div className="mt-8 flex items-center gap-3">
                                         <button type="button" onClick={goNext} className={okBtnCls} disabled={submitState === "saving"}>
-                                            {editingFromReview ? "Save" : step.num === TOTAL_QUESTIONS ? (submitState === "saving" ? "Submitting…" : "Submit") : "OK"}
+                                            {editingFromReview
+                                                ? "Save"
+                                                : step.num === TOTAL_QUESTIONS
+                                                  ? submitState === "saving"
+                                                      ? "Submitting…"
+                                                      : "Submit"
+                                                  : "OK"}
                                             <Check className="size-5" strokeWidth={3} aria-hidden="true" />
                                         </button>
                                         {embedded && onClose && step.kind === "question" && (
@@ -1369,7 +1449,11 @@ export const ClientOnboardingFormPage = ({
                             {step.kind === "thankyou" && (
                                 <div>
                                     <p className="text-sm font-medium text-brand-secondary">{initialClientName || "All set"}</p>
-                                    <h1 data-step-heading tabIndex={-1} className="mt-3 text-display-sm font-semibold text-primary outline-none md:text-display-lg">
+                                    <h1
+                                        data-step-heading
+                                        tabIndex={-1}
+                                        className="mt-3 text-display-sm font-semibold text-primary outline-none md:text-display-lg"
+                                    >
                                         Final step — book your Kick-Off Call 🚀
                                     </h1>
                                     <p className="mt-4 max-w-xl text-md text-tertiary">

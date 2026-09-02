@@ -104,6 +104,7 @@ import {
 } from "@/pages/client/dashboard/dashboard-model";
 import {
     JOURNEY_STEPS,
+    type JourneyLink,
     type JourneyStepId,
     KICKOFF_CALENDLY,
     NAV_GROUPS,
@@ -764,7 +765,9 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
         // member previewing deletes their own test row directly.
         const done = () => void refreshSuggestions();
         if (identityEmail) {
-            void withdrawSuggestion(slug, identityEmail, s.id).then(done).catch(() => undefined);
+            void withdrawSuggestion(slug, identityEmail, s.id)
+                .then(done)
+                .catch(() => undefined);
         } else if (signedInAsTeam) {
             void supabase.from("dashboard_suggestions").delete().eq("id", s.id).eq("status", "pending").then(done);
         }
@@ -1096,8 +1099,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     };
 
     /** True when the open section lives in this group — drives the group row's chip. */
-    const groupHoldsActive = (phase: string) =>
-        (NAV_GROUPS.find((g) => g.phase === phase)?.items ?? []).some((s) => s.id === activeSection);
+    const groupHoldsActive = (phase: string) => (NAV_GROUPS.find((g) => g.phase === phase)?.items ?? []).some((s) => s.id === activeSection);
 
     /** Nav rows are mostly section switches; the two Resources rows are links out. */
     const openNavItem = (id: SectionId) => {
@@ -1574,16 +1576,35 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
             return { ...c, journey_done: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] };
         });
 
+    /* The three per-client links the journey points at. Pulled out as primitives so the
+       memo below depends on the URLs themselves, not on the whole content object — which
+       changes on every keystroke in edit mode. */
+    const chatLink = content.chat_link;
+    const folderLink = content.brand.folder_link;
+    const onboardingCallUrl = content.onboarding_call_url;
+
     /**
      * Each step with its resolved state. The two form steps read their live answer counts;
      * everything else reflects an AM tick. `progress` is only shown where a real
      * denominator exists — a made-up fraction on "Onboarding Call" would be noise.
      */
     const journeySteps = useMemo(() => {
+        /** A named per-client link, resolved off the row. Missing ⇒ "" — the caller
+         *  renders the line without a button rather than a button that goes nowhere. */
+        const linkFor = (key?: JourneyLink) =>
+            key === "chat" ? (chatLink ?? "").trim() : key === "folder" ? folderLink.trim() : key === "onboarding_call" ? (onboardingCallUrl ?? "").trim() : "";
+
         return JOURNEY_STEPS.map((step) => {
+            // Resolved once here so the renderer treats a static href (the Kick-off
+            // Calendly) and a per-client one (the Onboarding Call) identically.
+            const resolved = {
+                ...step,
+                href: step.href ?? (step.hrefFrom ? linkFor(step.hrefFrom) || undefined : undefined),
+                items: step.items?.map((item) => ({ ...item, url: linkFor(item.link) })),
+            };
             if (step.id === "form") {
                 return {
-                    ...step,
+                    ...resolved,
                     done: intakeSubmitted,
                     progress: intakeInfo.total ? { value: intakeInfo.answered, total: intakeInfo.total } : null,
                     detail: intakeSubmitted
@@ -1595,7 +1616,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
             }
             if (step.id === "vision") {
                 return {
-                    ...step,
+                    ...resolved,
                     done: onboardingSubmitted,
                     progress: onboardingInfo.total ? { value: onboardingInfo.answered, total: onboardingInfo.total } : null,
                     detail: onboardingSubmitted
@@ -1605,13 +1626,16 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                           : step.detail,
                 };
             }
-            return { ...step, done: journeyDone.includes(step.id), progress: null };
+            return { ...resolved, done: journeyDone.includes(step.id), progress: null };
         });
-    }, [intakeSubmitted, onboardingSubmitted, intakeInfo, onboardingInfo, journeyDone]);
+    }, [intakeSubmitted, onboardingSubmitted, intakeInfo, onboardingInfo, journeyDone, chatLink, folderLink, onboardingCallUrl]);
 
     const journeyDoneCount = journeySteps.filter((s) => s.done).length;
     /** First unfinished step — highlighted so a client can see what's next at a glance. */
     const journeyCurrentId = journeySteps.find((s) => !s.done)?.id ?? null;
+    /** Whatever now follows the Kick-off Call — named in the booking confirmation so that
+     *  copy can't go stale the next time the order is reshuffled. It has twice already. */
+    const stepAfterKickoff = journeySteps[journeySteps.findIndex((s) => s.id === "kickoff") + 1] ?? null;
 
     /* ── Collapsible phase groups ──
        Phases 1–5 start folded and Client Input starts open: the forms are the only
@@ -1927,15 +1951,16 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                 "mb-0.5 flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[13px] font-medium transition duration-100 ease-linear",
                                                 // Tier one of the active state: the group holding the open
                                                 // section is a raised chip with a brand-coloured icon.
-                                                groupHoldsActive(group.phase)
-                                                    ? "bg-primary text-primary shadow-xs"
-                                                    : "text-secondary hover:bg-primary",
+                                                groupHoldsActive(group.phase) ? "bg-primary text-primary shadow-xs" : "text-secondary hover:bg-primary",
                                             )}
                                         >
                                             {group.icon && (
                                                 <group.icon
                                                     aria-hidden="true"
-                                                    className={cx("size-4 shrink-0", groupHoldsActive(group.phase) ? "text-fg-brand-primary" : "text-fg-quaternary")}
+                                                    className={cx(
+                                                        "size-4 shrink-0",
+                                                        groupHoldsActive(group.phase) ? "text-fg-brand-primary" : "text-fg-quaternary",
+                                                    )}
                                                 />
                                             )}
                                             <span className="min-w-0 flex-1 truncate">{group.label}</span>
@@ -1982,53 +2007,53 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                 {String(navNumber(s.id)).padStart(2, "0")}
                                                             </span>
                                                             <div className="min-w-0 flex-1">
-                                                            <SectionNavItem
-                                                                label={s.label}
-                                                                current={activeSection === s.id}
-                                                                // Team can open anything that exists; a client can only
-                                                                // open what's been revealed to them.
-                                                                disabled={navBlocked(s)}
-                                                                indent
-                                                                badge={navBadge(s)}
-                                                                action={
-                                                                    // Every row gets the eye while editing, so the whole
-                                                                    // menu can be set up in one pass. On a row with
-                                                                    // nothing behind it yet the toggle is an APPROVAL
-                                                                    // rather than an immediate reveal — the client keeps
-                                                                    // seeing "Soon" either way — so the tooltip says so
-                                                                    // instead of implying a change they'd look for.
-                                                                    !isLocked && isTeam && !s.teamOnly ? (
-                                                                        <button
-                                                                            type="button"
-                                                                            title={
-                                                                                navNotBuilt(s)
-                                                                                    ? revealedToClient(s.id)
-                                                                                        ? "Approved for this client — appears as soon as it's ready"
-                                                                                        : "Approve for this client — will appear once it's ready"
-                                                                                    : revealedToClient(s.id)
-                                                                                      ? "Hide from this client"
-                                                                                      : "Show to this client"
-                                                                            }
-                                                                            aria-label={
-                                                                                revealedToClient(s.id)
-                                                                                    ? `Hide ${s.label} from this client`
-                                                                                    : `Show ${s.label} to this client`
-                                                                            }
-                                                                            aria-pressed={revealedToClient(s.id)}
-                                                                            onClick={() => toggleClientVisible(s.id)}
-                                                                            className={cx(
-                                                                                "flex size-6 items-center justify-center rounded-md transition duration-100 ease-linear hover:bg-secondary",
-                                                                                revealedToClient(s.id)
-                                                                                    ? "text-brand-secondary hover:text-brand-secondary_hover"
-                                                                                    : "text-quaternary hover:text-primary",
-                                                                            )}
-                                                                        >
-                                                                            {revealedToClient(s.id) ? <EyeGlyph /> : <EyeOffGlyph />}
-                                                                        </button>
-                                                                    ) : undefined
-                                                                }
-                                                                onClick={() => openNavItem(s.id)}
-                                                            />
+                                                                <SectionNavItem
+                                                                    label={s.label}
+                                                                    current={activeSection === s.id}
+                                                                    // Team can open anything that exists; a client can only
+                                                                    // open what's been revealed to them.
+                                                                    disabled={navBlocked(s)}
+                                                                    indent
+                                                                    badge={navBadge(s)}
+                                                                    action={
+                                                                        // Every row gets the eye while editing, so the whole
+                                                                        // menu can be set up in one pass. On a row with
+                                                                        // nothing behind it yet the toggle is an APPROVAL
+                                                                        // rather than an immediate reveal — the client keeps
+                                                                        // seeing "Soon" either way — so the tooltip says so
+                                                                        // instead of implying a change they'd look for.
+                                                                        !isLocked && isTeam && !s.teamOnly ? (
+                                                                            <button
+                                                                                type="button"
+                                                                                title={
+                                                                                    navNotBuilt(s)
+                                                                                        ? revealedToClient(s.id)
+                                                                                            ? "Approved for this client — appears as soon as it's ready"
+                                                                                            : "Approve for this client — will appear once it's ready"
+                                                                                        : revealedToClient(s.id)
+                                                                                          ? "Hide from this client"
+                                                                                          : "Show to this client"
+                                                                                }
+                                                                                aria-label={
+                                                                                    revealedToClient(s.id)
+                                                                                        ? `Hide ${s.label} from this client`
+                                                                                        : `Show ${s.label} to this client`
+                                                                                }
+                                                                                aria-pressed={revealedToClient(s.id)}
+                                                                                onClick={() => toggleClientVisible(s.id)}
+                                                                                className={cx(
+                                                                                    "flex size-6 items-center justify-center rounded-md transition duration-100 ease-linear hover:bg-secondary",
+                                                                                    revealedToClient(s.id)
+                                                                                        ? "text-brand-secondary hover:text-brand-secondary_hover"
+                                                                                        : "text-quaternary hover:text-primary",
+                                                                                )}
+                                                                            >
+                                                                                {revealedToClient(s.id) ? <EyeGlyph /> : <EyeOffGlyph />}
+                                                                            </button>
+                                                                        ) : undefined
+                                                                    }
+                                                                    onClick={() => openNavItem(s.id)}
+                                                                />
                                                             </div>
                                                         </motion.div>
                                                     ))}
@@ -2530,6 +2555,63 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                 className="mt-2 w-full rounded-lg bg-primary px-3 py-2 text-sm text-primary ring-1 ring-secondary outline-none focus:ring-brand"
                                                             />
                                                         </div>
+
+                                                        {/* ── Onboarding links ──
+                                                            The three per-client URLs the journey hands the client, together and
+                                                            next to the journey that consumes them. The content folder is also
+                                                            editable inside Brand Kit — same field, and that section is a long
+                                                            way from the step that asks for it, which is why nobody fills it in.
+                                                            Empty is safe everywhere: the step drops the button, it never shows
+                                                            a dead one. */}
+                                                        <div className="mt-4 border-t border-secondary pt-4">
+                                                            <p className="text-sm font-medium text-secondary">Onboarding links</p>
+                                                            <p className="mt-1 text-xs text-pretty text-tertiary">
+                                                                What the client is sent to after the Kick-off Call. Each one appears on its journey step as soon
+                                                                as it's filled in.
+                                                            </p>
+                                                            <div className="mt-2 grid gap-2">
+                                                                {(
+                                                                    [
+                                                                        {
+                                                                            key: "chat" as const,
+                                                                            label: "Google Chat room",
+                                                                            placeholder: "https://chat.google.com/room/…",
+                                                                            value: content.chat_link ?? "",
+                                                                            set: (v: string) => setContent((c) => ({ ...c, chat_link: v })),
+                                                                        },
+                                                                        {
+                                                                            key: "folder" as const,
+                                                                            label: "Content folder (photos & video)",
+                                                                            placeholder: "https://drive.google.com/…",
+                                                                            value: content.brand.folder_link,
+                                                                            set: (v: string) => patchBrand({ folder_link: v }),
+                                                                        },
+                                                                        {
+                                                                            key: "call" as const,
+                                                                            label: "Onboarding Call booking page",
+                                                                            placeholder: "https://calendly.com/your-name/onboarding",
+                                                                            value: content.onboarding_call_url ?? "",
+                                                                            set: (v: string) => setContent((c) => ({ ...c, onboarding_call_url: v })),
+                                                                        },
+                                                                    ] as const
+                                                                ).map((row) => (
+                                                                    <label key={row.key} className="grid gap-1">
+                                                                        <span className="text-xs text-tertiary">{row.label}</span>
+                                                                        <input
+                                                                            type="text"
+                                                                            value={row.value}
+                                                                            placeholder={row.placeholder}
+                                                                            onChange={(e) => row.set(e.target.value)}
+                                                                            className="w-full rounded-lg bg-primary px-3 py-2 text-sm text-primary ring-1 ring-secondary outline-none focus:ring-brand"
+                                                                        />
+                                                                    </label>
+                                                                ))}
+                                                            </div>
+                                                            <p className="mt-2 text-xs text-pretty text-quaternary">
+                                                                The booking page is this client's own Account Manager's — there's no shared default, since one
+                                                                would send every client to the same person.
+                                                            </p>
+                                                        </div>
                                                     </div>
                                                 )}
 
@@ -2539,8 +2621,10 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                     of these steps, and two of the funnel cards jumped to Website and
                                                     GoHighLevel, which are no longer on the client's menu.
 
-                                                    Steps 1 and 4 read live form state. The rest are AM ticks — calls and
-                                                    reviews happen off-platform, so there is nothing to infer them from. */}
+                                                    The two form steps read live form state. The rest are AM ticks — calls
+                                                    and reviews happen off-platform, so there is nothing to infer them
+                                                    from. Referred to by name, not number: the order has been reshuffled
+                                                    twice and every numbered comment went stale. */}
                                                 <div className="mt-10">
                                                     <div className="flex flex-wrap items-end justify-between gap-3">
                                                         <div>
@@ -2634,6 +2718,65 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                             </div>
                                                                         )}
 
+                                                                        {/* Sub-items — the several separate things one step asks for.
+                                                                            No tick boxes: none of these are states we can observe, and
+                                                                            an empty box against a job already done reads as a failure.
+                                                                            An item whose link isn't filled in yet keeps its text and
+                                                                            drops the button; only the team is told it's missing, since
+                                                                            that's the team's job to fix, not the client's. */}
+                                                                        {step.items && step.items.length > 0 && (
+                                                                            <div className="mt-4">
+                                                                                {step.itemsTitle && (
+                                                                                    <p className="text-xs font-semibold tracking-wide text-quaternary uppercase">
+                                                                                        {step.itemsTitle}
+                                                                                    </p>
+                                                                                )}
+                                                                                <ul
+                                                                                    className={cx(
+                                                                                        "grid list-none gap-3 p-0",
+                                                                                        step.itemsTitle ? "mt-2.5" : "mt-0",
+                                                                                    )}
+                                                                                >
+                                                                                    {step.items.map((item) => (
+                                                                                        <li
+                                                                                            key={item.label}
+                                                                                            className="border-t border-secondary pt-3 first:border-t-0 first:pt-0"
+                                                                                        >
+                                                                                            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1.5">
+                                                                                                <span className="text-sm font-semibold text-secondary">
+                                                                                                    {item.label}
+                                                                                                </span>
+                                                                                                {item.url ? (
+                                                                                                    <Button
+                                                                                                        size="sm"
+                                                                                                        color="secondary"
+                                                                                                        href={item.url}
+                                                                                                        target="_blank"
+                                                                                                        rel="noopener noreferrer"
+                                                                                                        iconTrailing={LinkExternal01}
+                                                                                                    >
+                                                                                                        {item.action ?? "Open"}
+                                                                                                    </Button>
+                                                                                                ) : (
+                                                                                                    item.link &&
+                                                                                                    isTeam && (
+                                                                                                        <span className="text-xs text-warning-primary">
+                                                                                                            No link set yet
+                                                                                                        </span>
+                                                                                                    )
+                                                                                                )}
+                                                                                            </div>
+                                                                                            {item.note && (
+                                                                                                <p className="mt-1 max-w-prose text-sm text-pretty text-tertiary">
+                                                                                                    {item.note}
+                                                                                                </p>
+                                                                                            )}
+                                                                                        </li>
+                                                                                    ))}
+                                                                                </ul>
+                                                                            </div>
+                                                                        )}
+
                                                                         <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
                                                                             {canJump && target && (
                                                                                 <Button
@@ -2680,6 +2823,21 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                                         {step.hrefLabel ?? "Open link"}
                                                                                     </Button>
                                                                                 ))}
+                                                                            {/* A step whose booking page comes off the row has nothing to
+                                                                                offer until an AM pastes it in. The client is told to expect
+                                                                                it; the team is told to go and set it. */}
+                                                                            {step.hrefFrom && !step.href && !step.done && (
+                                                                                <span
+                                                                                    className={cx(
+                                                                                        "text-xs",
+                                                                                        isTeam ? "text-warning-primary" : "text-quaternary",
+                                                                                    )}
+                                                                                >
+                                                                                    {isTeam
+                                                                                        ? "No booking link set — add it under Onboarding links."
+                                                                                        : "Your Account Manager will send you a booking link."}
+                                                                                </span>
+                                                                            )}
                                                                             {/* AM tick, edit mode only. Auto steps get no tick:
                                                                                 a manual override could contradict the answer
                                                                                 count printed directly above it. */}
@@ -2755,8 +2913,8 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                 {CREDENTIAL_LABELS.length > 0 && (
                                                                     <div className="mt-5 max-w-2xl rounded-xl bg-secondary px-4 py-3 ring-1 ring-secondary">
                                                                         <p className="text-sm text-secondary">
-                                                                            <span className="font-semibold text-primary">Worth having to hand:</span> this
-                                                                            form asks for a few account logins so we can set things up for you —{" "}
+                                                                            <span className="font-semibold text-primary">Worth having to hand:</span> this form
+                                                                            asks for a few account logins so we can set things up for you —{" "}
                                                                             {CREDENTIAL_LABELS.join(", ")}.
                                                                         </p>
                                                                     </div>
@@ -3553,8 +3711,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                                 </Button>
                                                                                 {suggestMode && (
                                                                                     <p className="text-xs text-tertiary">
-                                                                                        Type into any field, then send — your team reviews every
-                                                                                        suggestion.
+                                                                                        Type into any field, then send — your team reviews every suggestion.
                                                                                     </p>
                                                                                 )}
                                                                             </div>
@@ -4802,7 +4959,9 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                                     showTextWhileLoading
                                                                                     onClick={() => void submitSuggestions()}
                                                                                 >
-                                                                                    {sendState === "error" ? "Try again" : `Send suggestion${suggestDraftCount === 1 ? "" : "s"}`}
+                                                                                    {sendState === "error"
+                                                                                        ? "Try again"
+                                                                                        : `Send suggestion${suggestDraftCount === 1 ? "" : "s"}`}
                                                                                 </Button>
                                                                                 <Button
                                                                                     size="sm"
@@ -5980,9 +6139,10 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                             <div className="flex shrink-0 items-start gap-3 border-t border-secondary bg-success-secondary px-5 py-4">
                                 <CheckCircle className="mt-0.5 size-5 shrink-0 text-fg-success-secondary" aria-hidden="true" />
                                 <div className="min-w-0">
-                                    <p className="text-sm font-semibold text-primary">Booked — that's step 2 done.</p>
+                                    <p className="text-sm font-semibold text-primary">Booked — that's your Kick-off Call.</p>
                                     <p className="mt-0.5 text-sm text-pretty text-tertiary">
-                                        Next up is step 3, the Onboarding Call itself, with Dustin and your Account Manager. Check your email for the invite.
+                                        Check your email for the invite.
+                                        {stepAfterKickoff ? ` Next up: ${stepAfterKickoff.label}.` : ""}
                                     </p>
                                 </div>
                                 <Button size="sm" color="secondary" className="ml-auto shrink-0" onClick={() => setBookingOpen(false)}>

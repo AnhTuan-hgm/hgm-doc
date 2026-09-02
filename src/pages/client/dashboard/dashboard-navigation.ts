@@ -7,6 +7,7 @@
  */
 import type { FC } from "react";
 import {
+    Announcement02,
     BookOpen01,
     Calendar,
     Camera01,
@@ -23,7 +24,6 @@ import {
     Target04,
     TrendUp01,
     Users01,
-    Announcement02,
 } from "@untitledui-pro/icons/line";
 import type { SectionId } from "@/pages/client/dashboard/dashboard-model";
 
@@ -68,6 +68,19 @@ export type JourneyStepId = "form" | "kickoff" | "call" | "vision" | "masterdoc"
 /** Dustin's strategy-call booking page, linked from the Kick-off Call step. */
 export const KICKOFF_CALENDLY = "https://calendly.com/dustin-d-baker/strategy";
 
+/**
+ * A per-client URL a journey step points at, named rather than embedded so one step
+ * definition serves every client. The dashboard resolves these from the row:
+ * `chat` → content.chat_link, `folder` → content.brand.folder_link,
+ * `onboarding_call` → content.onboarding_call_url.
+ *
+ * Unset resolves to "", and the step renders its line WITHOUT a button rather than a
+ * button that goes nowhere. The Onboarding Call has no shared fallback on purpose: the
+ * booking page belongs to the client's own Account Manager, so one hardcoded URL would
+ * send every client to the same person.
+ */
+export type JourneyLink = "chat" | "folder" | "onboarding_call";
+
 export const JOURNEY_STEPS: {
     id: JourneyStepId;
     label: string;
@@ -79,9 +92,19 @@ export const JOURNEY_STEPS: {
     auto?: boolean;
     /** External link this step offers (booking pages and the like). */
     href?: string;
+    /** Per-client booking URL for this step's own button — see JourneyLink. */
+    hrefFrom?: JourneyLink;
     hrefLabel?: string;
     /** Step that must be done before `href` is offered. */
     requires?: JourneyStepId;
+    /**
+     * Sub-items: the several separate things one step actually asks for. Deliberately
+     * NOT tickable — none of these are states the app can observe, and an empty box
+     * against a job the client already did reads as a failure.
+     */
+    items?: { label: string; note?: string; link?: JourneyLink; action?: string }[];
+    /** Heading above `items`, when the list needs naming. */
+    itemsTitle?: string;
 }[] = [
     {
         id: "form",
@@ -112,8 +135,58 @@ export const JOURNEY_STEPS: {
         to: "onboarding",
         auto: true,
     },
-    { id: "call", label: "Onboarding Call", detail: "With Dustin and your Account Manager.", icon: Users01 },
-    { id: "resources", label: "Add your resources", detail: "Folder of content, plus the Brand Kit document.", icon: Folder, to: "contentfolder" },
+    {
+        // The two things the post-Kick-off email asks for. The old detail line read
+        // "Folder of content, plus the Brand Kit document" — but no Brand Kit document
+        // link exists, and at this point in the journey the Brand Kit hasn't been built.
+        //
+        // No `to: "contentfolder"` any more: the folder is one of the items below, and a
+        // step-level "Open" button pointing at the same URL just asks the client which of
+        // two identical buttons to press.
+        id: "resources",
+        label: "Add your resources",
+        detail: "Two things to send us after the Kick-off Call, so your Account Manager can start building.",
+        icon: Folder,
+        items: [
+            {
+                label: "Join the Google Chat group",
+                note: "Where we post updates and ask quick questions.",
+                link: "chat",
+                action: "Open chat",
+            },
+            {
+                label: "Upload your photos and video",
+                note: "Everything you already have: listing photos, phone clips, drone footage. Send too much rather than too little, we'll pick.",
+                link: "folder",
+                action: "Open your folder",
+            },
+        ],
+    },
+    {
+        id: "call",
+        label: "Onboarding Call",
+        detail: "With Dustin and your Account Manager. Book it once your Brand Vision Form is in.",
+        icon: Users01,
+        hrefFrom: "onboarding_call",
+        hrefLabel: "Book your onboarding call",
+        requires: "vision",
+        itemsTitle: "Have these ready before the call",
+        // Every login here is already asked for by the Onboarding form, so the wording is
+        // "logged in", not "have your password". Facebook especially: we need the client
+        // signed in to their own business page so they can add us as a user on the call —
+        // we never ask for their Facebook password, and the form no longer asks either.
+        items: [
+            { label: "Instagram", note: "Logged in on the laptop you'll join from." },
+            { label: "TikTok", note: "Logged in, if you use it." },
+            {
+                label: "Facebook",
+                note: "Logged in to your business page, so you can add us as a user. We never ask for your Facebook password.",
+            },
+            { label: "Domain", note: "Logged in wherever your domain is registered." },
+            { label: "Credit card", note: "We set up your Facebook Ad account during the call." },
+            { label: "Zoom", note: "Installed on your computer, so we can ask to share your screen." },
+        ],
+    },
     {
         id: "masterdoc",
         label: "Review the Master Brand",

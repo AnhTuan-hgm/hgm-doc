@@ -215,6 +215,14 @@ export interface DashboardContent {
      *  `hidden` keeps a row team-only — new rows start hidden so nothing internal
      *  leaks to a client by default. Optional: older rows predate it. */
     resources?: { id: string; label: string; url: string; hidden?: boolean }[];
+    /** This client's Google Chat room, offered by the "Add your resources" journey step.
+     *  Empty renders that line with no button. Optional: older rows predate it. */
+    chat_link?: string;
+    /** Booking page for the Onboarding Call, offered by that journey step. Per-client
+     *  rather than a shared constant because it is the client's own Account Manager's
+     *  Calendly — one hardcoded URL would route every client to the same person. Empty
+     *  renders the step without a booking button. Optional: older rows predate it. */
+    onboarding_call_url?: string;
     /** The Master Brand Document — the Foundation feeding the funnel. Optional so older
      * dashboard rows (saved before this section existed) still load unchanged.
      *

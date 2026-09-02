@@ -31,6 +31,8 @@ import { useNavigate } from "react-router";
 import { AppShell, CollapsedTopBar, IconRail, NavCollapseButton, useNavCollapsed } from "@/components/application/icon-rail";
 import { Badge } from "@/components/base/badges/badges";
 import { supabase } from "@/lib/supabase";
+import { ESTIMATE_LABEL, TOTAL_QUESTIONS } from "@/pages/client/client-onboarding-form-page";
+import { JOURNEY_STEPS } from "@/pages/client/dashboard/dashboard-navigation";
 import { DocSection } from "@/pages/client/dashboard/master-brand-fields";
 import { cx } from "@/utils/cx";
 
@@ -226,7 +228,7 @@ const DASHBOARD_GROUPS: { group: string; items: { label: string; note: string }[
     {
         group: "Your forms (client input)",
         items: [
-            { label: "Onboarding form", note: "Property facts, links, credentials — autosaves as the client types." },
+            { label: "Onboarding form", note: `Property facts, links and the four account logins (Instagram, TikTok, PMS, Domain Host) — ${TOTAL_QUESTIONS} questions, ${ESTIMATE_LABEL}, autosaving as the client types.` },
             { label: "Brand Vision Form", note: "How the brand should look, sound and feel." },
         ],
     },
@@ -358,6 +360,12 @@ const LINK_GROUPS: { group: string; links: { to: string; what: string }[] }[] = 
                 to: "/background",
                 what: "Backdrop catalogue — all 17 drawn backgrounds full-bleed, each with the technique written on it. Ported from the marketing site's /background; all CSS, re-themes with the tokens",
             },
+            {
+                to: "/animation",
+                what: "Motion catalogue — every animation the site uses, with its timing and reduced-motion fallback. The /animation SKILL audits against these rules",
+            },
+            { to: "/mockup", what: "Device mockup library — phones, laptops, tablets and browser chrome, every bezel a real device export" },
+            { to: "/mockup-ig", what: "Instagram surfaces — profile, feed, reel, story and ad formats, for showing client work at the right crop" },
             { to: "/prompt-library", what: "Reusable AI prompts" },
         ],
     },
@@ -886,9 +894,18 @@ export const ManualScreen = () => {
                             <DocSection id="dashboard" label="The client dashboard" number={num("dashboard")}>
                                 <p className="mb-3 text-md text-tertiary">
                                     The biggest page on the site — one row in <span className="font-mono text-sm">dashboard_pages</span> holds a client's entire
-                                    dashboard. The side menu mirrors the onboarding journey the team runs in Asana, and the Overview section walks the client
-                                    through it step by step: fill the onboarding form → book the kick-off call → onboarding call → Brand Vision form → review
-                                    the Master Brand → review the Brand Kit → review the funnel → add resources → website setup.
+                                    dashboard. The Overview section walks the client through the onboarding journey step by step, and the side menu mirrors it.
+                                </p>
+                                {/* Read from JOURNEY_STEPS rather than written out: this list was prose
+                                    until the steps were reordered on 2026-09-02 and the prose silently
+                                    became wrong. Reorder the steps and this follows. */}
+                                <p className="mb-3 text-md text-tertiary">
+                                    {JOURNEY_STEPS.map((s, i) => `${i + 1}. ${s.label}`).join(" · ")}
+                                </p>
+                                <p className="mb-3 text-md text-tertiary">
+                                    Completion is stored as step <em>ids</em> in <span className="font-mono text-sm">journey_done</span>, not positions, so
+                                    reordering the journey never disturbs a client's recorded progress. The side menu itself is drag-resizable from its right
+                                    hairline (240–420px, remembered per browser), numbers its rows continuously across groups, and shows a count per group.
                                 </p>
                                 <div className="flex flex-col gap-3">
                                     {DASHBOARD_GROUPS.map((g) => (

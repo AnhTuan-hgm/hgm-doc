@@ -20,6 +20,7 @@ import { MasterDocumentLogScreen } from "@/pages/overviews/master-document-log-s
 import { OwnerGuideOverviewScreen } from "@/pages/overviews/owner-guide-overview-screen";
 import { WelcomeEmailFlowOverviewScreen } from "@/pages/overviews/welcome-email-flow-overview-screen";
 import { AiWebsiteSetupScreen } from "@/pages/team/ai-website-setup-screen";
+import { AliciaFeedbackScreen } from "@/pages/team/alicia-feedback-screen";
 import { AnimationScreen } from "@/pages/team/animation-screen";
 import { BackgroundScreen } from "@/pages/team/background-screen";
 import { ComponentLibraryArchitectureScreen } from "@/pages/team/component-library-architecture-screen";
@@ -72,6 +73,7 @@ const PAGES_WITHOUT_FLOATING_CHROME = [
     "/log-script",
     "/fix",
     "/manual",
+    "/alicia-feedback",
 ];
 
 // The floating "?" help menu is a team tool. It renders ONLY on internal team
@@ -208,6 +210,8 @@ createRoot(document.getElementById("root")!).render(
                         <Route path="/deployment" element={<DeploymentScreen />} />
                         <Route path="/fix" element={<SafeBrowsingScreen />} />
                         <Route path="/manual" element={<ManualScreen />} />
+                        {/* Team-only log of what Alicia asks for and what we did. */}
+                        <Route path="/alicia-feedback" element={<AliciaFeedbackScreen />} />
                         <Route path="/test" element={<TestScreen />} />
                         {/* The motion reference — team-internal, like /test. */}
                         <Route path="/animation" element={<AnimationScreen />} />
