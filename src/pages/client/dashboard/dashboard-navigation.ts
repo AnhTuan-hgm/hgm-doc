@@ -93,7 +93,7 @@ export const JOURNEY_STEPS: {
     },
     {
         id: "kickoff",
-        label: "Book the Kick-off Call",
+        label: "Kick-off Call",
         detail: "Pick a time that suits you and we'll take it from there.",
         icon: Calendar,
         // Booking opens only once the Onboarding form is in — the call is only useful if the
@@ -104,7 +104,6 @@ export const JOURNEY_STEPS: {
         hrefLabel: "Book your call",
         requires: "form",
     },
-    { id: "call", label: "Onboarding Call", detail: "With Dustin and your Account Manager.", icon: Users01 },
     {
         id: "vision",
         label: "Fill in the Brand Vision Form",
@@ -113,6 +112,8 @@ export const JOURNEY_STEPS: {
         to: "onboarding",
         auto: true,
     },
+    { id: "call", label: "Onboarding Call", detail: "With Dustin and your Account Manager.", icon: Users01 },
+    { id: "resources", label: "Add your resources", detail: "Folder of content, plus the Brand Kit document.", icon: Folder, to: "contentfolder" },
     {
         id: "masterdoc",
         label: "Review the Master Brand",
@@ -128,7 +129,6 @@ export const JOURNEY_STEPS: {
         icon: Mail01,
         to: "flow",
     },
-    { id: "resources", label: "Add your resources", detail: "Folder of content, plus the Brand Kit document.", icon: Folder, to: "contentfolder" },
     { id: "website", label: "Set up the website", detail: "If a website is in scope for you.", icon: Globe01, to: "ownerguide" },
 ];
 

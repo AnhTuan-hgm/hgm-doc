@@ -48,8 +48,14 @@ import { useAuthUser } from "@/hooks/use-auth-user";
 import { useEditShortcuts } from "@/hooks/use-edit-shortcuts";
 import { type DashboardContent, type HostOnboardingData, type OverviewDoc, supabase } from "@/lib/supabase";
 import {
+    CREDENTIAL_LABELS,
     type ClientOnboardingData,
     ClientOnboardingFormPage,
+    ESTIMATE_LABEL,
+    ONBOARDING_INTRO,
+    ONBOARDING_LEAD_TIME,
+    ONBOARDING_SAVES_NOTE,
+    TOTAL_QUESTIONS,
     clientOnboardingAnswers,
     clientOnboardingProgress,
     ensureClientOnboardingForm,
@@ -2728,11 +2734,35 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                     <Reveal>
                                                         <SectionEyebrow section={activeSection} />
                                                         <SectionHeading>Onboarding Form</SectionHeading>
-                                                        <p className="mt-3 text-md text-tertiary">
-                                                            The first step — your business details, goals, and the account logins we need before your Kick-Off
-                                                            Call. Completing it at least 12 hours before the call lets our team prepare a customized strategy,
-                                                            and it ends with booking your call.
-                                                        </p>
+                                                        {/* The form's own welcome copy, imported rather than restated — this section
+                                                            used to carry a shorter blurb, so there were two versions of what the
+                                                            form asks for and two places to edit.
+
+                                                            All of it is instructions for filling the form in, so it disappears once
+                                                            the client has submitted: how long it takes and which logins to gather
+                                                            are no longer things they can act on, and leaving them up makes a
+                                                            finished task look outstanding. The status card below stays. */}
+                                                        {!intakeSubmitted && (
+                                                            <>
+                                                                <p className="mt-3 max-w-2xl text-md text-tertiary">{ONBOARDING_INTRO}</p>
+                                                                <p className="mt-3 max-w-2xl text-md text-tertiary">
+                                                                    <span className="font-semibold text-secondary">Important:</span> {ONBOARDING_LEAD_TIME}
+                                                                </p>
+                                                                <p className="mt-4 text-sm text-quaternary">
+                                                                    {TOTAL_QUESTIONS} questions · {ESTIMATE_LABEL}
+                                                                </p>
+                                                                <p className="mt-1 text-sm text-quaternary">{ONBOARDING_SAVES_NOTE}</p>
+                                                                {CREDENTIAL_LABELS.length > 0 && (
+                                                                    <div className="mt-5 max-w-2xl rounded-xl bg-secondary px-4 py-3 ring-1 ring-secondary">
+                                                                        <p className="text-sm text-secondary">
+                                                                            <span className="font-semibold text-primary">Worth having to hand:</span> this
+                                                                            form asks for a few account logins so we can set things up for you —{" "}
+                                                                            {CREDENTIAL_LABELS.join(", ")}.
+                                                                        </p>
+                                                                    </div>
+                                                                )}
+                                                            </>
+                                                        )}
 
                                                         <div className="mt-6 rounded-2xl bg-primary p-5 ring-1 ring-secondary">
                                                             <div className="flex flex-wrap items-center justify-between gap-4">

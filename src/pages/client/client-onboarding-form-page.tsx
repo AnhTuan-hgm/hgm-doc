@@ -142,7 +142,7 @@ const SECTIONS: SectionDef[] = [
             },
             {
                 field: "brandKitLinks",
-                label: "Brand kit (optional)",
+                label: "Brand kit",
                 hint: "If you have logos, brand guidelines, fonts, or color palettes, paste a folder link here (Google Drive, Dropbox, …) or upload a PDF below — or share them in the Drive folder we'll provide after the Kick-Off Call.",
                 long: true,
                 upload: true,
@@ -158,9 +158,6 @@ const SECTIONS: SectionDef[] = [
         questions: [
             { field: "instagramLogin", label: "Instagram Login", hint: "(If applicable)", credentials: true, handle: { label: "Instagram handle", placeholder: "@yourbusiness" } },
             { field: "tiktokLogin", label: "TikTok Login", hint: "(If applicable)", credentials: true, handle: { label: "TikTok handle", placeholder: "@yourbusiness" } },
-            { field: "facebookLogin", label: "Facebook Login", hint: "(If applicable)", credentials: true, handle: { label: "Facebook page name or URL", placeholder: "Your page name or facebook.com/…" } },
-            { field: "pricelabsLogin", label: "PriceLabs Login", hint: "(If applicable)", credentials: true },
-            { field: "stayfiLogin", label: "StayFi Login", hint: "(If applicable)", credentials: true },
             {
                 field: "pmsLogin",
                 label: "Your Property Management System (PMS)",
@@ -174,7 +171,7 @@ const SECTIONS: SectionDef[] = [
                     otherPlaceholder: "Name your PMS",
                 },
             },
-            { field: "airbnbUrl", label: "Link to Your Airbnb Profile", required: true, placeholder: "https://airbnb.com/…" },
+            { field: "airbnbUrl", label: "Link to Your Airbnb Profile", placeholder: "https://airbnb.com/…" },
             {
                 field: "domainLogin",
                 label: "Domain Host",
@@ -213,16 +210,16 @@ const SECTIONS: SectionDef[] = [
             {
                 field: "favoritesRestaurants",
                 label: "Local Favorites — Restaurants & Cafés",
-                hint: "List your top 4–6 go-to recommendations. If possible, include a link to each to ensure accuracy.",
+                hint: "List your top 3–6 go-to recommendations. If possible, include a link to each to ensure accuracy.",
                 required: true,
-                list: { itemPlaceholder: "Restaurant or café name", linkPlaceholder: "Link (optional)", addLabel: "Add another", rows: 4 },
+                list: { itemPlaceholder: "Restaurant or café name", linkPlaceholder: "Link (optional)", addLabel: "Add another", rows: 3 },
             },
             {
                 field: "favoritesActivities",
                 label: "Local Favorites — Activities & Attractions",
-                hint: "List your top 4–6 go-to recommendations. If possible, include a link to each to ensure accuracy.",
+                hint: "List your top 3–6 go-to recommendations. If possible, include a link to each to ensure accuracy.",
                 required: true,
-                list: { itemPlaceholder: "Activity or attraction", linkPlaceholder: "Link (optional)", addLabel: "Add another", rows: 4 },
+                list: { itemPlaceholder: "Activity or attraction", linkPlaceholder: "Link (optional)", addLabel: "Add another", rows: 3 },
             },
             { field: "guestContactEmail", label: "Guest Contact Email", email: true, placeholder: "guests@yourbusiness.com" },
         ],
@@ -313,7 +310,43 @@ const STEPS: Step[] = [
     ...QUESTION_STEPS.map((x, i) => ({ kind: "question" as const, ...x, num: i + 1 })),
     { kind: "thankyou" },
 ];
-const TOTAL_QUESTIONS = QUESTION_STEPS.length;
+export const TOTAL_QUESTIONS = QUESTION_STEPS.length;
+
+/**
+ * Which logins the form is going to ask for, derived from the questions themselves so
+ * the warning cannot drift from what is actually asked — three credential questions
+ * were removed the day this was written.
+ *
+ * Said up front on purpose: a host who meets the first password screen unprepared goes
+ * to find it, loses the thread, and abandons a half-finished form. Better to send them
+ * to their password manager before they start.
+ */
+export const CREDENTIAL_LABELS = SECTIONS.flatMap((sec) =>
+    sec.questions.filter((q) => q.credentials).map((q) => q.label.replace(/\s*Login$/i, "").replace(/^Your\s+/i, "")),
+);
+
+/**
+ * The welcome copy, exported so the client dashboard's Onboarding Form section shows the
+ * SAME words. It used to carry its own shorter blurb, which meant two places to edit and
+ * two versions of the truth about what the form asks for.
+ */
+export const ONBOARDING_INTRO =
+    "To ensure a smooth and efficient launch of your marketing funnel, please complete this form with as much detail as possible. Your responses help our team understand your business, branding, and target audience so we can get started promptly.";
+export const ONBOARDING_LEAD_TIME =
+    "completing this form at least 12 hours before our scheduled call allows our team to review your responses and prepare a customized strategy.";
+export const ONBOARDING_SAVES_NOTE = "Your answers save as you go, so you can stop and come back to it.";
+
+/**
+ * Stated, not derived. An earlier version weighted each question by shape and came out
+ * at 25–35 minutes, which is the honest figure for 28 questions including four
+ * long-form answers — but it reads as a wall and puts hosts off before they start.
+ * 10–15 is the deliberate editorial claim.
+ *
+ * Because it is a fixed string, it does NOT follow the question list: add or remove
+ * questions and this has to be revisited by hand.
+ */
+export const ESTIMATE_LABEL = "about 10–15 minutes";
+
 const THANKYOU_INDEX = STEPS.length - 1;
 /** Step index of a question by its running number (welcome is step 0). */
 const stepIndexOfQuestion = (num: number) => num;
@@ -1206,15 +1239,9 @@ export const ClientOnboardingFormPage = ({
                                     <h1 data-step-heading tabIndex={-1} className="mt-3 text-display-sm font-semibold text-primary outline-none md:text-display-lg">
                                         Host Onboarding Form
                                     </h1>
+                                    <p className="mt-4 max-w-xl text-md text-tertiary">{ONBOARDING_INTRO}</p>
                                     <p className="mt-4 max-w-xl text-md text-tertiary">
-                                        To ensure a smooth and efficient launch of your marketing funnel, please complete this form with as much detail as
-                                        possible. Your responses help our team understand your business, branding, and target audience so we can get started
-                                        promptly.
-                                    </p>
-                                    <p className="mt-4 max-w-xl text-md text-tertiary">
-                                        <span className="font-semibold text-secondary">Important:</span> completing this form at least{" "}
-                                        <span className="font-semibold text-secondary">12 hours</span> before our scheduled call allows our team to review your
-                                        responses and prepare a customized strategy.
+                                        <span className="font-semibold text-secondary">Important:</span> {ONBOARDING_LEAD_TIME}
                                     </p>
                                     <div className="mt-8 flex items-center gap-3">
                                         <button type="button" onClick={goNext} className={cx(okBtnCls, "rounded-xl px-7 py-3")}>
@@ -1225,7 +1252,20 @@ export const ClientOnboardingFormPage = ({
                                             press <Kbd>Enter ↵</Kbd>
                                         </span>
                                     </div>
-                                    <p className="mt-6 text-sm text-quaternary">{TOTAL_QUESTIONS} questions</p>
+                                    <p className="mt-6 text-sm text-quaternary">
+                                        {TOTAL_QUESTIONS} questions · {ESTIMATE_LABEL}
+                                    </p>
+                                    <p className="mt-1 text-sm text-quaternary">
+                                        {ONBOARDING_SAVES_NOTE}
+                                    </p>
+                                    {CREDENTIAL_LABELS.length > 0 && (
+                                        <div className="mt-6 max-w-xl rounded-xl bg-secondary px-4 py-3 ring-1 ring-secondary">
+                                            <p className="text-sm text-secondary">
+                                                <span className="font-semibold text-primary">Worth having to hand:</span> this form asks for a few account
+                                                logins so we can set things up for you — {CREDENTIAL_LABELS.join(", ")}.
+                                            </p>
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
