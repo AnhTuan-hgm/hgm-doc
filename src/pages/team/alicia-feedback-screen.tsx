@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, Clock, LayoutAlt01, MessageSmileCircle, Plus, Trash01 } from "@untitledui/icons";
+import { ArrowDown, ArrowUp, Check, Clock, Flag05, Image01, LayoutAlt01, MessageSmileCircle, Plus, Trash01, XClose } from "@untitledui/icons";
 import { AppShell, CollapsedTopBar, IconRail, RailBottom, useNavCollapsed } from "@/components/application/icon-rail";
+import { PriorityFlag, priorityRank, type QuestionPriority } from "@/components/application/priority-flag";
+import { ImageLightbox } from "@/components/shared-assets/image-lightbox";
+import { compressImageFile } from "@/utils/compress-image";
 import { BadgeWithDot } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
 import { TextArea } from "@/components/base/textarea/textarea";
@@ -42,6 +45,14 @@ type Entry = {
     /** Email of whoever added it, when they were signed in. Blank for the seeded
      *  entries and for anyone who came through the team password. */
     by?: string;
+    /** High / Medium / Low, set by clicking the flag. Unset is normal, not an
+     *  error — most requests never need ranking. */
+    priority?: QuestionPriority;
+    /** Screenshots of the finished result, so Alicia can see the outcome instead of
+     *  reading a description of it. Compressed to WebP data URLs by
+     *  compressImageFile before they ever reach the row — this table stores base64,
+     *  so an uncompressed screenshot would bloat every future read of the page. */
+    images?: string[];
 };
 /** Loose row payload: keep any other keys a future version of this page adds. */
 type PageData = { entries?: Entry[] } & Record<string, unknown>;
@@ -97,10 +108,19 @@ export const AliciaFeedbackScreen = () => {
     const [loading, setLoading] = useState(true);
     const [saveState, setSaveState] = useState<"idle" | "saving" | "error">("idle");
     const [draft, setDraft] = useState("");
+    const [lightbox, setLightbox] = useState<string | null>(null);
     const { user } = useAuthUser();
     const { collapsed: navCollapsed, toggle: toggleNav } = useNavCollapsed();
     /** Every other key on the row, preserved so a save never drops what it didn't write. */
     const otherKeys = useRef<Record<string, unknown>>({});
+    /**
+     * The latest entries, readable synchronously. Every mutation below computes from
+     * this rather than from the `entries` render closure: `addImages` reads it AFTER
+     * awaiting compression, so a closure snapshot there would be seconds stale and
+     * would silently overwrite whatever was typed while the image compressed. The
+     * same staleness loses one of two updates landing in the same tick.
+     */
+    const entriesRef = useRef<Entry[]>([]);
     const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
     useEffect(() => {
@@ -111,13 +131,15 @@ export const AliciaFeedbackScreen = () => {
                 const data = (row?.data ?? {}) as PageData;
                 const { entries: stored, ...rest } = data;
                 otherKeys.current = rest;
-                setEntries(Array.isArray(stored) ? stored : SEED);
+                entriesRef.current = Array.isArray(stored) ? stored : SEED;
+                setEntries(entriesRef.current);
                 setLoading(false);
             })
             .catch(() => {
                 // readSopPage throws when the row is missing — that's the first visit.
                 // Seed it and write immediately, so today's asks aren't held in a tab.
                 if (!alive) return;
+                entriesRef.current = SEED;
                 setEntries(SEED);
                 setLoading(false);
                 void writeSopPage(SLUG, { entries: SEED }).catch(() => setSaveState("error"));
@@ -129,6 +151,7 @@ export const AliciaFeedbackScreen = () => {
 
     /** Whole-blob debounced save, matching /questions. */
     const commit = (next: Entry[]) => {
+        entriesRef.current = next;
         setEntries(next);
         setSaveState("saving");
         clearTimeout(saveTimer.current);
@@ -139,20 +162,56 @@ export const AliciaFeedbackScreen = () => {
         }, 800);
     };
 
-    const patch = (id: string, p: Partial<Entry>) => commit(entries.map((e) => (e.id === id ? { ...e, ...p } : e)));
-    const remove = (id: string) => commit(entries.filter((e) => e.id !== id));
+    const patch = (id: string, p: Partial<Entry>) => commit(entriesRef.current.map((e) => (e.id === id ? { ...e, ...p } : e)));
+    const remove = (id: string) => commit(entriesRef.current.filter((e) => e.id !== id));
     /** The composer only files an entry that actually says something — a blank row
      *  in a shared log is noise someone else has to clean up. */
     const submitDraft = () => {
         const ask = draft.trim();
         if (!ask) return;
-        commit([{ id: crypto.randomUUID(), date: today(), ask, did: "", status: "open", by: user?.email ?? "" }, ...entries]);
+        commit([{ id: crypto.randomUUID(), date: today(), ask, did: "", status: "open", by: user?.email ?? "" }, ...entriesRef.current]);
         setDraft("");
     };
 
     const open = entries.filter((e) => e.status === "open").length;
-    // Newest first, and a blank new entry always sorts to the top of its day.
-    const sorted = [...entries].sort((a, b) => (a.date === b.date ? 0 : a.date < b.date ? 1 : -1));
+
+    /* Display order IS the stored order. There is no automatic sort: Alicia can move
+       any request up or down, and a sort that re-ran on every render would undo her
+       arrangement the moment she made it. "Sort by priority" below is a one-press
+       action instead — it rewrites the order once, and her moves stick after it. */
+    const move = (id: string, dir: -1 | 1) => {
+        const list = entriesRef.current;
+        const i = list.findIndex((e) => e.id === id);
+        const j = i + dir;
+        if (i < 0 || j < 0 || j >= list.length) return;
+        const next = [...list];
+        [next[i], next[j]] = [next[j], next[i]];
+        commit(next);
+    };
+
+    /** High → Medium → Low → unset, keeping the current order within each rank. */
+    const sortByPriority = () =>
+        commit([...entriesRef.current].sort((a, b) => priorityRank(a.priority) - priorityRank(b.priority)));
+
+    /* Screenshots of the result. compressImageFile is mandatory here — the row is
+       base64 in Supabase, and a raw 4MB screenshot would be re-downloaded in full
+       every time anyone opened this page. */
+    const addImages = async (id: string, files: FileList | null) => {
+        if (!files?.length) return;
+        setSaveState("saving");
+        try {
+            const urls = await Promise.all([...files].map((f) => compressImageFile(f)));
+            const entry = entriesRef.current.find((e) => e.id === id);
+            patch(id, { images: [...(entry?.images ?? []), ...urls] });
+        } catch {
+            setSaveState("error");
+        }
+    };
+
+    const removeImage = (id: string, url: string) => {
+        const entry = entriesRef.current.find((e) => e.id === id);
+        patch(id, { images: (entry?.images ?? []).filter((u) => u !== url) });
+    };
 
     /* The two per-entry fields. `ring-primary`, not `ring-secondary`, to match the house
        TextArea the composer uses — on a `bg-secondary` card in dark mode a secondary ring
@@ -233,13 +292,22 @@ export const AliciaFeedbackScreen = () => {
                                 <div className="flex h-48 items-center justify-center">
                                     <div className="size-6 animate-spin rounded-full border-2 border-brand border-t-transparent opacity-60" />
                                 </div>
-                            ) : sorted.length === 0 ? (
+                            ) : entries.length === 0 ? (
                                 <p className="rounded-2xl bg-secondary px-5 py-8 text-center text-sm text-tertiary ring-1 ring-secondary">
                                     Nothing recorded yet. Add the first one in the box above.
                                 </p>
                             ) : (
-                                <ul className="grid list-none gap-4 p-0">
-                                    {sorted.map((e, i) => (
+                                <>
+                                    <div className="flex flex-wrap items-center justify-between gap-3">
+                                        <p className="text-sm text-tertiary">
+                                            The order is yours — move anything up or down with the arrows.
+                                        </p>
+                                        <Button size="sm" color="secondary" iconLeading={Flag05} onClick={sortByPriority}>
+                                            Sort by priority
+                                        </Button>
+                                    </div>
+                                    <ul className="grid list-none gap-4 p-0">
+                                    {entries.map((e, i) => (
                                         <li
                                             key={e.id}
                                             className="rounded-2xl bg-primary p-5 shadow-xs ring-1 ring-secondary transition duration-100 ease-linear"
@@ -252,6 +320,7 @@ export const AliciaFeedbackScreen = () => {
                                                 <span className="font-mono text-sm font-semibold text-quaternary tabular-nums">
                                                     {String(i + 1).padStart(2, "0")}
                                                 </span>
+                                                <PriorityFlag value={e.priority} onChange={(v) => patch(e.id, { priority: v })} />
                                                 {e.status === "done" ? (
                                                     <BadgeWithDot color="success" size="sm" type="pill-color">
                                                         Done
@@ -273,6 +342,24 @@ export const AliciaFeedbackScreen = () => {
                                                     </span>
                                                 )}
                                                 <div className="ml-auto flex items-center gap-2">
+                                                    {/* Reordering. Disabled at the ends rather than hidden, so the
+                                                        controls don't move around as a card travels the list. */}
+                                                    <Button
+                                                        size="sm"
+                                                        color="tertiary"
+                                                        iconLeading={ArrowUp}
+                                                        onClick={() => move(e.id, -1)}
+                                                        isDisabled={i === 0}
+                                                        aria-label={`Move request ${i + 1} up`}
+                                                    />
+                                                    <Button
+                                                        size="sm"
+                                                        color="tertiary"
+                                                        iconLeading={ArrowDown}
+                                                        onClick={() => move(e.id, 1)}
+                                                        isDisabled={i === entries.length - 1}
+                                                        aria-label={`Move request ${i + 1} down`}
+                                                    />
                                                     <Button
                                                         size="sm"
                                                         color="secondary"
@@ -312,14 +399,69 @@ export const AliciaFeedbackScreen = () => {
                                                         className={field}
                                                     />
                                                 </label>
+
+                                                {/* The result, shown rather than described. Thumbnails open full
+                                                    size in the lightbox; the remove button only appears on hover
+                                                    so the strip stays calm when it's just being looked at. */}
+                                                <div className="grid gap-2">
+                                                    <span className="text-xs font-semibold tracking-wide text-quaternary uppercase">
+                                                        The result
+                                                    </span>
+                                                    {(e.images?.length ?? 0) > 0 && (
+                                                        <ul className="flex list-none flex-wrap gap-2 p-0">
+                                                            {e.images!.map((url, n) => (
+                                                                <li key={url.slice(-40)} className="group relative">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setLightbox(url)}
+                                                                        className="block size-24 overflow-hidden rounded-lg ring-1 ring-secondary transition duration-100 ease-linear hover:ring-brand"
+                                                                    >
+                                                                        <img
+                                                                            src={url}
+                                                                            alt={`Result ${n + 1} for request ${i + 1}`}
+                                                                            className="size-full object-cover"
+                                                                        />
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => removeImage(e.id, url)}
+                                                                        aria-label={`Remove result image ${n + 1}`}
+                                                                        className="absolute -top-1.5 -right-1.5 hidden size-6 place-items-center rounded-full bg-primary text-fg-quaternary shadow-sm ring-1 ring-secondary transition duration-100 ease-linear group-hover:grid hover:text-fg-error-secondary"
+                                                                    >
+                                                                        <XClose className="size-3.5" aria-hidden="true" />
+                                                                    </button>
+                                                                </li>
+                                                            ))}
+                                                        </ul>
+                                                    )}
+                                                    <label className="w-fit cursor-pointer">
+                                                        <span className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-secondary shadow-xs ring-1 ring-primary transition duration-100 ease-linear ring-inset hover:bg-primary_hover">
+                                                            <Image01 className="size-4 text-fg-quaternary" aria-hidden="true" />
+                                                            {(e.images?.length ?? 0) > 0 ? "Add another" : "Add a screenshot"}
+                                                        </span>
+                                                        <input
+                                                            type="file"
+                                                            accept="image/*"
+                                                            multiple
+                                                            className="sr-only"
+                                                            onChange={(ev) => {
+                                                                void addImages(e.id, ev.target.files);
+                                                                // Let the same file be picked again after a removal.
+                                                                ev.target.value = "";
+                                                            }}
+                                                        />
+                                                    </label>
+                                                </div>
                                             </div>
                                         </li>
                                     ))}
-                                </ul>
+                                    </ul>
+                                </>
                             )}
                         </div>
                     </main>
                 </div>
+                <ImageLightbox src={lightbox} onClose={() => setLightbox(null)} alt="Result screenshot" />
             </AppShell>
         </TeamGate>
     );
