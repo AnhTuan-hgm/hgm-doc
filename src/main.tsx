@@ -19,6 +19,7 @@ import { HomepageOverviewScreen } from "@/pages/overviews/homepage-overview-scre
 import { MasterDocumentLogScreen } from "@/pages/overviews/master-document-log-screen";
 import { OwnerGuideOverviewScreen } from "@/pages/overviews/owner-guide-overview-screen";
 import { WelcomeEmailFlowOverviewScreen } from "@/pages/overviews/welcome-email-flow-overview-screen";
+import { SampleScreen } from "@/pages/sample-screen";
 import { AiWebsiteSetupScreen } from "@/pages/team/ai-website-setup-screen";
 import { AliciaFeedbackScreen } from "@/pages/team/alicia-feedback-screen";
 import { AnimationScreen } from "@/pages/team/animation-screen";
@@ -226,6 +227,9 @@ createRoot(document.getElementById("root")!).render(
                         <Route path="/homepage-overview" element={<HomepageOverviewScreen />} />
                         <Route path="/master-document-log" element={<MasterDocumentLogScreen />} />
                         <Route path="/questions" element={<QuestionsScreen />} />
+                        {/* Public sample page. Must stay above the client-slug catch-all: otherwise
+                            `/sample` is read as a client slug and rendered as a Meta Pixel page. */}
+                        <Route path="/sample" element={<SampleScreen />} />
                         <Route path="/:clientSlug" element={<ClientScreen />} />
                         <Route path="*" element={<NotFound />} />
                     </Routes>
