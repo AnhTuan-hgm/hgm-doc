@@ -31,7 +31,7 @@ Wrap up the working day: record what shipped on the Project Management page, get
 
 5. **Merge to main & push.** If on a feature branch (e.g. `dev-AnhTuan`): `git checkout main && git pull && git merge <branch> && git push origin main`, then switch back to the feature branch. If already on `main`, just push. Pushing `main` triggers the GitHub Actions deploy (`.github/workflows/deploy.yml`) — do NOT run `netlify deploy` manually.
 
-6. **Verify the deploy.** Poll the Actions run for the pushed SHA until `conclusion: success`, then confirm Netlify state is `ready` and https://docs-hgm.netlify.app returns 200:
+6. **Verify the deploy.** Poll the Actions run for the pushed SHA until `conclusion: success`, then confirm Netlify state is `ready` and https://hgmportal.com returns 200:
    ```bash
    netlify api listSiteDeploys --data '{"site_id":"228df6be-8804-40d5-bc3f-60b40db91306","per_page":1}' | jq '.[0].state'
    ```

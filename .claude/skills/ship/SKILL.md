@@ -5,7 +5,11 @@ description: Build, commit, push, and confirm the Netlify production deploy for 
 
 # Ship
 
-End-to-end release for hgm-doc. The Netlify site is connected to the GitHub repo (`AnhTuan-hgm/hgm-doc`), so pushing the production branch auto-builds and deploys to `docs-hgm.netlify.app`.
+End-to-end release for hgm-doc. Pushing `main` triggers **GitHub Actions**
+(`.github/workflows/deploy.yml`), which builds and then uploads `dist/` to Netlify with
+`netlify-cli deploy --prod --no-build`. Netlify does not build this site itself, so the deploy
+appears only after the Actions run goes green. The site serves at `hgmportal.com`
+(`docs-hgm.netlify.app` 301s there).
 
 ## Steps
 
@@ -21,7 +25,9 @@ End-to-end release for hgm-doc. The Netlify site is connected to the GitHub repo
    netlify api listSiteDeploys --data '{"site_id":"228df6be-8804-40d5-bc3f-60b40db91306","per_page":3}' \
      | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{for(const x of JSON.parse(s).slice(0,3))console.log(x.state, x.branch, (x.commit_ref||"").slice(0,7), x.created_at)})'
    ```
-   Report when the newest deploy for the just-pushed commit reaches `ready`. Live URL: https://docs-hgm.netlify.app
+   The deploy is created by the Actions run, so if none appears for the pushed SHA, check the
+   workflow before waiting longer — a failed build produces no deploy at all.
+   Report when the newest deploy for the just-pushed commit reaches `ready`. Live URL: https://hgmportal.com
 
 ## Notes
 - The build command is `tsc -b && vite build` — it type-checks, so a green build means types pass.
