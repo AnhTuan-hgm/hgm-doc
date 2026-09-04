@@ -9,9 +9,9 @@ End-to-end release for hgm-doc. The Netlify site is connected to the GitHub repo
 (`AnhTuan-hgm/hgm-doc`), so pushing the production branch auto-builds and deploys. Netlify runs the
 build itself. The site serves at `hgmportal.com` (`docs-hgm.netlify.app` 301s there).
 
-`.github/workflows/deploy.yml` also fires on that push and is a second, currently broken deploy
-path: its `netlify-cli deploy` step fails on `Unauthorized: could not retrieve project`. Judge the
-deploy by the Netlify deploy state below, not by that workflow's red X.
+`.github/workflows/ci.yml` also fires on that push but only type-checks (`npm run build`); it does
+not deploy. Judge the deploy by the Netlify deploy state below. A red CI run is a real build/type
+error worth reporting, but it never means the deploy failed.
 
 ## Steps
 

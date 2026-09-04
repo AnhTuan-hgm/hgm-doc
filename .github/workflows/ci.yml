@@ -1,0 +1,49 @@
+name: CI
+
+# Type-check gate only — this workflow does NOT deploy.
+#
+# Netlify's own Git integration builds and deploys production from netlify.toml
+# on the same push, and finishes well before this run does. This file used to end
+# in `npx netlify-cli deploy --prod --dir=dist --no-build`, a second deploy path
+# that failed on every run with `Unauthorized: could not retrieve project` while
+# Netlify shipped the same commit seconds earlier. Two live deploy paths would
+# also race, and they build from different env sources (GitHub secrets here vs.
+# netlify.toml there), so production could silently flip backends. The deploy
+# step is gone; `npm run build` is `tsc -b && vite build`, so what remains is a
+# real type-check on every push to main.
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        env:
+          RAW_UNTITLEDUI_TOKEN: ${{ secrets.UNTITLEDUI_PRO_TOKEN }}
+        run: |
+          # Trim any whitespace/newlines the secret may have been saved with
+          export UNTITLEDUI_PRO_TOKEN="$(printf '%s' "$RAW_UNTITLEDUI_TOKEN" | tr -d '[:space:]')"
+          npm ci
+
+      - name: Type-check and build
+        # No VITE_SUPABASE_* on purpose: this bundle is discarded, and
+        # src/lib/supabase.ts falls back to placeholders when they are absent, so
+        # the build still succeeds. Production values live in netlify.toml and are
+        # applied by Netlify's build, not here.
+        run: npm run build

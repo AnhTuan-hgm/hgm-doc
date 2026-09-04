@@ -35,10 +35,9 @@ Wrap up the working day: record what shipped on the Project Management page, get
    ```bash
    netlify api listSiteDeploys --data '{"site_id":"228df6be-8804-40d5-bc3f-60b40db91306","per_page":1}' | jq '.[0].state'
    ```
-   Do NOT wait on `.github/workflows/deploy.yml` — that second path's deploy step is broken
-   (`Unauthorized: could not retrieve project`), so it never reaches `conclusion: success` and a red
-   X there does not mean the site failed. If its *Build* step failed, though, that is a real
-   type-check breakage: fetch the log and report it — don't retry blindly.
+   Do NOT wait on `.github/workflows/ci.yml` — it type-checks, it does not deploy, so the deploy
+   does not depend on it. Do still report a red CI run: that is a real build/type-check breakage.
+   Fetch the failing step's log — don't retry blindly.
 
 7. **Sign off.** Report: what was logged to the Timeline (roadmap AND every active project page), the deploy status + live URL, the new questions you added per page (if that page's previous set was fully answered), and anything left hanging for tomorrow (uncommitted files, failed checks, which pages still have unanswered questions). Play the completion sound.
 
