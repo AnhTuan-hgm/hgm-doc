@@ -29,13 +29,16 @@ Wrap up the working day: record what shipped on the Project Management page, get
    - **Refresh "Open Questions" (`data.questions`) — same rule as roadmap's step 3.** If EVERY existing question on that page is already answered, append **5 new** unanswered questions (`{ id: <uuid>, question: <text>, answer: "" }`) that YOU decide — concrete decisions needed before that feature's next round of work, grounded in that page's own Overview/How-it-works/Timeline content (not generic or copied from another page). Don't ask the user to pick them. If any are still open, add nothing. Each page already collapses answered questions into "Resolved / History", so the list stays clean as it grows.
    - PATCH the row back. If AnhTuan left new answers or content, acknowledge them in the sign-off so decisions don't slip by.
 
-5. **Merge to main & push.** If on a feature branch (e.g. `dev-AnhTuan`): `git checkout main && git pull && git merge <branch> && git push origin main`, then switch back to the feature branch. If already on `main`, just push. Pushing `main` triggers the GitHub Actions deploy (`.github/workflows/deploy.yml`) — do NOT run `netlify deploy` manually.
+5. **Merge to main & push.** If on a feature branch (e.g. `dev-AnhTuan`): `git checkout main && git pull && git merge <branch> && git push origin main`, then switch back to the feature branch. If already on `main`, just push. Pushing `main` makes Netlify auto-build and deploy — do NOT run `netlify deploy` manually.
 
-6. **Verify the deploy.** Poll the Actions run for the pushed SHA until `conclusion: success`, then confirm Netlify state is `ready` and https://hgmportal.com returns 200:
+6. **Verify the deploy.** Confirm the newest Netlify deploy for the pushed SHA reaches `ready` and https://hgmportal.com returns 200:
    ```bash
    netlify api listSiteDeploys --data '{"site_id":"228df6be-8804-40d5-bc3f-60b40db91306","per_page":1}' | jq '.[0].state'
    ```
-   If the workflow fails, fetch the failing step's log and report it — don't retry blindly.
+   Do NOT wait on `.github/workflows/deploy.yml` — that second path's deploy step is broken
+   (`Unauthorized: could not retrieve project`), so it never reaches `conclusion: success` and a red
+   X there does not mean the site failed. If its *Build* step failed, though, that is a real
+   type-check breakage: fetch the log and report it — don't retry blindly.
 
 7. **Sign off.** Report: what was logged to the Timeline (roadmap AND every active project page), the deploy status + live URL, the new questions you added per page (if that page's previous set was fully answered), and anything left hanging for tomorrow (uncommitted files, failed checks, which pages still have unanswered questions). Play the completion sound.
 

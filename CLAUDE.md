@@ -137,29 +137,32 @@ Editable page content persists to **Supabase** — the single source of truth. T
 
 The Supabase CLI is linked; schema lives in `supabase/migrations/`. Local dev reads `.env.local`.
 
-`VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` are declared in **two** places, and only one of them
-reaches production. The production bundle is built by GitHub Actions, which injects them from repo
-secrets (`deploy.yml`), so **that** is where a production value must change. The copies in
-`netlify.toml`'s `[build.environment]` apply only to a build Netlify runs itself — editing them
-alone will not change the live site. Keep the two in step, or a deploy preview and production will
-quietly point at different backends.
+Production `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` are set in `netlify.toml`'s
+`[build.environment]` — Netlify runs the production build, so that file is what reaches the live
+bundle. `deploy.yml` declares its own copies from repo secrets, but that workflow's deploy step is
+currently failing (see Deploy), so those values reach nothing. Change `netlify.toml`, and keep the
+secrets in step if the workflow is ever repaired.
 
 ## Deploy
-Production ships through **GitHub Actions**, not a Netlify Git build. `.github/workflows/deploy.yml`
-fires on push to `main`, runs `npm ci` then `npm run build`, and uploads the finished `dist/` with
-`netlify-cli deploy --prod --no-build`. The live production deploy record confirms it
-(`deploy_source: "api"`). See the `/ship` skill for the full build → commit → push → verify flow.
+Netlify is connected to the GitHub repo (`AnhTuan-hgm/hgm-doc`) — pushing `main` auto-builds and
+deploys. Netlify runs the build itself from `netlify.toml`, so that file's `[build]` and
+`[build.environment]` are what shape the live bundle. See the `/ship` skill for the full
+build → commit → push → verify flow.
 
 The site serves at **`hgmportal.com`**. `docs-hgm.netlify.app` is only the Netlify subdomain and
 301s to the real domain via the host-scoped redirect in `netlify.toml` — so verify a deploy against
 `hgmportal.com`, and don't treat the `.netlify.app` URL as the live site.
 
-Because Actions builds and Netlify only receives the output, two things follow that are easy to get
-wrong:
-- **`netlify.toml`'s `[build]` / `[build.environment]` does not run in production.** Its values
-  reach the bundle only on a build Netlify runs itself (a deploy preview, or a manual UI build).
-- **Build-time env vars come from GitHub Actions secrets**, which is where a production value has to
-  change. See the Supabase note above.
+**`.github/workflows/deploy.yml` is a second, currently broken deploy path.** It also fires on push
+to `main` and builds fine, but its last step —
+`npx netlify-cli deploy --prod --dir=dist --no-build` — dies on `Error: Unauthorized: could not
+retrieve project`, so `NETLIFY_AUTH_TOKEN` (or `NETLIFY_SITE_ID`) is invalid. It has failed on every
+recent run. Consequences worth knowing before you debug the wrong thing:
+- **A red X on a `main` commit is usually this workflow, not a broken site.** Netlify deploys the
+  same commit seconds earlier, independently.
+- **Its `npm run build` still type-checks**, so a red run whose *Build* step failed is a real
+  breakage; one that reached *Deploy to Netlify* is the token.
+- Either repair the secret or delete the workflow — right now it only produces noise.
 
 
 
@@ -177,7 +180,7 @@ so rather than invent a location. Machine-wide shared assets are declared in
 | Public site routes | Registered flat in `src/main.tsx`. Client-facing: `/{client}-dashboard`, `/{client}-metapixel`, `/{client}-leadcapture`, `/{client}-chatwidget`, `/owner-guide/:slug`, and the three intake forms (`/brand-vision-form`, `/client-onboarding-form`, `/host-onboarding-form`). Team-only behind the sign-in gate: `/dashboard`, `/home`, `/roadmap`, `/manual`, `/questions`, `/requests`, `/settings`, `/designsystem`, `/deployment`, `/fix`, `/log-script`, the `*-overview` project logs, and `/webteam/*`. Page components live in `src/pages/{client,team,overviews,templates}/` |
 | Shared UI primitives | `src/components/base/**` (Button, Input, Select, Badge, Avatar…), `application/**` (Modal, Table, DatePicker, icon-rail…), `foundations/**` (FeaturedIcon), `marketing/**` |
 | Project-written components | Not kept in a separate tree — hand-written and vendored share `src/components/**`. `shared-assets/` holds the hand-written ones (`reveal.tsx`, `image-lightbox.tsx`, `section-divider.tsx`). Check `git log` on a file before assuming which it is, because a CLI sync can overwrite a vendored path |
-| Component system | Untitled UI React (React Aria Components + Tailwind v4), vendored under `src/components/{base,application,marketing,foundations}`. The licence is saved machine-wide in `~/.untitledui/config.json`, not in the repo, so `npx untitledui@latest add` **does** work on this machine — prefer it over hand-writing a component. PRO packages resolve through `UNTITLEDUI_PRO_TOKEN`, read by `.npmrc` — `~/.npmrc` locally, and in CI a **GitHub Actions secret** (`deploy.yml` trims whitespace off it before `npm ci`, because a trailing newline surfaces as an indistinguishable `401 Invalid API key`). It is **not** in `netlify.toml`, so any build Netlify runs itself will 401 on `@untitledui-pro`. A fresh Claude Code web container needs it in the environment config too, or setup fails at `npm ci`. There is no Link component: `Button` takes `href` |
+| Component system | Untitled UI React (React Aria Components + Tailwind v4), vendored under `src/components/{base,application,marketing,foundations}`. The licence is saved machine-wide in `~/.untitledui/config.json`, not in the repo, so `npx untitledui@latest add` **does** work on this machine — prefer it over hand-writing a component. PRO packages resolve through `UNTITLEDUI_PRO_TOKEN`, read by `.npmrc` — `~/.npmrc` locally, a **Netlify UI env var** for the production build (it is *not* in `netlify.toml`, yet Netlify's `npm ci` installs `@untitledui-pro` fine, so it must be set under Site settings → Environment variables), and a **GitHub Actions secret** for `deploy.yml` (which trims whitespace off it, because a trailing newline surfaces as an indistinguishable `401 Invalid API key`). A fresh Claude Code web container needs it in the environment config too, or setup fails at `npm ci`. There is no Link component: `Button` takes `href` |
 | Icon package | `@untitledui/icons` (free, line-only) and `@untitledui-pro/icons` (PRO, subpath per style — `line`, `duocolor`, `duotone`, `solid`; there is no bare root export). Verify a name exists in `node_modules/@untitledui-pro/icons/dist/line/index.d.ts` (or `node_modules/@untitledui/icons/dist/<Name>.d.ts`) before importing |
 | Semantic colour tokens | Full list in `.claude/rules/colors.md`; values in `src/styles/theme.css` — the alias layer utilities actually read. Brand is blue: `--color-brand-600: rgb(0 102 222)` / `#0066DE`. Never use raw palette utilities (`text-gray-900`, `bg-blue-700`) — they break dark mode |
 | Canvas | Both. `ThemeProvider` (`src/providers/theme-provider.tsx`) toggles a `dark-mode` class on `<html>`, defaults to `system`, and persists to localStorage `ui-theme` — so **every surface must work in light and dark**, and contrast is checked in both before shipping |
