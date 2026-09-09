@@ -165,7 +165,7 @@ export const JOURNEY_STEPS: {
     {
         id: "call",
         label: "Onboarding Call",
-        detail: "With Dustin and your Account Manager. Book it once your Brand Vision Form is in.",
+        detail: "Once all your resources are uploaded, book your call with your Account Manager as soon as possible so we can access your assets and begin the onboarding process.",
         icon: Users01,
         hrefFrom: "onboarding_call",
         hrefLabel: "Book your onboarding call",
