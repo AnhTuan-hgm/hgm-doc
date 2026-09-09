@@ -28,6 +28,7 @@ import { ComponentLibraryArchitectureScreen } from "@/pages/team/component-libra
 import { DashboardScreen } from "@/pages/team/dashboard-screen";
 import { DeploymentScreen } from "@/pages/team/deployment-screen";
 import { DesignSystemScreen } from "@/pages/team/design-system-screen";
+import { EmailPreviewScreen } from "@/pages/team/email-preview-screen";
 import { HomeScreen } from "@/pages/team/home-screen";
 import { HomeTwoScreen } from "@/pages/team/home-two-screen";
 import { LogScriptScreen } from "@/pages/team/log-script-screen";
@@ -230,6 +231,8 @@ createRoot(document.getElementById("root")!).render(
                         {/* Public sample page. Must stay above the client-slug catch-all: otherwise
                             `/sample` is read as a client slug and rendered as a Meta Pixel page. */}
                         <Route path="/sample" element={<SampleScreen />} />
+                        {/* Team-only: every welcome-flow email, rendered from the DB. Behind TeamGate. */}
+                        <Route path="/email-preview" element={<EmailPreviewScreen />} />
                         <Route path="/:clientSlug" element={<ClientScreen />} />
                         <Route path="*" element={<NotFound />} />
                     </Routes>
