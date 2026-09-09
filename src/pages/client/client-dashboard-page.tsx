@@ -2708,7 +2708,9 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                                 )
                                                                             )}
                                                                         </div>
-                                                                        <p className="mt-1.5 text-sm text-pretty text-tertiary">{step.detail}</p>
+                                                                        {step.detail && (
+                                                                            <p className="mt-1.5 text-sm text-pretty text-tertiary">{step.detail}</p>
+                                                                        )}
 
                                                                         {!step.done && step.progress && step.progress.total > 0 && (
                                                                             <div className="mt-3">
@@ -2795,10 +2797,14 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                                 !step.done &&
                                                                                 (step.requires && !journeySteps.find((x) => x.id === step.requires)?.done ? (
                                                                                     <span className="text-xs text-quaternary">
-                                                                                        Available once{" "}
-                                                                                        {journeySteps.find((x) => x.id === step.requires)?.label ??
-                                                                                            "the previous step"}{" "}
-                                                                                        is done
+                                                                                        {step.blockedNote ?? (
+                                                                                            <>
+                                                                                                Available once{" "}
+                                                                                                {journeySteps.find((x) => x.id === step.requires)?.label ??
+                                                                                                    "the previous step"}{" "}
+                                                                                                is done
+                                                                                            </>
+                                                                                        )}
                                                                                     </span>
                                                                                 ) : step.href === KICKOFF_CALENDLY ? (
                                                                                     // Booking opens over the dashboard instead of in a new

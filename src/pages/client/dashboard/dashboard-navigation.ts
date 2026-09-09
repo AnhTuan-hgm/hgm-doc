@@ -63,7 +63,7 @@ export type PhaseId = keyof typeof PHASES;
  * AM tick stored in content.journey_done — calls and reviews happen off-platform and
  * there is nothing to infer them from.
  */
-export type JourneyStepId = "form" | "kickoff" | "call" | "vision" | "masterdoc" | "brandkit" | "funnel" | "resources" | "website";
+export type JourneyStepId = "chat" | "form" | "kickoff" | "call" | "vision" | "masterdoc" | "brandkit" | "funnel" | "resources" | "website";
 
 /** Dustin's strategy-call booking page, linked from the Kick-off Call step. */
 export const KICKOFF_CALENDLY = "https://calendly.com/dustin-d-baker/strategy";
@@ -84,7 +84,8 @@ export type JourneyLink = "chat" | "folder" | "onboarding_call";
 export const JOURNEY_STEPS: {
     id: JourneyStepId;
     label: string;
-    detail: string;
+    /** Step-level summary line. Omit when the item(s) below already say everything needed. */
+    detail?: string;
     icon: FC<{ className?: string }>;
     /** Section this step jumps to, when it has one. */
     to?: SectionId;
@@ -97,6 +98,8 @@ export const JOURNEY_STEPS: {
     hrefLabel?: string;
     /** Step that must be done before `href` is offered. */
     requires?: JourneyStepId;
+    /** Overrides the generic "Available once {requires step} is done" line, when set. */
+    blockedNote?: string;
     /**
      * Sub-items: the several separate things one step actually asks for. Deliberately
      * NOT tickable — none of these are states the app can observe, and an empty box
@@ -106,6 +109,14 @@ export const JOURNEY_STEPS: {
     /** Heading above `items`, when the list needs naming. */
     itemsTitle?: string;
 }[] = [
+    {
+        id: "chat",
+        label: "Join the Google Chat group",
+        detail: "This is our primary channel for updates — please join as soon as possible to stay in the loop on progress.",
+        icon: MessageChatCircle,
+        hrefFrom: "chat",
+        hrefLabel: "Open chat",
+    },
     {
         id: "form",
         label: "Fill in the Onboarding form",
@@ -126,6 +137,7 @@ export const JOURNEY_STEPS: {
         href: KICKOFF_CALENDLY,
         hrefLabel: "Book your call",
         requires: "form",
+        blockedNote: "Available once Onboarding form is complete",
     },
     {
         id: "vision",
@@ -136,27 +148,21 @@ export const JOURNEY_STEPS: {
         auto: true,
     },
     {
-        // The two things the post-Kick-off email asks for. The old detail line read
+        // The one thing the post-Kick-off email still asks for beyond the Google Chat group,
+        // which is now its own step at the top of the journey. The old detail line read
         // "Folder of content, plus the Brand Kit document" — but no Brand Kit document
         // link exists, and at this point in the journey the Brand Kit hasn't been built.
         //
-        // No `to: "contentfolder"` any more: the folder is one of the items below, and a
-        // step-level "Open" button pointing at the same URL just asks the client which of
-        // two identical buttons to press.
+        // No `to: "contentfolder"` any more: the folder is the item below, and a step-level
+        // "Open" button pointing at the same URL just asks the client which of two identical
+        // buttons to press.
         id: "resources",
         label: "Add your resources",
-        detail: "Two things to send us after the Kick-off Call, so your Account Manager can start building.",
         icon: Folder,
         items: [
             {
-                label: "Join the Google Chat group",
-                note: "Where we post updates and ask quick questions.",
-                link: "chat",
-                action: "Open chat",
-            },
-            {
                 label: "Upload your photos and video",
-                note: "Everything you already have: listing photos, phone clips, drone footage. Send too much rather than too little, we'll pick.",
+                note: "Please upload your photos and videos, including listing photos, drone footage, and any other assets. Our team will enhance them from there.",
                 link: "folder",
                 action: "Open your folder",
             },
@@ -165,7 +171,7 @@ export const JOURNEY_STEPS: {
     {
         id: "call",
         label: "Onboarding Call",
-        detail: "With Dustin and your Account Manager. Book it once your Brand Vision Form is in.",
+        detail: "Book your onboarding call using the form below. Please join with good wifi, and keep your phone and email handy so you can grab verification codes and approve access as your account manager walks you through it.",
         icon: Users01,
         hrefFrom: "onboarding_call",
         hrefLabel: "Book your onboarding call",
@@ -196,11 +202,20 @@ export const JOURNEY_STEPS: {
     },
     { id: "brandkit", label: "Review the Brand Kit", detail: "Colours, fonts and logo.", icon: Image01, to: "brand" },
     {
+        // No `detail` line: it listed the same five pieces the items below now name one
+        // by one, so it only said everything twice.
         id: "funnel",
         label: "Review the marketing funnel",
-        detail: "Landing page, Welcome Flow, Repeat Flow, Pinned Posts and example Reels.",
         icon: Mail01,
         to: "flow",
+        items: [
+            { label: "Landing Page Review" },
+            { label: "Welcome Flow Review" },
+            { label: "Repeat Booking Flow Review" },
+            { label: "Pinned Post Review" },
+            { label: "Pinned Stories" },
+            { label: "Example Reels" },
+        ],
     },
     { id: "website", label: "Set up the website", detail: "If a website is in scope for you.", icon: Globe01, to: "ownerguide" },
 ];
