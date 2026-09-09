@@ -16,6 +16,7 @@ import {
     Download01,
     Edit01,
     FileCheck02,
+    HelpCircle,
     Image01,
     LinkExternal01,
     MessageChatCircle,
@@ -2829,9 +2830,25 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                                         {step.hrefLabel ?? "Open link"}
                                                                                     </Button>
                                                                                 ))}
-                                                                            {/* A step whose booking page comes off the row has nothing to
-                                                                                offer until an AM pastes it in. The client is told to expect
-                                                                                it; the team is told to go and set it. */}
+                                                                            {/* Walkthrough for a step people get stuck on, beside the action
+                                                                                itself rather than behind the Help menu — a client who can't
+                                                                                work out how to join won't go looking for it elsewhere. */}
+                                                                            {step.helpHref && !step.done && (
+                                                                                <Button
+                                                                                    size="sm"
+                                                                                    color="link-color"
+                                                                                    href={step.helpHref}
+                                                                                    target="_blank"
+                                                                                    rel="noopener noreferrer"
+                                                                                    iconLeading={HelpCircle}
+                                                                                >
+                                                                                    {step.helpLabel ?? "How to do this"}
+                                                                                </Button>
+                                                                            )}
+                                                                            {/* A step whose link comes off the row has nothing to offer until
+                                                                                an AM pastes it in. The client is told to expect it; the team
+                                                                                is told to go and set it. Worded for any link, not just a
+                                                                                booking page — the Google Chat step comes through here too. */}
                                                                             {step.hrefFrom && !step.href && !step.done && (
                                                                                 <span
                                                                                     className={cx(
@@ -2840,8 +2857,8 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                                     )}
                                                                                 >
                                                                                     {isTeam
-                                                                                        ? "No booking link set — add it under Onboarding links."
-                                                                                        : "Your Account Manager will send you a booking link."}
+                                                                                        ? "No link set — add it under Onboarding links."
+                                                                                        : "Your Account Manager will send you this link."}
                                                                                 </span>
                                                                             )}
                                                                             {/* AM tick, edit mode only. Auto steps get no tick:

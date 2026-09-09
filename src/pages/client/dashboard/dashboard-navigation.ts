@@ -68,6 +68,9 @@ export type JourneyStepId = "chat" | "form" | "kickoff" | "call" | "vision" | "m
 /** Dustin's strategy-call booking page, linked from the Kick-off Call step. */
 export const KICKOFF_CALENDLY = "https://calendly.com/dustin-d-baker/strategy";
 
+/** Scribe walkthrough for the clients who can't work out how to join Google Chat on their own. */
+const GOOGLE_CHAT_GUIDE = "https://scribehow.com/o/AYYQm0qaSdqzluh6vDb1dw/viewer/How_To_Use_Google_Chat__WhkIl2H5Rcaf4YUKBNzOZQ";
+
 /**
  * A per-client URL a journey step points at, named rather than embedded so one step
  * definition serves every client. The dashboard resolves these from the row:
@@ -100,6 +103,9 @@ export const JOURNEY_STEPS: {
     requires?: JourneyStepId;
     /** Overrides the generic "Available once {requires step} is done" line, when set. */
     blockedNote?: string;
+    /** A how-to guide, offered beside the step's own action for clients who get stuck. */
+    helpHref?: string;
+    helpLabel?: string;
     /**
      * Sub-items: the several separate things one step actually asks for. Deliberately
      * NOT tickable — none of these are states the app can observe, and an empty box
@@ -116,6 +122,8 @@ export const JOURNEY_STEPS: {
         icon: MessageChatCircle,
         hrefFrom: "chat",
         hrefLabel: "Open chat",
+        helpHref: GOOGLE_CHAT_GUIDE,
+        helpLabel: "Need help joining?",
     },
     {
         id: "form",
