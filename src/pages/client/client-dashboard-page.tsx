@@ -2708,7 +2708,9 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                                 )
                                                                             )}
                                                                         </div>
-                                                                        <p className="mt-1.5 text-sm text-pretty text-tertiary">{step.detail}</p>
+                                                                        {step.detail && (
+                                                                            <p className="mt-1.5 text-sm text-pretty text-tertiary">{step.detail}</p>
+                                                                        )}
 
                                                                         {!step.done && step.progress && step.progress.total > 0 && (
                                                                             <div className="mt-3">

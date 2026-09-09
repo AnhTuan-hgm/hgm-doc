@@ -84,7 +84,8 @@ export type JourneyLink = "chat" | "folder" | "onboarding_call";
 export const JOURNEY_STEPS: {
     id: JourneyStepId;
     label: string;
-    detail: string;
+    /** Step-level summary line. Omit when the item(s) below already say everything needed. */
+    detail?: string;
     icon: FC<{ className?: string }>;
     /** Section this step jumps to, when it has one. */
     to?: SectionId;
@@ -157,12 +158,11 @@ export const JOURNEY_STEPS: {
         // buttons to press.
         id: "resources",
         label: "Add your resources",
-        detail: "Send us this after the Kick-off Call, so your Account Manager can start building.",
         icon: Folder,
         items: [
             {
                 label: "Upload your photos and video",
-                note: "Please upload everything you have: listing photos, phone photos and clips, drone footage. The more content we get, the more we have to work with.",
+                note: "Please upload your photos and videos, including listing photos, drone footage, and any other assets. Our team will enhance them from there.",
                 link: "folder",
                 action: "Open your folder",
             },
