@@ -97,6 +97,8 @@ export const JOURNEY_STEPS: {
     hrefLabel?: string;
     /** Step that must be done before `href` is offered. */
     requires?: JourneyStepId;
+    /** Overrides the generic "Available once {requires step} is done" line, when set. */
+    blockedNote?: string;
     /**
      * Sub-items: the several separate things one step actually asks for. Deliberately
      * NOT tickable — none of these are states the app can observe, and an empty box
@@ -126,6 +128,7 @@ export const JOURNEY_STEPS: {
         href: KICKOFF_CALENDLY,
         hrefLabel: "Book your call",
         requires: "form",
+        blockedNote: "Please book call once Onboarding Form is complete",
     },
     {
         id: "vision",
