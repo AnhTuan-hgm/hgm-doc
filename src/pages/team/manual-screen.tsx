@@ -254,7 +254,7 @@ const DASHBOARD_GROUPS: { group: string; items: { label: string; note: string }[
         group: "Resources",
         items: [
             { label: "Folder of Content", note: "Opens the client's content drive — the link lives in Brand Kit's folder field." },
-            { label: "Website Setup Guide", note: "Opens that client's own owner guide (never the shared template)." },
+            { label: "Setup Guide", note: "Opens that client's own owner guide (never the shared template)." },
             {
                 label: "Custom links",
                 note: "AMs add any link here in edit mode (e.g. a Claude project). New links start Hidden; the eye toggle reveals them to the client.",
