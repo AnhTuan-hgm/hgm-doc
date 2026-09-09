@@ -156,7 +156,7 @@ export const JOURNEY_STEPS: {
             },
             {
                 label: "Upload your photos and video",
-                note: "Everything you already have: listing photos, phone clips, drone footage. Send too much rather than too little, we'll pick.",
+                note: "Please upload everything you have: listing photos, phone photos and clips, drone footage. The more content we get, the more we have to work with.",
                 link: "folder",
                 action: "Open your folder",
             },
