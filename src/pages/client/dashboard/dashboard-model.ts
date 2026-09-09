@@ -154,6 +154,30 @@ export const TEMPLATE_CONTENT: DashboardContent = {
     foundation: DEFAULT_FOUNDATION,
 };
 
+/**
+ * True while the palette is still the untouched template — the four Untitled UI purples,
+ * which are wrong for every client. Compared by value, not JSON.stringify: Postgres jsonb
+ * stores object keys sorted, so a saved swatch returns as {hex,name} while the template
+ * literal is {name,hex}, and stringifying made every round-tripped palette look edited.
+ */
+export const isTemplatePalette = (colors: BrandColor[]) => {
+    const tpl = TEMPLATE_CONTENT.brand.colors;
+    return colors.length === tpl.length && colors.every((c, i) => c.name === tpl[i].name && c.hex.toLowerCase() === tpl[i].hex.toLowerCase());
+};
+
+/**
+ * True when nobody has touched the Brand Kit at all — template palette, default font, no
+ * logos, no uploads, no folder. A client should see "on the way" for such a kit, never
+ * the placeholder purples presented as their official colours.
+ */
+export const isUntouchedBrandKit = (brand: DashboardContent["brand"]) =>
+    isTemplatePalette(brand.colors) &&
+    (!brand.fonts.trim() || brand.fonts.trim() === TEMPLATE_CONTENT.brand.fonts) &&
+    !(brand.logos ?? []).length &&
+    !brand.font_files?.heading &&
+    !brand.font_files?.body &&
+    !brand.folder_link.trim();
+
 /** Fresh content for a newly created client copy — no sample numbers. */
 export const createDefaultContent = (base: string): DashboardContent => ({
     ...TEMPLATE_CONTENT,

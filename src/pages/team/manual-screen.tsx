@@ -228,7 +228,10 @@ const DASHBOARD_GROUPS: { group: string; items: { label: string; note: string }[
     {
         group: "Your forms (client input)",
         items: [
-            { label: "Onboarding form", note: `Property facts, links and the four account logins (Instagram, TikTok, PMS, Domain Host) — ${TOTAL_QUESTIONS} questions, ${ESTIMATE_LABEL}, autosaving as the client types.` },
+            {
+                label: "Onboarding form",
+                note: `Property facts, links and the four account logins (Instagram, TikTok, PMS, Domain Host) — ${TOTAL_QUESTIONS} questions, ${ESTIMATE_LABEL}, autosaving as the client types.`,
+            },
             { label: "Brand Vision Form", note: "How the brand should look, sound and feel." },
         ],
     },
@@ -237,7 +240,10 @@ const DASHBOARD_GROUPS: { group: string; items: { label: string; note: string }[
         items: [
             { label: "Overview Document", note: 'Team-only client brief — a client never sees this row, not even as "Soon".' },
             { label: "Master Brand", note: "The eleven-section Master Brand Document everything downstream reads from. Clients can suggest edits here." },
-            { label: "Brand Kit", note: "Colours, fonts, logos, type scale — with AI drafting from the client's site." },
+            {
+                label: "Brand Kit",
+                note: 'Colours (with text-contrast hints), fonts, logos, type scale, a live brand preview and a Copy/Download CSS export — drafted from the client\'s site. A kit nobody has touched shows the client "on the way", never the template purples.',
+            },
         ],
     },
     {
@@ -899,9 +905,7 @@ export const ManualScreen = () => {
                                 {/* Read from JOURNEY_STEPS rather than written out: this list was prose
                                     until the steps were reordered on 2026-09-02 and the prose silently
                                     became wrong. Reorder the steps and this follows. */}
-                                <p className="mb-3 text-md text-tertiary">
-                                    {JOURNEY_STEPS.map((s, i) => `${i + 1}. ${s.label}`).join(" · ")}
-                                </p>
+                                <p className="mb-3 text-md text-tertiary">{JOURNEY_STEPS.map((s, i) => `${i + 1}. ${s.label}`).join(" · ")}</p>
                                 <p className="mb-3 text-md text-tertiary">
                                     Completion is stored as step <em>ids</em> in <span className="font-mono text-sm">journey_done</span>, not positions, so
                                     reordering the journey never disturbs a client's recorded progress. The side menu itself is drag-resizable from its right
