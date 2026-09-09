@@ -63,7 +63,7 @@ export type PhaseId = keyof typeof PHASES;
  * AM tick stored in content.journey_done — calls and reviews happen off-platform and
  * there is nothing to infer them from.
  */
-export type JourneyStepId = "form" | "kickoff" | "call" | "vision" | "masterdoc" | "brandkit" | "funnel" | "resources" | "website";
+export type JourneyStepId = "chat" | "form" | "kickoff" | "call" | "vision" | "masterdoc" | "brandkit" | "funnel" | "resources" | "website";
 
 /** Dustin's strategy-call booking page, linked from the Kick-off Call step. */
 export const KICKOFF_CALENDLY = "https://calendly.com/dustin-d-baker/strategy";
@@ -109,6 +109,14 @@ export const JOURNEY_STEPS: {
     itemsTitle?: string;
 }[] = [
     {
+        id: "chat",
+        label: "Join the Google Chat group",
+        detail: "This is our primary channel for updates — please join as soon as possible to stay in the loop on progress.",
+        icon: MessageChatCircle,
+        hrefFrom: "chat",
+        hrefLabel: "Open chat",
+    },
+    {
         id: "form",
         label: "Fill in the Onboarding form",
         detail: "Your business details and the logins we need.",
@@ -139,24 +147,19 @@ export const JOURNEY_STEPS: {
         auto: true,
     },
     {
-        // The two things the post-Kick-off email asks for. The old detail line read
+        // The one thing the post-Kick-off email still asks for beyond the Google Chat group,
+        // which is now its own step at the top of the journey. The old detail line read
         // "Folder of content, plus the Brand Kit document" — but no Brand Kit document
         // link exists, and at this point in the journey the Brand Kit hasn't been built.
         //
-        // No `to: "contentfolder"` any more: the folder is one of the items below, and a
-        // step-level "Open" button pointing at the same URL just asks the client which of
-        // two identical buttons to press.
+        // No `to: "contentfolder"` any more: the folder is the item below, and a step-level
+        // "Open" button pointing at the same URL just asks the client which of two identical
+        // buttons to press.
         id: "resources",
         label: "Add your resources",
-        detail: "Two things to send us after the Kick-off Call, so your Account Manager can start building.",
+        detail: "Send us this after the Kick-off Call, so your Account Manager can start building.",
         icon: Folder,
         items: [
-            {
-                label: "Join the Google Chat group",
-                note: "This is our primary channel for updates — please join as soon as possible to stay in the loop on progress.",
-                link: "chat",
-                action: "Open chat",
-            },
             {
                 label: "Upload your photos and video",
                 note: "Please upload everything you have: listing photos, phone photos and clips, drone footage. The more content we get, the more we have to work with.",
