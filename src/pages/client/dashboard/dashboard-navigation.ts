@@ -202,11 +202,20 @@ export const JOURNEY_STEPS: {
     },
     { id: "brandkit", label: "Review the Brand Kit", detail: "Colours, fonts and logo.", icon: Image01, to: "brand" },
     {
+        // No `detail` line: it listed the same five pieces the items below now name one
+        // by one, so it only said everything twice.
         id: "funnel",
         label: "Review the marketing funnel",
-        detail: "Landing page, Welcome Flow, Repeat Flow, Pinned Posts and example Reels.",
         icon: Mail01,
         to: "flow",
+        items: [
+            { label: "Landing Page Review" },
+            { label: "Welcome Flow Review" },
+            { label: "Repeat Booking Flow Review" },
+            { label: "Pinned Post Review" },
+            { label: "Pinned Stories" },
+            { label: "Example Reels" },
+        ],
     },
     { id: "website", label: "Set up the website", detail: "If a website is in scope for you.", icon: Globe01, to: "ownerguide" },
 ];
