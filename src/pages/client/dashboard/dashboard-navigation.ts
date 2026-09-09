@@ -150,7 +150,7 @@ export const JOURNEY_STEPS: {
         items: [
             {
                 label: "Join the Google Chat group",
-                note: "Where we post updates and ask quick questions.",
+                note: "This is our primary channel for updates — please join as soon as possible to stay in the loop on progress.",
                 link: "chat",
                 action: "Open chat",
             },
