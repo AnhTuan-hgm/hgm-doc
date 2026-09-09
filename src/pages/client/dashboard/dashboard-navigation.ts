@@ -84,7 +84,7 @@ export type JourneyLink = "chat" | "folder" | "onboarding_call";
 export const JOURNEY_STEPS: {
     id: JourneyStepId;
     label: string;
-    detail: string;
+    detail?: string;
     icon: FC<{ className?: string }>;
     /** Section this step jumps to, when it has one. */
     to?: SectionId;
@@ -136,16 +136,11 @@ export const JOURNEY_STEPS: {
         auto: true,
     },
     {
-        // The two things the post-Kick-off email asks for. The old detail line read
-        // "Folder of content, plus the Brand Kit document" — but no Brand Kit document
-        // link exists, and at this point in the journey the Brand Kit hasn't been built.
-        //
         // No `to: "contentfolder"` any more: the folder is one of the items below, and a
         // step-level "Open" button pointing at the same URL just asks the client which of
         // two identical buttons to press.
         id: "resources",
         label: "Add your resources",
-        detail: "Two things to send us after the Kick-off Call, so your Account Manager can start building.",
         icon: Folder,
         items: [
             {
