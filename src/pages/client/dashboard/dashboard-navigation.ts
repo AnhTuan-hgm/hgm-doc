@@ -128,7 +128,7 @@ export const JOURNEY_STEPS: {
         href: KICKOFF_CALENDLY,
         hrefLabel: "Book your call",
         requires: "form",
-        blockedNote: "Please book call once Onboarding Form is complete",
+        blockedNote: "Available once Onboarding form is complete",
     },
     {
         id: "vision",
