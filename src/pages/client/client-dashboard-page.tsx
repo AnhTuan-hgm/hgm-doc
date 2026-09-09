@@ -2858,7 +2858,8 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                                 >
                                                                                     {isTeam
                                                                                         ? "No link set — add it under Onboarding links."
-                                                                                        : "Your Account Manager will send you this link."}
+                                                                                        : (step.pendingNote ??
+                                                                                          "Your Account Manager will send you this link.")}
                                                                                 </span>
                                                                             )}
                                                                             {/* AM tick, edit mode only. Auto steps get no tick:

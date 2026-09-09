@@ -107,6 +107,11 @@ export const JOURNEY_STEPS: {
     helpHref?: string;
     helpLabel?: string;
     /**
+     * What the CLIENT reads while `hrefFrom` has no URL on their row yet. Per-step because
+     * the generic line can't tell them what to do instead — that depends on the step.
+     */
+    pendingNote?: string;
+    /**
      * Sub-items: the several separate things one step actually asks for. Deliberately
      * NOT tickable — none of these are states the app can observe, and an empty box
      * against a job the client already did reads as a failure.
@@ -124,6 +129,7 @@ export const JOURNEY_STEPS: {
         hrefLabel: "Open chat",
         helpHref: GOOGLE_CHAT_GUIDE,
         helpLabel: "Need help joining?",
+        pendingNote: "No link yet — please carry on with the Onboarding form and we'll add it shortly.",
     },
     {
         id: "form",
