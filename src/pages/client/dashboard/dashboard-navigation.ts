@@ -129,7 +129,7 @@ export const JOURNEY_STEPS: {
         hrefLabel: "Open chat",
         helpHref: GOOGLE_CHAT_GUIDE,
         helpLabel: "Need help joining?",
-        pendingNote: "No link yet — please carry on with the Onboarding form and we'll add it shortly.",
+        pendingNote: "Your Account Manager will add the link shortly — please continue to the next step and fill in the Onboarding form.",
     },
     {
         id: "form",
