@@ -63,7 +63,7 @@ import {
     ensureClientOnboardingForm,
 } from "@/pages/client/client-onboarding-form-page";
 import { ShadeScales } from "@/pages/client/dashboard/brand-kit-shades";
-import { TypeScale, TypographyCards } from "@/pages/client/dashboard/brand-kit-typography";
+import { TypographyCards } from "@/pages/client/dashboard/brand-kit-typography";
 import {
     ClientSearchBar,
     DashboardAccessGate,
@@ -5201,23 +5201,6 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                         patchBrand({ font_files: { ...content.brand.font_files, [role]: undefined } })
                                                                     }
                                                                 />
-
-                                                                {/* The Untitled UI type scale in the brand's own fonts, px + fluid clamp(). */}
-                                                                {(content.brand.fonts.trim() ||
-                                                                    content.brand.font_files?.heading ||
-                                                                    content.brand.font_files?.body) && (
-                                                                    <div className="mt-8">
-                                                                        <div className="flex flex-wrap items-center justify-between gap-2">
-                                                                            <p className="text-sm font-semibold text-primary">Type scale</p>
-                                                                            <span className="text-xs text-quaternary">
-                                                                                Untitled UI scale · size / line-height · click the clamp() to copy
-                                                                            </span>
-                                                                        </div>
-                                                                        <div className="mt-2">
-                                                                            <TypeScale fonts={content.brand.fonts} files={content.brand.font_files} />
-                                                                        </div>
-                                                                    </div>
-                                                                )}
                                                             </DocSection>
 
                                                             {/* ── Logo files ──
