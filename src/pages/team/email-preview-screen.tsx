@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Mail01, Monitor01, Phone01, RefreshCw01 } from "@untitledui/icons";
-import { emailHtml, type WelcomeFlowData } from "@/components/application/welcome-flow";
+import { FLOW_STEPS, type WelcomeFlowData, emailHtml, stepLabel } from "@/components/application/welcome-flow";
 import { Badge } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
 import { Checkbox } from "@/components/base/checkbox/checkbox";
 import { supabase } from "@/lib/supabase";
 import { TeamGate } from "@/pages/team/dashboard-screen";
 
-/** Welcome-flow slots the editor can show: Email 1–9 (stored 0–8). */
-const SLOT_COUNT = 9;
+/** Welcome-flow slots the editor can show: E1–E9 (stored 0–8). */
+const SLOT_COUNT = FLOW_STEPS.length;
 
 /** Where a slot's HTML came from. The welcome-flow editor resolves a slot as
  *  pasted -> finished -> built-in template, so `RANK` mirrors that precedence
@@ -53,7 +53,10 @@ export function EmailPreviewScreen() {
         setError("");
 
         const [finished, flows] = await Promise.all([
-            supabase.from("email_wf_emails").select("client_name, position, subject_line, preview_text, rendered_html"),
+            supabase
+                .from("email_wf_emails")
+                .select("client_name, position, week, subject_line, preview_text, rendered_html")
+                .order("updated_at", { ascending: true }),
             supabase.from("welcome_flows").select("slug, client_name, data"),
         ]);
 
@@ -66,7 +69,8 @@ export function EmailPreviewScreen() {
         const list: PreviewEmail[] = [];
 
         for (const row of finished.data ?? []) {
-            const slot = Number(row.position) - 1;
+            // Pooja's `week` is the step (1–9); `position` only for rows that predate it.
+            const slot = Number(row.week ?? row.position) - 1;
             if (!row.rendered_html || slot < 0 || slot >= SLOT_COUNT) continue;
             list.push({
                 client: (row.client_name ?? "").trim() || "Unnamed client",
@@ -142,8 +146,8 @@ export function EmailPreviewScreen() {
                         <div className="flex flex-col gap-2">
                             <h1 className="text-display-sm font-semibold text-primary">Welcome flow email preview</h1>
                             <p className="max-w-3xl text-md text-tertiary">
-                                Every welcome-flow email this site can render, grouped by client. Finished and pasted HTML render exactly as
-                                they will in GoHighLevel; built-in templates render through the same code the editor previews with.
+                                Every welcome-flow email this site can render, grouped by client. Finished and pasted HTML render exactly as they will in
+                                GoHighLevel; built-in templates render through the same code the editor previews with.
                             </p>
                         </div>
 
@@ -185,8 +189,7 @@ export function EmailPreviewScreen() {
                             <Mail01 aria-hidden="true" className="size-6 text-fg-quaternary" />
                             <p className="text-md font-semibold text-primary">No emails found</p>
                             <p className="max-w-md text-sm text-tertiary">
-                                Nothing in email_wf_emails or welcome_flows yet. Locally this is expected without a .env.local pointing at
-                                Supabase.
+                                Nothing in email_wf_emails or welcome_flows yet. Locally this is expected without a .env.local pointing at Supabase.
                             </p>
                         </div>
                     )}
@@ -200,9 +203,7 @@ export function EmailPreviewScreen() {
                                         {group.items.length} shown
                                     </Badge>
                                     {group.missing.length > 0 && (
-                                        <span className="text-sm text-tertiary">
-                                            No content for Email {group.missing.map((i) => i + 1).join(", ")}
-                                        </span>
+                                        <span className="text-sm text-tertiary">Missing {group.missing.map((i) => `E${i + 1}`).join(", ")}</span>
                                     )}
                                 </div>
 
@@ -211,7 +212,7 @@ export function EmailPreviewScreen() {
                                         <figure key={keyOf(e)} className="flex flex-col gap-3">
                                             <figcaption className="flex flex-col gap-2" style={{ maxWidth: wide ? 600 : 375 }}>
                                                 <div className="flex flex-wrap items-center gap-2">
-                                                    <span className="text-md font-semibold text-primary">Email {e.slot + 1}</span>
+                                                    <span className="text-md font-semibold text-primary">{stepLabel(e.slot)}</span>
                                                     <Badge color={SOURCE_COLOR[e.source]} size="sm">
                                                         {SOURCE_LABEL[e.source]}
                                                     </Badge>
@@ -227,7 +228,7 @@ export function EmailPreviewScreen() {
                                             {/* The email's own HTML assumes a light background, so this canvas stays
                                                 white in both themes on purpose — the page chrome around it themes. */}
                                             <iframe
-                                                title={`${group.client} — Email ${e.slot + 1} (${SOURCE_LABEL[e.source]})`}
+                                                title={`${group.client} — ${stepLabel(e.slot)} (${SOURCE_LABEL[e.source]})`}
                                                 srcDoc={e.html}
                                                 sandbox=""
                                                 loading="lazy"

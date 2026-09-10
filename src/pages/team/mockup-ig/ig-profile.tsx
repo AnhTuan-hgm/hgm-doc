@@ -163,16 +163,30 @@ const IgActionRow = () => (
  * muted olive and beige photographs; without those assets each falls back to
  * IgAvatar's silhouette, which is the honest empty state.
  */
-const IgHighlights = ({ items }: { items: IgHighlight[] }) => (
+const IgHighlights = ({ items, onSelect }: { items: IgHighlight[]; onSelect?: (index: number) => void }) => (
     <div className="scrollbar-hide flex h-[106px] shrink-0 items-start gap-4 overflow-x-auto px-4 pt-1">
-        {items.map((item) => (
-            <span key={item.label} className="flex w-[62px] shrink-0 flex-col items-center gap-1.5">
-                <span className="rounded-full p-[1.5px] ring-1 ring-(--ig-text)/25">
-                    <IgAvatar src={item.src} alt="" size={60} />
+        {items.map((item, index) => {
+            const body = (
+                <>
+                    <span className="rounded-full p-[1.5px] ring-1 ring-(--ig-text)/25">
+                        <IgAvatar src={item.src} alt="" size={60} />
+                    </span>
+                    <span className="w-full truncate text-center text-[11px] leading-[14px]">{item.label}</span>
+                </>
+            );
+            const cls = "flex w-[62px] shrink-0 flex-col items-center gap-1.5";
+            // A real button only when a caller wants taps (the Pinned Stories player); the
+            // picture surfaces keep plain spans so role="img" stays honest.
+            return onSelect ? (
+                <button key={`${item.label}-${index}`} type="button" onClick={() => onSelect(index)} aria-label={`Play ${item.label}`} className={cls}>
+                    {body}
+                </button>
+            ) : (
+                <span key={`${item.label}-${index}`} className={cls}>
+                    {body}
                 </span>
-                <span className="w-full truncate text-center text-[11px] leading-[14px]">{item.label}</span>
-            </span>
-        ))}
+            );
+        })}
     </div>
 );
 
@@ -303,9 +317,13 @@ const IgEmptyTab = ({ icon, title, body }: { icon: React.ReactNode; title: strin
 const tabContent = (tab: IgProfileTab, items: IgGridItem[]) => {
     if (tab === "reels") return <IgGrid items={items} />;
 
-    // Same cells, stripped back to photo placeholders: no src, no view count, no
+    // Reel cells are stripped back to photo placeholders: no src, no view count, no
     // pin — those three belong to the reel that occupied the cell, not to the cell.
-    if (tab === "grid") return <IgGrid items={items.map((item) => ({ alt: `${item.alt} — photo slot`, kind: "photo" as const }))} />;
+    // Photo and carousel cells render as they are: the client dashboard's Pinned Posts
+    // section feeds this tab real carousel covers, and the main grid is where
+    // Instagram shows them.
+    if (tab === "grid")
+        return <IgGrid items={items.map((item) => (item.kind === "reel" ? { alt: `${item.alt} — photo slot`, kind: "photo" as const } : item))} />;
 
     if (tab === "repost") return <IgEmptyTab icon={<Repeat01 strokeWidth={1.6} />} title="No Reposts Yet" body="When you repost, it will appear here." />;
 
@@ -323,14 +341,25 @@ const tabContent = (tab: IgProfileTab, items: IgGridItem[]) => {
  * `overflow-hidden` rather than `overflow-y-auto` because nothing here is
  * interactive.
  */
-export const IgProfileScreen = ({ profile, avatar, tab = "reels" }: { profile: IgProfile; avatar: string; tab?: IgProfileTab }) => (
+export const IgProfileScreen = ({
+    profile,
+    avatar,
+    tab = "reels",
+    onHighlight,
+}: {
+    profile: IgProfile;
+    avatar: string;
+    tab?: IgProfileTab;
+    /** Makes the highlight circles tappable — see IgHighlights. Only the Pinned Stories player passes it. */
+    onHighlight?: (index: number) => void;
+}) => (
     <div className="flex h-full flex-col">
         <IgStatusBar />
         <IgProfileTopBar handle={profile.handle} verified={profile.verified} />
         <IgProfileHeader profile={profile} />
         <IgBio profile={profile} />
         <IgActionRow />
-        <IgHighlights items={profile.highlights} />
+        <IgHighlights items={profile.highlights} onSelect={onHighlight} />
         <IgProfileTabs active={tab} />
 
         {/* `tab` DEFAULTS TO "reels" so both existing callers — the feed's profile

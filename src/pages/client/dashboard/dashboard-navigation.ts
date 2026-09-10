@@ -309,9 +309,9 @@ export const NAV_GROUPS: {
             { id: "landing", label: "Landing Page", icon: Globe01 },
             { id: "flow", label: "Welcome Flow", icon: Mail01 },
             { id: "repeatflow", label: "Repeat Booking Flow", icon: Repeat01, soon: true },
-            { id: "pinnedposts", label: "Pinned Posts", icon: Camera01, soon: true },
+            { id: "pinnedposts", label: "Pinned Posts", icon: Camera01 },
             { id: "pinnedstories", label: "Pinned Stories", icon: Image03 },
-            { id: "reels", label: "Example Reels", icon: PlayCircle, soon: true },
+            { id: "reels", label: "Example Reels", icon: PlayCircle },
         ],
     },
     {

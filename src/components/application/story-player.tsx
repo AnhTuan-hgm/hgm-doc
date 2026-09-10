@@ -2,16 +2,20 @@ import { type PointerEvent, useEffect, useRef, useState } from "react";
 import { ChevronLeft, MessageChatCircle } from "@untitledui/icons";
 import { useReducedMotion } from "motion/react";
 import { IMAGE_SLIDE_SECONDS, type StoryHighlight, coverOf } from "@/pages/client/dashboard/pinned-stories-model";
+import { IgScreen, IgStatusBar } from "@/pages/team/mockup-ig/ig-chrome";
+import { IgProfileScreen } from "@/pages/team/mockup-ig/ig-profile";
+import type { IgProfile } from "@/pages/team/mockup-ig/instagram-data";
 import { cx } from "@/utils/cx";
 
 /**
- * An Instagram profile with its pinned highlights, playing inside a phone screen.
+ * The client's Instagram profile with its pinned highlights, playing inside a phone screen.
  *
- * Two views. PROFILE shows the client's handle, avatar and the row of highlight circles —
- * the thing the client is actually approving is "what sits at the top of my profile", so
- * that is the first frame they see. STORY plays one highlight: segmented progress bar,
+ * Two views. PROFILE is the /mockup-ig profile surface — the same one Pinned Posts shows
+ * next door, so the client meets one account across both sections — with the highlight
+ * circles made tappable. What they are approving is "what sits at the top of my profile",
+ * so that is the first frame they see. STORY plays one highlight: segmented progress bar,
  * cover + title header, the slide, tap zones (left third back, the rest forward), and
- * hold-to-pause, exactly the gestures the client already knows from the real app.
+ * hold-to-pause — the gestures the client already knows from the real app.
  *
  * The bottom "Send message" bar is the one deliberate departure: on Instagram it DMs the
  * account; here it hands the current slide to the caller (`onReply`), which is how a
@@ -20,6 +24,11 @@ import { cx } from "@/utils/cx";
  *
  * Controlled: the caller owns `position` so the arrange panel beside the phone can jump
  * it, and comments beside the phone can say "Slide 3 of 6 · FAQ" from the same value.
+ *
+ * Everything renders inside IgScreen's 402 × 874pt stage, so the px values below are
+ * iPhone points, not CSS pixels — the stage scales to the frame. Colours come from the
+ * `.ig-surface` variables (src/styles/instagram.css), never HGM tokens: this is a picture
+ * of Instagram, and Instagram does not follow the portal's theme.
  *
  * Auto-advance is driven by the CSS animation's `animationend` (see story-progress in
  * globals.css) for images and by `ended` for videos — never a parallel timer. Under
@@ -34,12 +43,14 @@ export interface StoryPosition {
 
 export const PROFILE: StoryPosition = { highlightId: null, slide: 0 };
 
+/** Status bar 48pt + the 6pt gap IgStoryProgress uses, so the two story surfaces agree. */
+const CHROME_TOP = 54;
+
 export const StoryPlayer = ({
     highlights,
     position,
     onPosition,
-    clientName,
-    logoUrl,
+    profile,
     onReply,
     replyLabel = "Send message",
     commentCountFor,
@@ -48,8 +59,8 @@ export const StoryPlayer = ({
     highlights: StoryHighlight[];
     position: StoryPosition;
     onPosition: (p: StoryPosition) => void;
-    clientName: string;
-    logoUrl?: string;
+    /** The account the profile view shows. Its `highlights` are ignored — this player's own set is the tray. */
+    profile: IgProfile;
     /** Called with the slide on screen when the reply bar is tapped. Omit to hide the bar. */
     onReply?: (highlightId: string, slideId: string) => void;
     replyLabel?: string;
@@ -74,8 +85,6 @@ export const StoryPlayer = ({
     }, [position.highlightId, highlight, slide, onPosition]);
 
     useEffect(() => setVideoProgress(0), [position.highlightId, position.slide]);
-
-    const open = (h: StoryHighlight) => onPosition({ highlightId: h.id, slide: 0 });
 
     const next = () => {
         if (!highlight) return;
@@ -104,95 +113,89 @@ export const StoryPlayer = ({
         if (Date.now() - downAt.current < 250) (downX.current < 0.3 ? prev : next)();
     };
 
-    const initials = clientName
-        .split(/\s+/)
-        .filter(Boolean)
-        .slice(0, 2)
-        .map((w) => w[0]?.toUpperCase())
-        .join("");
-    const handle =
-        clientName
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, "")
-            .slice(0, 24) || "yourbrand";
+    const label = highlight
+        ? `Instagram story: ${highlight.title || "Untitled"}, slide ${position.slide + 1} of ${highlight.slides.length}`
+        : `Instagram profile for @${profile.handle} with the pinned highlights`;
 
-    /* ── Profile view ── */
-    if (!highlight || !slide) {
-        return (
-            <div className={cx("flex size-full flex-col overflow-hidden bg-primary text-primary select-none", className)}>
-                <div className="flex items-center justify-between px-4 pt-12 pb-2">
-                    <span className="text-[15px] font-semibold tracking-tight">{handle}</span>
-                    <span className="flex gap-1" aria-hidden="true">
-                        <span className="size-1 rounded-full bg-fg-primary" />
-                        <span className="size-1 rounded-full bg-fg-primary" />
-                        <span className="size-1 rounded-full bg-fg-primary" />
-                    </span>
-                </div>
-                <div className="flex items-center gap-5 px-4 pt-1">
-                    <div className="flex size-[76px] shrink-0 items-center justify-center overflow-hidden rounded-full bg-secondary ring-1 ring-secondary">
-                        {logoUrl ? (
-                            <img src={logoUrl} alt="" className="size-full object-cover" />
-                        ) : (
-                            <span className="text-lg font-semibold text-tertiary">{initials}</span>
-                        )}
-                    </div>
-                    <div className="flex flex-1 justify-around text-center">
-                        {["Posts", "Followers", "Following"].map((l) => (
-                            <div key={l}>
-                                <p className="text-[15px] font-semibold">–</p>
-                                <p className="text-[12px] text-tertiary">{l}</p>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-                <div className="px-4 pt-3">
-                    <p className="text-[13px] font-semibold">{clientName || "Your brand"}</p>
-                    <p className="text-[12px] text-tertiary">Tap a highlight to play it</p>
-                </div>
+    return (
+        <IgScreen interactive label={label} className={cx("size-full max-w-none select-none", className)}>
+            {!highlight || !slide ? (
+                /* ── Profile view — the shared surface, with tappable circles ── */
+                <IgProfileScreen
+                    profile={{
+                        ...profile,
+                        highlights: highlights.map((h) => ({ label: h.title || "Untitled", src: coverOf(h) || undefined })),
+                    }}
+                    avatar={profile.avatar}
+                    tab="grid"
+                    onHighlight={(i) => {
+                        const h = highlights[i];
+                        if (h && h.slides.length) onPosition({ highlightId: h.id, slide: 0 });
+                    }}
+                />
+            ) : (
+                <StoryView
+                    highlight={highlight}
+                    slide={slide}
+                    index={position.slide}
+                    holding={holding}
+                    reduced={!!reduced}
+                    videoProgress={videoProgress}
+                    onVideoProgress={setVideoProgress}
+                    onNext={next}
+                    onDown={onDown}
+                    onUp={onUp}
+                    onRelease={() => setHolding(false)}
+                    onBack={() => onPosition(PROFILE)}
+                    onReply={onReply ? () => onReply(highlight.id, slide.id) : undefined}
+                    replyLabel={replyLabel}
+                    count={commentCountFor?.(slide.id) ?? 0}
+                />
+            )}
+        </IgScreen>
+    );
+};
 
-                {/* The highlight tray — the deliverable. */}
-                <div className="mt-4 flex [scrollbar-width:none] gap-3.5 overflow-x-auto px-4 pb-2">
-                    {highlights.map((h) => {
-                        const cover = coverOf(h);
-                        const disabled = h.slides.length === 0;
-                        return (
-                            <button
-                                key={h.id}
-                                type="button"
-                                disabled={disabled}
-                                onClick={() => open(h)}
-                                className="flex w-[68px] shrink-0 flex-col items-center gap-1.5 disabled:opacity-50"
-                                aria-label={`Play ${h.title}`}
-                            >
-                                <span className="flex size-[62px] items-center justify-center rounded-full ring-1 ring-primary ring-offset-2 ring-offset-bg-primary">
-                                    <span className="size-[56px] overflow-hidden rounded-full bg-secondary">
-                                        {cover && <img src={cover} alt="" className="size-full object-cover" />}
-                                    </span>
-                                </span>
-                                <span className="w-full truncate text-center text-[11px] leading-none">{h.title || "Untitled"}</span>
-                            </button>
-                        );
-                    })}
-                    {highlights.length === 0 && <p className="py-4 text-[12px] text-quaternary">No highlights yet.</p>}
-                </div>
+/* ── The story surface itself, kept apart so the player above reads as its two states ── */
 
-                {/* A faint feed, so the tray reads as sitting on a real profile. */}
-                <div className="mt-3 grid flex-1 grid-cols-3 gap-px border-t border-secondary bg-secondary pt-px" aria-hidden="true">
-                    {Array.from({ length: 9 }).map((_, i) => (
-                        <div key={i} className="aspect-square bg-primary_alt" />
-                    ))}
-                </div>
-            </div>
-        );
-    }
-
-    /* ── Story view ── */
-    const count = commentCountFor?.(slide.id) ?? 0;
+const StoryView = ({
+    highlight,
+    slide,
+    index,
+    holding,
+    reduced,
+    videoProgress,
+    onVideoProgress,
+    onNext,
+    onDown,
+    onUp,
+    onRelease,
+    onBack,
+    onReply,
+    replyLabel,
+    count,
+}: {
+    highlight: StoryHighlight;
+    slide: StoryHighlight["slides"][number];
+    index: number;
+    holding: boolean;
+    reduced: boolean;
+    videoProgress: number;
+    onVideoProgress: (p: number) => void;
+    onNext: () => void;
+    onDown: (e: PointerEvent<HTMLDivElement>) => void;
+    onUp: () => void;
+    onRelease: () => void;
+    onBack: () => void;
+    onReply?: () => void;
+    replyLabel: string;
+    count: number;
+}) => {
     const cover = coverOf(highlight);
     const animate = slide.kind === "image" && !reduced;
 
     return (
-        <div className={cx("relative size-full overflow-hidden bg-primary-solid select-none", className)}>
+        <div className="relative h-full overflow-hidden bg-(--ig-canvas)">
             {slide.kind === "video" ? (
                 <video
                     key={slide.id}
@@ -208,9 +211,9 @@ export const StoryPlayer = ({
                     }}
                     onTimeUpdate={(e) => {
                         const v = e.currentTarget;
-                        if (v.duration) setVideoProgress(v.currentTime / v.duration);
+                        if (v.duration) onVideoProgress(v.currentTime / v.duration);
                     }}
-                    onEnded={next}
+                    onEnded={onNext}
                     className="absolute inset-0 size-full object-cover"
                 />
             ) : (
@@ -218,23 +221,27 @@ export const StoryPlayer = ({
             )}
 
             {/* Legibility scrims for the chrome, like the app's own. */}
-            <div className="pointer-events-none absolute inset-x-0 top-0 h-36 bg-linear-to-b from-black/50 to-transparent" />
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-linear-to-t from-black/50 to-transparent" />
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-[150px] bg-linear-to-b from-(--ig-canvas)/55 to-transparent" />
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[120px] bg-linear-to-t from-(--ig-canvas)/55 to-transparent" />
 
-            {/* Progress */}
-            <div className="absolute inset-x-2 top-[52px] flex gap-1">
+            <div className="relative">
+                <IgStatusBar />
+            </div>
+
+            {/* Progress — same track geometry as IgStoryProgress, but the active segment animates. */}
+            <div className="absolute inset-x-2 flex items-center gap-1" style={{ top: CHROME_TOP }}>
                 {highlight.slides.map((s, i) => {
-                    const state = i < position.slide ? "done" : i === position.slide ? "active" : "todo";
+                    const state = i < index ? "done" : i === index ? "active" : "todo";
                     return (
-                        <div key={s.id} className="h-0.5 flex-1 overflow-hidden rounded-full bg-white/35">
-                            {state === "done" && <div className="size-full bg-white" />}
+                        <span key={s.id} className="h-[2.5px] flex-1 overflow-hidden rounded-full bg-(--ig-text)/30">
+                            {state === "done" && <span className="block size-full bg-(--ig-text)" />}
                             {state === "active" &&
                                 (slide.kind === "video" ? (
-                                    <div className="h-full origin-left bg-white" style={{ transform: `scaleX(${videoProgress})` }} />
+                                    <span className="block h-full origin-left bg-(--ig-text)" style={{ transform: `scaleX(${videoProgress})` }} />
                                 ) : (
-                                    <div
+                                    <span
                                         key={`${highlight.id}-${i}`}
-                                        className="h-full origin-left bg-white"
+                                        className="block h-full origin-left bg-(--ig-text)"
                                         style={
                                             animate
                                                 ? {
@@ -243,29 +250,29 @@ export const StoryPlayer = ({
                                                   }
                                                 : { transform: "scaleX(1)" }
                                         }
-                                        onAnimationEnd={next}
+                                        onAnimationEnd={onNext}
                                     />
                                 ))}
-                        </div>
+                        </span>
                     );
                 })}
             </div>
 
             {/* Header */}
-            <div className="absolute inset-x-3 top-[62px] flex items-center gap-2.5 text-white">
-                <button type="button" onClick={() => onPosition(PROFILE)} className="-ml-1 rounded-full p-1" aria-label="Back to profile">
-                    <ChevronLeft className="size-5" aria-hidden="true" />
+            <div className="absolute inset-x-3 flex items-center gap-2.5" style={{ top: CHROME_TOP + 12 }}>
+                <button type="button" onClick={onBack} className="-ml-1 rounded-full p-1" aria-label="Back to profile">
+                    <ChevronLeft className="size-[24px]" strokeWidth={2.2} aria-hidden="true" />
                 </button>
-                <span className="size-8 overflow-hidden rounded-full bg-white/20 ring-1 ring-white/60">
+                <span className="size-[34px] overflow-hidden rounded-full bg-(--ig-elevated) ring-1 ring-(--ig-text)/60">
                     {cover && <img src={cover} alt="" className="size-full object-cover" />}
                 </span>
-                <span className="text-[13px] font-semibold drop-shadow">{highlight.title || "Untitled"}</span>
-                <span className="text-[12px] text-white/70">
-                    {position.slide + 1}/{highlight.slides.length}
+                <span className="text-[14px] font-semibold drop-shadow">{highlight.title || "Untitled"}</span>
+                <span className="text-[13px] text-(--ig-text-secondary)">
+                    {index + 1}/{highlight.slides.length}
                 </span>
                 {count > 0 && (
-                    <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-white/20 px-2 py-0.5 text-[11px] font-semibold backdrop-blur-sm">
-                        <MessageChatCircle className="size-3" aria-hidden="true" />
+                    <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-(--ig-text)/20 px-2 py-0.5 text-[12px] font-semibold backdrop-blur-sm">
+                        <MessageChatCircle className="size-[13px]" aria-hidden="true" />
                         {count}
                     </span>
                 )}
@@ -273,21 +280,22 @@ export const StoryPlayer = ({
 
             {/* Tap / hold surface — below the header and above the reply bar. */}
             <div
-                className="absolute inset-x-0 top-24 bottom-20 cursor-pointer touch-none"
+                className="absolute inset-x-0 cursor-pointer touch-none"
+                style={{ top: CHROME_TOP + 60, bottom: 100 }}
                 onPointerDown={onDown}
                 onPointerUp={onUp}
-                onPointerLeave={() => setHolding(false)}
-                onPointerCancel={() => setHolding(false)}
+                onPointerLeave={onRelease}
+                onPointerCancel={onRelease}
                 role="presentation"
             />
 
-            {/* Reply bar → a note on this slide */}
+            {/* Reply bar → a note on this slide. Sits above the 34pt home-indicator area. */}
             {onReply && (
-                <div className="absolute inset-x-3 bottom-7 flex items-center gap-2">
+                <div className="absolute inset-x-3 bottom-[38px] flex items-center gap-2">
                     <button
                         type="button"
-                        onClick={() => onReply(highlight.id, slide.id)}
-                        className="flex flex-1 items-center rounded-full border border-white/60 px-4 py-2.5 text-left text-[13px] text-white/90 backdrop-blur-sm transition duration-100 ease-linear hover:bg-white/10"
+                        onClick={onReply}
+                        className="flex h-[44px] flex-1 items-center rounded-full border border-(--ig-text)/60 px-4 text-left text-[14px] text-(--ig-text)/90 backdrop-blur-sm transition duration-100 ease-linear hover:bg-(--ig-text)/10"
                     >
                         {replyLabel}
                     </button>

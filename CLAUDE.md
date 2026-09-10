@@ -111,6 +111,9 @@ rather than at the top of `client-dashboard-page.tsx`:
 Two Marketing sections render their own component instead of a block in the page body:
 `src/components/application/landing-page-section.tsx` (table `landing_pages`) and
 `pinned-stories-section.tsx` + `story-player.tsx` (table `pinned_stories`, bucket `stories`).
+Pinned Posts and Pinned Stories render the same Instagram profile surface from
+`src/pages/team/mockup-ig/` (`IgProfileScreen`, fed by `buildProfile` in `pinned-posts.tsx`
+and the page's one `igProfileInputs`), so the two phones always show one account.
 Both follow the same access model: team writes go straight to Supabase under a
 team-only policy; the client's review goes through a Netlify function that checks their
 email against the dashboard's `allowed_emails` (`landing-page-review.mts`,

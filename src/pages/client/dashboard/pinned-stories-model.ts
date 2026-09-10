@@ -99,21 +99,7 @@ export const mergePinnedStories = (partial?: Partial<PinnedStoriesData> | null):
 
 /* ── Canva links ─────────────────────────────────────────────────────────── */
 
-/**
- * The design id out of anything an AM might paste:
- *   https://www.canva.com/design/DAHSwF8HKF8/AbLwOWABn26fc82W03Kfnw/edit
- *   https://www.canva.com/design/DAHSwF8HKF8/view
- *   DAHSwF8HKF8
- * Returns null for shortlinks (canva.com/d/…, canva.link/…) — those need resolving on
- * Canva's side and the section asks for the full link instead.
- */
-export const canvaDesignId = (input: string): string | null => {
-    const s = input.trim();
-    if (/^D[A-Za-z0-9_-]{10}$/.test(s)) return s;
-    const m = s.match(/canva\.com\/design\/(D[A-Za-z0-9_-]{10})(?:[/?#]|$)/);
-    return m ? m[1] : null;
-};
-
+/** Canva links are parsed by parseCanvaUrl in dashboard-model.ts — shared with Pinned Posts. */
 export const canvaEditUrl = (designId: string) => `https://www.canva.com/design/${designId}/edit`;
 
 /* ── Arranging pages ─────────────────────────────────────────────────────── */

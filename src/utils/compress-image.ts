@@ -32,15 +32,19 @@ const blobToDataUrl = (blob: Blob): Promise<string> =>
  * Falls back to the original file (as a data URL) whenever anything fails,
  * so callers can use it as a drop-in replacement for FileReader.
  */
-export async function compressImageFile(file: File): Promise<string> {
+export async function compressImageFile(file: File, options: { maxDim?: number } = {}): Promise<string> {
     // Vectors and animations pass through untouched.
     if (file.type === "image/svg+xml" || file.type === "image/gif") {
         return blobToDataUrl(file);
     }
 
+    // Callers that store many images in one row (a carousel of pinned-post slides) can
+    // cap the longest side lower than the default — Instagram itself serves at 1080.
+    const maxDim = Math.min(MAX_DIM, Math.max(1, options.maxDim ?? MAX_DIM));
+
     try {
         const bitmap = await createImageBitmap(file);
-        const scale = Math.min(1, MAX_DIM / Math.max(bitmap.width, bitmap.height));
+        const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
         const w = Math.max(1, Math.round(bitmap.width * scale));
         const h = Math.max(1, Math.round(bitmap.height * scale));
 
@@ -52,8 +56,7 @@ export async function compressImageFile(file: File): Promise<string> {
         ctx.drawImage(bitmap, 0, 0, w, h);
         bitmap.close();
 
-        const toBlob = (type: string, quality: number) =>
-            new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, quality));
+        const toBlob = (type: string, quality: number) => new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, quality));
 
         // Prefer WebP; fall back to JPEG when the browser can't encode WebP.
         let blob = await toBlob("image/webp", WEBP_QUALITY);

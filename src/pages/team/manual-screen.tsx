@@ -240,7 +240,10 @@ const DASHBOARD_GROUPS: { group: string; items: { label: string; note: string }[
         items: [
             { label: "Overview Document", note: 'Team-only client brief — a client never sees this row, not even as "Soon".' },
             { label: "Master Brand", note: "The eleven-section Master Brand Document everything downstream reads from. Clients can suggest edits here." },
-            { label: "Brand Kit", note: "Colours, fonts, logos, type scale — with AI drafting from the client's site." },
+            {
+                label: "Brand Kit",
+                note: 'Colours (with text-contrast hints), fonts, logos, type scale, a live brand preview and a Copy/Download CSS export — drafted from the client\'s site. A kit nobody has touched shows the client "on the way", never the template purples.',
+            },
         ],
     },
     {
@@ -251,12 +254,24 @@ const DASHBOARD_GROUPS: { group: string; items: { label: string; note: string }[
                 note: "The welcome email sequence, previewed per email. Finished emails from the email pipeline load automatically by client name.",
             },
             {
-                label: "Pinned Stories",
-                note: "Paste the Canva link (or upload the exported pages), arrange pages into highlights, publish. The client plays them in a phone mockup and leaves notes per slide.",
+                label: "Landing Page",
+                note: "The AM pastes the finished HTML; the client reviews it in-frame and approves or asks for changes.",
             },
             {
-                label: "Landing Page / Repeat Booking Flow / Pinned Posts / Example Reels",
-                note: 'Landing Page is live; the others are placeholders marked "Soon" until each is built.',
+                label: "Pinned Posts",
+                note: "The three Canva carousels pinned to the top of the client's grid, previewed on a phone. Paste the Canva link, upload the exported pages, reveal it; the client approves or requests changes per post.",
+            },
+            {
+                label: "Example Reels",
+                note: "Three iPhone mockups. In edit mode the team uploads a 9:16 mp4 into each (videos bucket, 50 MB cap) and writes the title and one-line description under it; the client sees only filled slots.",
+            },
+            {
+                label: "Pinned Stories",
+                note: "The Canva story highlights for the top of the client's profile. Paste the Canva link (or upload the exported pages), arrange pages into highlights, publish; the client plays them in the phone and leaves notes slide by slide.",
+            },
+            {
+                label: "Repeat Booking Flow",
+                note: 'Placeholder marked "Soon" until it is built.',
             },
         ],
     },

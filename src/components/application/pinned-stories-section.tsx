@@ -20,7 +20,8 @@ import { Button } from "@/components/base/buttons/button";
 import { FeaturedIcon } from "@/components/foundations/featured-icon/featured-icon";
 import { PhoneFrame } from "@/components/shared-assets/phone-frame";
 import { supabase } from "@/lib/supabase";
-import { uid } from "@/pages/client/dashboard/dashboard-model";
+import { type PinnedPost, parseCanvaUrl, uid } from "@/pages/client/dashboard/dashboard-model";
+import { type PinnedProfileInputs, buildProfile } from "@/pages/client/dashboard/pinned-posts";
 import {
     EMPTY_PINNED_STORIES,
     EMPTY_REVIEW,
@@ -31,7 +32,6 @@ import {
     type StoryReview,
     type StorySlide,
     type StoryVersion,
-    canvaDesignId,
     canvaEditUrl,
     coverOf,
     draftFromPages,
@@ -96,7 +96,8 @@ const REVIEW_BADGE: Record<StoryReview["status"], { color: "warning" | "success"
 export const PinnedStoriesSection = ({
     slug,
     clientName,
-    logoUrl,
+    profile,
+    pinnedPosts,
     isTeam,
     isLocked,
     isTemplate,
@@ -105,8 +106,10 @@ export const PinnedStoriesSection = ({
 }: {
     slug?: string;
     clientName: string;
-    /** The client's logo, for the mock profile's avatar. */
-    logoUrl?: string;
+    /** The Instagram account the phone shows — the same inputs Pinned Posts renders, so both mockups agree. */
+    profile: PinnedProfileInputs;
+    /** The published pinned carousels, so the profile's grid matches the Pinned Posts section next door. */
+    pinnedPosts: PinnedPost[];
     isTeam: boolean;
     isLocked: boolean;
     isTemplate: boolean;
@@ -175,6 +178,9 @@ export const PinnedStoriesSection = ({
     const draft = data.draft;
     const shownHighlights = isTeam && view === "draft" && draft ? draft.highlights : (live?.highlights ?? []);
     const review = live?.review ?? EMPTY_REVIEW;
+    /* The same account Pinned Posts renders (its carousels in the grid), with the tray swapped
+       for whichever story set the phone is playing — the player does that swap itself. */
+    const igProfile = buildProfile(profile, pinnedPosts);
     const tagOf = (i: number) => `v${data.versions.length - i}`;
 
     // Keep the phone on a highlight that exists in whichever set is showing.
@@ -250,7 +256,7 @@ export const PinnedStoriesSection = ({
 
     /* ── Import: Canva ── */
     const importFromCanva = async () => {
-        const designId = canvaDesignId(canvaLink);
+        const designId = parseCanvaUrl(canvaLink)?.id ?? null;
         setImportErr("");
         if (!designId) {
             setImportErr(
@@ -349,7 +355,7 @@ export const PinnedStoriesSection = ({
                     page: startPage + i + 1,
                 });
             }
-            const designId = canvaDesignId(canvaLink) ?? "";
+            const designId = parseCanvaUrl(canvaLink)?.id ?? "";
             startDraftWith(pages, {
                 via: "upload",
                 canvaUrl: designId ? canvaLink.trim() : "",
@@ -636,13 +642,12 @@ export const PinnedStoriesSection = ({
                                 ))}
                             </div>
                         )}
-                        <PhoneFrame label="Pinned stories" className="max-w-[320px]">
+                        <PhoneFrame label="Pinned stories" className="w-[248px] sm:w-[280px]">
                             <StoryPlayer
                                 highlights={shownHighlights}
                                 position={position}
                                 onPosition={setPosition}
-                                clientName={clientName}
-                                logoUrl={logoUrl}
+                                profile={igProfile}
                                 onReply={!isTeam && live && review.status !== "approved" && clientEmail ? openNote : undefined}
                                 replyLabel="Leave a note on this slide"
                                 commentCountFor={commentCountFor}

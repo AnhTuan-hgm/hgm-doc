@@ -11,6 +11,8 @@ import {
     Check,
     CheckCircle,
     ChevronDown,
+    ChevronLeft,
+    ChevronRight,
     ClipboardCheck,
     Copy01,
     Download01,
@@ -38,7 +40,7 @@ import { ChartTooltipContent } from "@/components/application/charts/charts-base
 import { LandingPageSection } from "@/components/application/landing-page-section";
 import { PinnedStoriesSection } from "@/components/application/pinned-stories-section";
 import { VideoAttach, VideoEmbed } from "@/components/application/video-block";
-import { WelcomeFlowSection } from "@/components/application/welcome-flow";
+import { WelcomeFlowSection, stepLabel } from "@/components/application/welcome-flow";
 import { Badge, BadgeWithDot, BadgeWithIcon } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
 import { ProgressBarCircle } from "@/components/base/progress-indicators/progress-circles";
@@ -64,8 +66,11 @@ import {
     clientOnboardingProgress,
     ensureClientOnboardingForm,
 } from "@/pages/client/client-onboarding-form-page";
+import { brandKitCss, brandKitFileName, brandKitHasContent } from "@/pages/client/dashboard/brand-kit-export";
+import { BrandPreview } from "@/pages/client/dashboard/brand-kit-preview";
 import { ShadeScales } from "@/pages/client/dashboard/brand-kit-shades";
 import { TypeScale, TypographyCards } from "@/pages/client/dashboard/brand-kit-typography";
+import { readableTextOn, rgbString, wcagLabel } from "@/pages/client/dashboard/color-scale";
 import {
     ClientSearchBar,
     DashboardAccessGate,
@@ -81,17 +86,20 @@ import {
     type BrandColor,
     DEFAULT_CLIENT_VISIBLE,
     DEFAULT_FOUNDATION,
+    EMPTY_PINNED_POSTS,
+    type ExampleReel,
     type FocusProperty,
     type Foundation,
     type GhlItem,
     type Highlight,
     type LocalFavorite,
     type Persona,
+    type PinnedPosts,
     type QuickLink,
+    REEL_SLOTS,
     type RevenueMonth,
     STATUS_OPTIONS,
     type SectionId,
-    TEMPLATE_CONTENT,
     type VideoGuide,
     createDefaultContent,
     emptyFavorite,
@@ -99,6 +107,9 @@ import {
     emptyPersona,
     emptyWebsiteLink,
     filled,
+    handleFromProfileUrl,
+    isTemplatePalette,
+    isUntouchedBrandKit,
     mergeContent,
     mergeFoundationDraft,
     normEmail,
@@ -119,6 +130,7 @@ import {
     TEAM_ONLY_SECTIONS,
     phaseOfSection,
 } from "@/pages/client/dashboard/dashboard-navigation";
+import { ExampleReelsSection } from "@/pages/client/dashboard/example-reels";
 import {
     FOUNDATION_SECTIONS,
     LEGACY_FOUNDATION_FIELDS,
@@ -137,8 +149,17 @@ import {
     compileOverviewDocument,
     overviewSectionNumber,
 } from "@/pages/client/dashboard/overview-doc";
+import { PinnedPostsSection, type PinnedProfileInputs, isPinnedKey } from "@/pages/client/dashboard/pinned-posts";
 import { SuggestionBox, SuggestionContext, fetchSuggestions, sendSuggestions, withdrawSuggestion } from "@/pages/client/dashboard/suggestions";
-import { type Suggestion, applySuggestion, labelForKey, valueForKey } from "@/pages/client/dashboard/suggestions-model";
+import {
+    type Suggestion,
+    type SuggestionItem,
+    applySuggestion,
+    flowFeedbackKey,
+    isFlowFeedbackKey,
+    labelForKey,
+    valueForKey,
+} from "@/pages/client/dashboard/suggestions-model";
 import { HostOnboardingFormPage, ensureHostOnboardingForm, hostOnboardingAnswers, hostOnboardingProgress } from "@/pages/client/host-onboarding-form-page";
 import { useSuppressFloatingThemeToggle, useTheme } from "@/providers/theme-provider";
 import { compressImageFile } from "@/utils/compress-image";
@@ -621,16 +642,8 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                 return;
             }
             const found = json.colors ?? [];
-            /* Compare by value, not JSON.stringify: Postgres jsonb stores object keys sorted,
-               so a saved swatch returns as {hex,name} while the template literal is {name,hex}.
-               Stringifying made every round-tripped palette look edited, so the replace branch
-               never fired for the one case it exists for — an AM who never touched Brand Kit. */
-            const tpl = TEMPLATE_CONTENT.brand.colors;
-            const isTemplatePalette =
-                content.brand.colors.length === tpl.length &&
-                content.brand.colors.every((c, i) => c.name === tpl[i].name && c.hex.toLowerCase() === tpl[i].hex.toLowerCase());
             const patch: Partial<DashboardContent["brand"]> = {};
-            if (found.length) patch.colors = isTemplatePalette ? found : [...content.brand.colors, ...found];
+            if (found.length) patch.colors = isTemplatePalette(content.brand.colors) ? found : [...content.brand.colors, ...found];
             if (json.fonts && (!content.brand.fonts.trim() || content.brand.fonts.trim() === "Inter")) patch.fonts = json.fonts;
             if (json.logos?.length) {
                 patch.logos = [...(content.brand.logos ?? []), ...json.logos.map((l) => ({ id: uid(), name: l.name, url: l.url }))];
@@ -656,13 +669,45 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
         }
     };
 
-    /** Which Brand Kit hex was just copied, for the swatch's "Copied!" flash. */
+    /** Which Brand Kit value was just copied (a hex, an rgb() string, or "css" for the
+     *  whole stylesheet), for the matching "Copied!" flash. */
     const [copiedHex, setCopiedHex] = useState("");
     const copyHex = (hex: string) => {
         void navigator.clipboard.writeText(hex).then(() => {
             setCopiedHex(hex);
             window.setTimeout(() => setCopiedHex((h) => (h === hex ? "" : h)), 1400);
         });
+    };
+    /** The kit as a stylesheet — copied, or handed to the browser as a .css download so a
+     *  designer gets one file rather than retyping six hexes and two font names. */
+    const copyBrandKitCss = () => {
+        void navigator.clipboard.writeText(brandKitCss(content.brand, clientName)).then(() => {
+            setCopiedHex("css");
+            window.setTimeout(() => setCopiedHex((h) => (h === "css" ? "" : h)), 1400);
+        });
+    };
+    const downloadBrandKitCss = () => {
+        const blob = new Blob([brandKitCss(content.brand, clientName)], { type: "text/css;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = brandKitFileName(clientBase || clientName);
+        a.click();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    };
+    /** Export needs at least one real colour or a font. And a client looking at a kit
+     *  nobody has touched yet sees "on the way", never the placeholder purples as theirs;
+     *  the template page itself is the one place the placeholders are the content. */
+    const kitHasContent = brandKitHasContent(content.brand);
+    const kitOnTheWay = isLocked && !isTemplate && isUntouchedBrandKit(content.brand);
+    /** Swap a swatch with its neighbour — the first colour is what the preview and the
+     *  CSS export treat as primary, so order is meaning, not decoration. */
+    const moveColor = (i: number, dir: -1 | 1) => {
+        const j = i + dir;
+        if (j < 0 || j >= content.brand.colors.length) return;
+        const next = [...content.brand.colors];
+        [next[i], next[j]] = [next[j], next[i]];
+        patchBrand({ colors: next });
     };
 
     // Auto-open the create wizard when arriving via "+ New Page" (?create=1).
@@ -720,6 +765,9 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     /** What actually went wrong, so a failed send says why instead of "try again". */
     const [sendError, setSendError] = useState("");
     const foundationRevealed = (content.client_visible ?? DEFAULT_CLIENT_VISIBLE).includes("foundation");
+    /** The Welcome Email Flow shares the table: a client comments on emails the same way. */
+    const flowRevealed = (content.client_visible ?? DEFAULT_CLIENT_VISIBLE).includes("flow");
+    const pinnedRevealed = (content.client_visible ?? DEFAULT_CLIENT_VISIBLE).includes("pinnedposts");
 
     const refreshSuggestions = useCallback(async () => {
         if (!slug || isTemplate) return;
@@ -730,25 +778,29 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
             if (signedInAsTeam) {
                 const { data, error } = await supabase.from("dashboard_suggestions").select("*").eq("slug", slug).order("created_at", { ascending: false });
                 if (!error && data) setSuggestions(data as Suggestion[]);
-            } else if (identityEmail && foundationRevealed) {
+            } else if (identityEmail && (foundationRevealed || flowRevealed || pinnedRevealed)) {
                 setSuggestions(await fetchSuggestions(slug, identityEmail));
             }
         } catch {
             /* the section just shows no suggestions — nothing is lost, they're server-side */
         }
-    }, [slug, isTemplate, signedInAsTeam, identityEmail, foundationRevealed]);
+    }, [slug, isTemplate, signedInAsTeam, identityEmail, foundationRevealed, flowRevealed, pinnedRevealed]);
     useEffect(() => {
         void refreshSuggestions();
     }, [refreshSuggestions]);
 
-    const pendingSuggestions = suggestions.filter((s) => s.status === "pending");
+    /* The table carries three kinds of row: Master Brand Document edits, welcome-email
+       feedback under `welcomeFlow.*`, and Pinned Posts feedback under `pinnedposts.*`. Split
+       them here so no section counts, lists or orphans another's. */
+    const pinnedFeedback = suggestions.filter((s) => isPinnedKey(s.field_key));
+    const pendingSuggestions = suggestions.filter((s) => s.status === "pending" && !isPinnedKey(s.field_key) && !isFlowFeedbackKey(s.field_key));
     const pendingByKey = new Map<string, Suggestion[]>();
     for (const s of pendingSuggestions) pendingByKey.set(s.field_key, [...(pendingByKey.get(s.field_key) ?? []), s]);
     const resolvedByKey = new Map<string, Suggestion>();
     for (const s of suggestions) if (s.status !== "pending" && !resolvedByKey.has(s.field_key)) resolvedByKey.set(s.field_key, s);
     /** Pending rows whose key no longer resolves (their row was deleted) — surfaced to
      *  the team above the document, since no field exists to hang them on. */
-    const orphanedPending = isTeam ? pendingSuggestions.filter((s) => valueForKey(foundation, s.field_key) === null) : [];
+    const orphanedPending = isTeam ? pendingSuggestions.filter((s) => !isFlowFeedbackKey(s.field_key) && valueForKey(foundation, s.field_key) === null) : [];
 
     const acceptSuggestion = (s: Suggestion) => {
         const patch = applySuggestion(foundation, s.field_key, s.suggested_value);
@@ -800,23 +852,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
         setSendState("sending");
         setSendError("");
         try {
-            if (identityEmail) {
-                await sendSuggestions(slug, identityEmail, items);
-            } else {
-                // Team member previewing: write as themselves. Their JWT satisfies the
-                // team-insert policy, so the row is stamped with their real address.
-                const { error } = await supabase.from("dashboard_suggestions").insert(
-                    items.map((i) => ({
-                        slug,
-                        field_key: i.fieldKey,
-                        field_label: i.fieldLabel,
-                        current_value: i.currentValue,
-                        suggested_value: i.suggestedValue,
-                        suggested_by: suggestAuthor,
-                    })),
-                );
-                if (error) throw new Error(error.message);
-            }
+            await fileSuggestions(items);
             await refreshSuggestions();
             // The drafts are only cleared once the server has them — a failed send keeps
             // everything typed so the client can just press Send again.
@@ -840,6 +876,133 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     /** The address a suggestion sent from this view would carry. */
     const suggestAuthor = identityEmail || (suggestAsTeam ? viewerEmail : "");
     const canSuggest = !isTeam && !isTemplate && foundationRevealed && !!suggestAuthor;
+    /** Same two identities, for approving or requesting changes on a pinned post. */
+    const canReviewPinned = !isTeam && !isTemplate && pinnedRevealed && !!suggestAuthor;
+
+    /**
+     * Write suggestion rows by whichever route this viewer has: a client through the
+     * Netlify function (which re-checks their address against the allowlist), a team member
+     * previewing directly as themselves — their JWT satisfies the team-insert policy, so the
+     * row is stamped with their real address. Shared by the Master Brand Document's Send and
+     * the Pinned Posts feedback buttons; callers refresh afterwards.
+     */
+    const fileSuggestions = async (items: SuggestionItem[]) => {
+        if (!slug) throw new Error("This dashboard isn't saved yet.");
+        if (identityEmail) {
+            await sendSuggestions(slug, identityEmail, items);
+            return;
+        }
+        if (!suggestAuthor) throw new Error("Sign in to send feedback.");
+        // The function replaces the author's own pending row for a re-filed key; do the same
+        // here so a team member's test rows don't pile up.
+        await supabase
+            .from("dashboard_suggestions")
+            .delete()
+            .eq("slug", slug)
+            .eq("suggested_by", suggestAuthor)
+            .eq("status", "pending")
+            .in(
+                "field_key",
+                items.map((i) => i.fieldKey),
+            );
+        const { error } = await supabase.from("dashboard_suggestions").insert(
+            items.map((i) => ({
+                slug,
+                field_key: i.fieldKey,
+                field_label: i.fieldLabel,
+                current_value: i.currentValue,
+                suggested_value: i.suggestedValue,
+                suggested_by: suggestAuthor,
+            })),
+        );
+        if (error) throw new Error(error.message);
+    };
+    /** Pinned Posts feedback: file, then refresh so the card shows it at once. */
+    const sendPinnedFeedback = async (items: SuggestionItem[]) => {
+        await fileSuggestions(items);
+        await refreshSuggestions();
+    };
+    /** The team marks a change request addressed. Nothing to apply to the row — the fix is
+     *  the re-uploaded slides — so the status flips straight in the table. */
+    const resolvePinnedFeedback = (s: Suggestion) => {
+        void supabase
+            .from("dashboard_suggestions")
+            .update({ status: "accepted", resolved_by: user?.email ?? "", resolved_at: new Date().toISOString() })
+            .eq("id", s.id)
+            .eq("status", "pending")
+            .then(() => void refreshSuggestions());
+    };
+
+    /* ── Pinned Posts ── */
+    const pinnedPosts: PinnedPosts = content.pinned_posts ?? EMPTY_PINNED_POSTS;
+    const patchPinned = (patch: Partial<PinnedPosts>) =>
+        setContent((c) => ({ ...c, pinned_posts: { ...EMPTY_PINNED_POSTS, ...(c.pinned_posts ?? {}), ...patch } }));
+
+    /* The Instagram profile both phone mockups render — Pinned Posts (the grid) and Pinned
+       Stories (the highlight tray) — built once so the two sections can never show the
+       client two different accounts. */
+    const igProfileInputs: PinnedProfileInputs = {
+        handle: handleFromProfileUrl(content.instagram.profile_url) || slugify(clientName).replace(/-/g, "."),
+        displayName: clientName,
+        avatar: content.logo_url,
+        // The bio is whatever the Master Brand has settled on: taglines first, then the
+        // opening of the brand bio. Empty until then, and the mockup says so.
+        bio: foundation.taglines.filter((t) => t.trim()).slice(0, 2).length
+            ? foundation.taglines.filter((t) => t.trim()).slice(0, 2)
+            : foundation.brandBio.trim()
+              ? [foundation.brandBio.trim().split(/(?<=[.!?])\s/)[0]]
+              : [],
+        linkLabel: clientWebsite.replace(/^https?:\/\//, "").replace(/\/$/, ""),
+        highlights: content.instagram.highlights.map((h) => ({ label: h.title, src: h.image_url || undefined })),
+    };
+
+    /* ── Client feedback on the welcome emails ──
+       Same table, same function, same identity rules as suggestion mode, under the
+       "welcomeFlow.{slot}" keys. The section renders; these do the reads and writes. */
+    const flowFeedback = suggestions.filter((s) => isFlowFeedbackKey(s.field_key));
+    const canFlowFeedback = !isTeam && !isTemplate && flowRevealed && !!suggestAuthor;
+    const sendFlowFeedback = async (slot: number, text: string, subjectNow: string) => {
+        if (!slug || !suggestAuthor) throw new Error("Sign in with your email to send feedback.");
+        const item = { fieldKey: flowFeedbackKey(slot), fieldLabel: `${stepLabel(slot)} · feedback`, currentValue: subjectNow, suggestedValue: text };
+        if (identityEmail) {
+            await sendSuggestions(slug, identityEmail, [item]);
+        } else {
+            // Team member previewing as the client — as themselves, like submitSuggestions.
+            // The function replaces the author's own open comment; do the same here.
+            await supabase
+                .from("dashboard_suggestions")
+                .delete()
+                .eq("slug", slug)
+                .eq("suggested_by", suggestAuthor)
+                .eq("status", "pending")
+                .eq("field_key", item.fieldKey);
+            const { error } = await supabase.from("dashboard_suggestions").insert({
+                slug,
+                field_key: item.fieldKey,
+                field_label: item.fieldLabel,
+                current_value: item.currentValue,
+                suggested_value: item.suggestedValue,
+                suggested_by: suggestAuthor,
+            });
+            if (error) throw new Error(error.message);
+        }
+        await refreshSuggestions();
+    };
+    const withdrawFlowFeedback = async (s: Suggestion) => {
+        if (!slug) return;
+        if (identityEmail) await withdrawSuggestion(slug, identityEmail, s.id);
+        else if (signedInAsTeam) await supabase.from("dashboard_suggestions").delete().eq("id", s.id).eq("status", "pending");
+        await refreshSuggestions();
+    };
+    /** Feedback is never "applied" anywhere — done or dismissed is the whole outcome. */
+    const resolveFlowFeedback = async (s: Suggestion, status: "accepted" | "declined") => {
+        await supabase
+            .from("dashboard_suggestions")
+            .update({ status, resolved_by: user?.email ?? "", resolved_at: new Date().toISOString() })
+            .eq("id", s.id)
+            .eq("status", "pending");
+        await refreshSuggestions();
+    };
 
     const suggestDraftCount = Object.entries(suggestDraft).filter(([key, value]) => {
         const live = valueForKey(foundation, key);
@@ -1146,6 +1309,10 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     const removeResource = (id: string) => setContent((c) => ({ ...c, resources: (c.resources ?? []).filter((r) => r.id !== id) }));
     const updateVideo = (i: number, patch: Partial<VideoGuide>) =>
         setContent((c) => ({ ...c, videos: (c.videos ?? []).map((v, j) => (j === i ? { ...v, ...patch } : v)) }));
+    // By id: the three slots are fixed (mergeContent pads them), so nothing is ever added
+    // or removed here — a slot is filled, replaced, or cleared, and keeps its caption.
+    const updateReel = (id: string, patch: Partial<ExampleReel>) =>
+        setContent((c) => ({ ...c, reels: (c.reels ?? []).map((r) => (r.id === id ? { ...r, ...patch } : r)) }));
 
     /* ── Derived metrics ── */
     const months = content.revenue.months;
@@ -1769,6 +1936,17 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
         }
         if (id === "videos") {
             const n = content.videos?.length ?? 0;
+            return n ? pill(String(n), "muted") : null;
+        }
+        if (id === "reels") {
+            const n = (content.reels ?? []).filter((r) => r.url).length;
+            return n ? pill(`${n}/${REEL_SLOTS}`, "muted") : null;
+        }
+        if (id === "pinnedposts") {
+            // Open change requests need the team; everything else is just a count.
+            const open = pinnedFeedback.filter((s) => s.status === "pending" && s.field_key.endsWith(".feedback")).length;
+            if (isTeam && open) return pill(String(open), "todo");
+            const n = pinnedPosts.posts.length;
             return n ? pill(String(n), "muted") : null;
         }
         return null;
@@ -2944,6 +3122,20 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                     </>
                                                 )}
 
+                                                {/* ── Example Reels — three phones, the team's reels playing inside ── */}
+                                                {activeSection === "reels" && (
+                                                    <Reveal>
+                                                        <SectionEyebrow section={activeSection} />
+                                                        <SectionHeading>Example Reels</SectionHeading>
+                                                        <p className="mt-3 text-md text-tertiary">
+                                                            {isLocked
+                                                                ? "Three reels made for your property, shown the way they play on a phone."
+                                                                : "Upload up to three 9:16 reels. The title and line under each phone are what the client reads — and what stands in for the footage when motion is off."}
+                                                        </p>
+                                                        <ExampleReelsSection reels={content.reels ?? []} isLocked={isLocked} onChange={updateReel} />
+                                                    </Reveal>
+                                                )}
+
                                                 {activeSection === "pinnedstories" && (
                                                     <>
                                                         {/* Own component, own heading — same shape as Landing Page above. */}
@@ -2952,7 +3144,8 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                             <PinnedStoriesSection
                                                                 slug={slug}
                                                                 clientName={clientName}
-                                                                logoUrl={content.logo_url}
+                                                                profile={igProfileInputs}
+                                                                pinnedPosts={pinnedPosts.posts}
                                                                 isTeam={isTeam}
                                                                 isLocked={isLocked}
                                                                 isTemplate={isTemplate}
@@ -2975,9 +3168,35 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                 clientName={clientName}
                                                                 isLocked={isLocked}
                                                                 isTemplate={isTemplate}
+                                                                feedback={{
+                                                                    mode: isTeam ? "review" : canFlowFeedback ? "client" : "off",
+                                                                    items: flowFeedback,
+                                                                    author: suggestAuthor,
+                                                                    send: sendFlowFeedback,
+                                                                    withdraw: withdrawFlowFeedback,
+                                                                    resolve: resolveFlowFeedback,
+                                                                }}
                                                             />
                                                         </div>
                                                     </>
+                                                )}
+
+                                                {/* ── Pinned Posts — the three Canva carousels on top of the grid ── */}
+                                                {activeSection === "pinnedposts" && (
+                                                    <PinnedPostsSection
+                                                        pinned={pinnedPosts}
+                                                        onPatch={patchPinned}
+                                                        isLocked={isLocked}
+                                                        isTeam={isTeam}
+                                                        isTemplate={isTemplate}
+                                                        profile={igProfileInputs}
+                                                        feedback={pinnedFeedback}
+                                                        canReview={canReviewPinned}
+                                                        reviewerEmail={suggestAuthor}
+                                                        onSendFeedback={sendPinnedFeedback}
+                                                        onWithdrawFeedback={withdrawOwnSuggestion}
+                                                        onResolveFeedback={resolvePinnedFeedback}
+                                                    />
                                                 )}
 
                                                 {/* ── Client Input — the Onboarding Form (the client's FIRST form) ── */}
@@ -5091,18 +5310,38 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                         <div className="flex flex-wrap items-end justify-between gap-3">
                                                             <SectionHeading>Brand Kit</SectionHeading>
                                                             {isLocked ? (
-                                                                content.brand.folder_link && (
-                                                                    <Button
-                                                                        href={content.brand.folder_link}
-                                                                        target="_blank"
-                                                                        rel="noopener noreferrer"
-                                                                        color="link-color"
-                                                                        size="md"
-                                                                        iconTrailing={LinkExternal01}
-                                                                    >
-                                                                        Open brand folder
-                                                                    </Button>
-                                                                )
+                                                                <div className="flex flex-wrap items-center gap-2">
+                                                                    {/* The kit as one stylesheet — hexes, shade scales, fonts and the
+                                                                        type scale as CSS variables. A brand kit you can only look at
+                                                                        gets retyped, and retyped hexes drift. */}
+                                                                    {kitHasContent && !kitOnTheWay && (
+                                                                        <>
+                                                                            <Button size="sm" color="secondary" iconLeading={Copy01} onClick={copyBrandKitCss}>
+                                                                                {copiedHex === "css" ? "Copied!" : "Copy CSS"}
+                                                                            </Button>
+                                                                            <Button
+                                                                                size="sm"
+                                                                                color="secondary"
+                                                                                iconLeading={Download01}
+                                                                                onClick={downloadBrandKitCss}
+                                                                            >
+                                                                                Download .css
+                                                                            </Button>
+                                                                        </>
+                                                                    )}
+                                                                    {content.brand.folder_link && (
+                                                                        <Button
+                                                                            href={content.brand.folder_link}
+                                                                            target="_blank"
+                                                                            rel="noopener noreferrer"
+                                                                            color="link-color"
+                                                                            size="md"
+                                                                            iconTrailing={LinkExternal01}
+                                                                        >
+                                                                            Open brand folder
+                                                                        </Button>
+                                                                    )}
+                                                                </div>
                                                             ) : (
                                                                 <input
                                                                     type="text"
@@ -5114,8 +5353,21 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                             )}
                                                         </div>
                                                         <p className="mt-3 text-md text-tertiary">
-                                                            Your official colors and typography. Use these everywhere so your brand stays consistent.
+                                                            Your official colors, typography and logo files. Use these everywhere — website, emails, social — so
+                                                            your brand stays consistent.
                                                         </p>
+
+                                                        {/* Nothing built yet: say so, instead of presenting the template purples
+                                                            as the client's colours. Same tile the Instagram section uses. */}
+                                                        {kitOnTheWay && (
+                                                            <div className="mt-6 flex items-center gap-3 rounded-xl bg-secondary px-4 py-5">
+                                                                <Palette className="size-5 shrink-0 text-fg-quaternary" aria-hidden="true" />
+                                                                <p className="text-sm text-tertiary">
+                                                                    Your brand kit is on the way — the HiddenGem team will add your colours, fonts and logo
+                                                                    files here once your Master Brand is in place.
+                                                                </p>
+                                                            </div>
+                                                        )}
 
                                                         {/* Team-only: draft the kit from the client's live site, then review. */}
                                                         {isTeam && !isLocked && (
@@ -5154,256 +5406,346 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                             </div>
                                                         )}
 
+                                                        {/* The kit composed — logo, heading, body and colours on one canvas, so the
+                                                            pieces below are seen as a brand before they're seen as parts. Live in edit
+                                                            mode too: it's the fastest way to judge a palette change. */}
+                                                        {!kitOnTheWay && (
+                                                            <div className="mt-8">
+                                                                <BrandPreview brand={content.brand} clientName={clientName} tagline={foundation.taglines[0]} />
+                                                            </div>
+                                                        )}
+
                                                         {/* Same numbered-document treatment as Master Brand and the Overview. */}
-                                                        <div className="mt-8 flex flex-col gap-8">
-                                                            <DocSection id="colors" label="Colors" icon={Palette}>
-                                                                <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                                                                    {content.brand.colors.map((color, i) => (
-                                                                        <div key={i} className="overflow-hidden rounded-xl ring-1 ring-secondary">
-                                                                            <div className="h-28" style={{ backgroundColor: color.hex }} />
-                                                                            <div className="p-3">
-                                                                                {isLocked ? (
-                                                                                    <>
-                                                                                        <p className="text-sm font-semibold text-primary">{color.name}</p>
-                                                                                        {/* The hex is the thing people actually come here for — one click
-                                                                                    beats selecting six characters by hand. */}
-                                                                                        <button
-                                                                                            type="button"
-                                                                                            onClick={() => copyHex(color.hex)}
-                                                                                            title="Copy hex"
-                                                                                            className="mt-0.5 font-mono text-xs text-tertiary uppercase transition duration-100 ease-linear hover:text-brand-secondary"
+                                                        {!kitOnTheWay && (
+                                                            <div className="mt-8 flex flex-col gap-8">
+                                                                <DocSection id="colors" label="Colors" icon={Palette}>
+                                                                    <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                                                                        {content.brand.colors.map((color, i) => {
+                                                                            const readable = readableTextOn(color.hex);
+                                                                            const rgb = rgbString(color.hex);
+                                                                            return (
+                                                                                <div key={i} className="overflow-hidden rounded-xl ring-1 ring-secondary">
+                                                                                    {/* "Aa" in whichever of white / near-black reads on this colour —
+                                                                                the answer to "what text goes on my primary?" at a glance. */}
+                                                                                    <div className="relative h-28" style={{ backgroundColor: color.hex }}>
+                                                                                        {readable && (
+                                                                                            <span
+                                                                                                className="absolute right-3 bottom-2 text-lg font-semibold"
+                                                                                                style={{ color: readable.text }}
+                                                                                                aria-hidden="true"
+                                                                                            >
+                                                                                                Aa
+                                                                                            </span>
+                                                                                        )}
+                                                                                    </div>
+                                                                                    <div className="p-3">
+                                                                                        {isLocked ? (
+                                                                                            <>
+                                                                                                <p className="text-sm font-semibold text-primary">
+                                                                                                    {color.name}
+                                                                                                </p>
+                                                                                                {/* The hex is the thing people actually come here for — one click
+                                                                                    beats selecting six characters by hand. RGB for the tools that
+                                                                                    want it (Canva, print). */}
+                                                                                                <button
+                                                                                                    type="button"
+                                                                                                    onClick={() => copyHex(color.hex)}
+                                                                                                    title="Copy hex"
+                                                                                                    className="mt-0.5 block font-mono text-xs text-tertiary uppercase transition duration-100 ease-linear hover:text-brand-secondary"
+                                                                                                >
+                                                                                                    {copiedHex === color.hex ? "Copied!" : color.hex}
+                                                                                                </button>
+                                                                                                {rgb && (
+                                                                                                    <button
+                                                                                                        type="button"
+                                                                                                        onClick={() => copyHex(rgb)}
+                                                                                                        title="Copy rgb()"
+                                                                                                        className="mt-0.5 block font-mono text-[11px] text-quaternary transition duration-100 ease-linear hover:text-brand-secondary"
+                                                                                                    >
+                                                                                                        {copiedHex === rgb ? "Copied!" : rgb}
+                                                                                                    </button>
+                                                                                                )}
+                                                                                                {readable && (
+                                                                                                    <p
+                                                                                                        className="mt-1.5 text-xs text-quaternary"
+                                                                                                        title={`${readable.ratio.toFixed(2)}:1 contrast with ${readable.light ? "white" : "dark"} text`}
+                                                                                                    >
+                                                                                                        {readable.light ? "White" : "Dark"} text ·{" "}
+                                                                                                        {wcagLabel(readable.ratio)}
+                                                                                                    </p>
+                                                                                                )}
+                                                                                            </>
+                                                                                        ) : (
+                                                                                            <div className="flex flex-col gap-1.5">
+                                                                                                <input
+                                                                                                    type="text"
+                                                                                                    placeholder="Name"
+                                                                                                    value={color.name}
+                                                                                                    onChange={(e) => updateColor(i, { name: e.target.value })}
+                                                                                                    className={editInput("px-2 py-1 text-xs")}
+                                                                                                />
+                                                                                                <div className="flex items-center gap-1">
+                                                                                                    {/* Native picker — no dependency, and it stops hand-typed hex typos. */}
+                                                                                                    <input
+                                                                                                        type="color"
+                                                                                                        aria-label={`${color.name || "Colour"} picker`}
+                                                                                                        value={
+                                                                                                            /^#[0-9a-f]{6}$/i.test(color.hex)
+                                                                                                                ? color.hex
+                                                                                                                : "#888888"
+                                                                                                        }
+                                                                                                        onChange={(e) =>
+                                                                                                            updateColor(i, { hex: e.target.value })
+                                                                                                        }
+                                                                                                        className="size-7 shrink-0 cursor-pointer rounded-md border border-secondary bg-transparent p-0.5"
+                                                                                                    />
+                                                                                                    <input
+                                                                                                        type="text"
+                                                                                                        placeholder="#000000"
+                                                                                                        value={color.hex}
+                                                                                                        onChange={(e) =>
+                                                                                                            updateColor(i, { hex: e.target.value })
+                                                                                                        }
+                                                                                                        className={editInput("px-2 py-1 font-mono text-xs")}
+                                                                                                    />
+                                                                                                </div>
+                                                                                                {/* Order matters: the first swatch is "primary" everywhere the
+                                                                                            kit is used, so it can be moved rather than deleted and retyped. */}
+                                                                                                <div className="flex items-center gap-1">
+                                                                                                    <button
+                                                                                                        type="button"
+                                                                                                        title="Move earlier"
+                                                                                                        disabled={i === 0}
+                                                                                                        onClick={() => moveColor(i, -1)}
+                                                                                                        className="flex size-7 items-center justify-center rounded-md text-fg-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-brand-secondary disabled:cursor-not-allowed disabled:opacity-50"
+                                                                                                    >
+                                                                                                        <ChevronLeft className="size-4" aria-hidden="true" />
+                                                                                                    </button>
+                                                                                                    <button
+                                                                                                        type="button"
+                                                                                                        title="Move later"
+                                                                                                        disabled={i === content.brand.colors.length - 1}
+                                                                                                        onClick={() => moveColor(i, 1)}
+                                                                                                        className="flex size-7 items-center justify-center rounded-md text-fg-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-brand-secondary disabled:cursor-not-allowed disabled:opacity-50"
+                                                                                                    >
+                                                                                                        <ChevronRight className="size-4" aria-hidden="true" />
+                                                                                                    </button>
+                                                                                                    {readable && (
+                                                                                                        <span className="min-w-0 flex-1 truncate text-[11px] text-quaternary">
+                                                                                                            {readable.light ? "White" : "Dark"} text ·{" "}
+                                                                                                            {wcagLabel(readable.ratio)}
+                                                                                                        </span>
+                                                                                                    )}
+                                                                                                    <button
+                                                                                                        type="button"
+                                                                                                        title="Remove color"
+                                                                                                        onClick={() =>
+                                                                                                            patchBrand({
+                                                                                                                colors: content.brand.colors.filter(
+                                                                                                                    (_, j) => j !== i,
+                                                                                                                ),
+                                                                                                            })
+                                                                                                        }
+                                                                                                        className={cx(removeButton, "ml-auto size-7")}
+                                                                                                    >
+                                                                                                        <Trash01 className="size-4" aria-hidden="true" />
+                                                                                                    </button>
+                                                                                                </div>
+                                                                                            </div>
+                                                                                        )}
+                                                                                    </div>
+                                                                                </div>
+                                                                            );
+                                                                        })}
+                                                                        {!isLocked && (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() =>
+                                                                                    patchBrand({
+                                                                                        colors: [
+                                                                                            ...content.brand.colors,
+                                                                                            { name: "New color", hex: "#888888" },
+                                                                                        ],
+                                                                                    })
+                                                                                }
+                                                                                className="flex min-h-32 flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-secondary text-sm font-medium text-tertiary transition duration-100 ease-linear hover:border-brand hover:text-brand-secondary"
+                                                                            >
+                                                                                <Plus className="size-5" aria-hidden="true" />
+                                                                                Add color
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+
+                                                                    {/* Tailwind-style shade scales, generated live from the swatches above. */}
+                                                                    {content.brand.colors.length > 0 && (
+                                                                        <div className="mt-8">
+                                                                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                                                                <p className="text-sm font-semibold text-primary">Shade scales</p>
+                                                                                <span className="text-xs text-quaternary">
+                                                                                    Generated from each color — click a shade to copy its hex
+                                                                                </span>
+                                                                            </div>
+                                                                            <div className="mt-3">
+                                                                                <ShadeScales
+                                                                                    colors={content.brand.colors}
+                                                                                    onRemove={
+                                                                                        isLocked
+                                                                                            ? undefined
+                                                                                            : (i) =>
+                                                                                                  patchBrand({
+                                                                                                      colors: content.brand.colors.filter((_, j) => j !== i),
+                                                                                                  })
+                                                                                    }
+                                                                                />
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                </DocSection>
+
+                                                                {/* ── Typography — the fonts, previewed in the typefaces themselves. ── */}
+                                                                <DocSection id="typography" label="Typography" icon={Type01}>
+                                                                    <TypographyCards
+                                                                        fonts={content.brand.fonts}
+                                                                        files={content.brand.font_files}
+                                                                        isLocked={isLocked}
+                                                                        onFonts={(v) => patchBrand({ fonts: v })}
+                                                                        onUpload={(role, file) => void onPickFontFile(role, file)}
+                                                                        onClearUpload={(role) =>
+                                                                            patchBrand({ font_files: { ...content.brand.font_files, [role]: undefined } })
+                                                                        }
+                                                                    />
+
+                                                                    {/* The Untitled UI type scale in the brand's own fonts, px + fluid clamp(). */}
+                                                                    {(content.brand.fonts.trim() ||
+                                                                        content.brand.font_files?.heading ||
+                                                                        content.brand.font_files?.body) && (
+                                                                        <div className="mt-8">
+                                                                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                                                                <p className="text-sm font-semibold text-primary">Type scale</p>
+                                                                                <span className="text-xs text-quaternary">
+                                                                                    Untitled UI scale · size / line-height · click the clamp() to copy
+                                                                                </span>
+                                                                            </div>
+                                                                            <div className="mt-2">
+                                                                                <TypeScale fonts={content.brand.fonts} files={content.brand.font_files} />
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                </DocSection>
+
+                                                                {/* ── Logo files ──
+                                                            Each mark previews on a light AND a dark tile so a white or
+                                                            transparent logo is actually visible on both grounds. Download is
+                                                            a plain <a download> on the data URL — no server round-trip, and
+                                                            a brand kit you can't download is decor. */}
+                                                                {(!!(content.brand.logos ?? []).length || !isLocked) && (
+                                                                    <DocSection
+                                                                        id="logos"
+                                                                        label="Logo files"
+                                                                        icon={Image01}
+                                                                        action={
+                                                                            <span className="text-xs text-quaternary">
+                                                                                SVG keeps its vector quality — PNG and JPG are compressed
+                                                                            </span>
+                                                                        }
+                                                                    >
+                                                                        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                                                                            {(content.brand.logos ?? []).map((logo) => (
+                                                                                <div key={logo.id} className="overflow-hidden rounded-xl ring-1 ring-secondary">
+                                                                                    {/* Fixed white / near-black tiles on purpose (not theme tokens):
+                                                                                the point is to prove the mark reads on both grounds. */}
+                                                                                    <div className="grid h-24 grid-cols-2">
+                                                                                        <div
+                                                                                            className="flex items-center justify-center p-3"
+                                                                                            style={{ background: "#FFFFFF" }}
                                                                                         >
-                                                                                            {copiedHex === color.hex ? "Copied!" : color.hex}
-                                                                                        </button>
-                                                                                    </>
-                                                                                ) : (
-                                                                                    <div className="flex flex-col gap-1.5">
-                                                                                        <input
-                                                                                            type="text"
-                                                                                            placeholder="Name"
-                                                                                            value={color.name}
-                                                                                            onChange={(e) => updateColor(i, { name: e.target.value })}
-                                                                                            className={editInput("px-2 py-1 text-xs")}
-                                                                                        />
-                                                                                        <div className="flex items-center gap-1">
-                                                                                            {/* Native picker — no dependency, and it stops hand-typed hex typos. */}
-                                                                                            <input
-                                                                                                type="color"
-                                                                                                aria-label={`${color.name || "Colour"} picker`}
-                                                                                                value={
-                                                                                                    /^#[0-9a-f]{6}$/i.test(color.hex) ? color.hex : "#888888"
-                                                                                                }
-                                                                                                onChange={(e) => updateColor(i, { hex: e.target.value })}
-                                                                                                className="size-7 shrink-0 cursor-pointer rounded-md border border-secondary bg-transparent p-0.5"
+                                                                                            <img
+                                                                                                src={logo.url}
+                                                                                                alt={logo.name}
+                                                                                                className="max-h-full max-w-full object-contain"
+                                                                                                draggable={false}
                                                                                             />
+                                                                                        </div>
+                                                                                        <div
+                                                                                            className="flex items-center justify-center p-3"
+                                                                                            style={{ background: "#0C111D" }}
+                                                                                        >
+                                                                                            <img
+                                                                                                src={logo.url}
+                                                                                                alt=""
+                                                                                                aria-hidden="true"
+                                                                                                className="max-h-full max-w-full object-contain"
+                                                                                                draggable={false}
+                                                                                            />
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <div className="flex items-center gap-1 p-3">
+                                                                                        {isLocked ? (
+                                                                                            <p className="min-w-0 flex-1 truncate text-sm font-medium text-secondary">
+                                                                                                {logo.name}
+                                                                                            </p>
+                                                                                        ) : (
                                                                                             <input
                                                                                                 type="text"
-                                                                                                placeholder="#000000"
-                                                                                                value={color.hex}
-                                                                                                onChange={(e) => updateColor(i, { hex: e.target.value })}
-                                                                                                className={editInput("px-2 py-1 font-mono text-xs")}
+                                                                                                placeholder="Logo name"
+                                                                                                value={logo.name}
+                                                                                                onChange={(e) =>
+                                                                                                    patchBrand({
+                                                                                                        logos: (content.brand.logos ?? []).map((x) =>
+                                                                                                            x.id === logo.id
+                                                                                                                ? { ...x, name: e.target.value }
+                                                                                                                : x,
+                                                                                                        ),
+                                                                                                    })
+                                                                                                }
+                                                                                                className={editInput("px-2 py-1 text-xs")}
                                                                                             />
+                                                                                        )}
+                                                                                        <a
+                                                                                            href={logo.url}
+                                                                                            download={logo.name || "logo"}
+                                                                                            title={`Download ${logo.name || "logo"}`}
+                                                                                            className="flex size-8 shrink-0 items-center justify-center rounded-lg text-fg-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-brand-secondary"
+                                                                                        >
+                                                                                            <Download01 className="size-4" aria-hidden="true" />
+                                                                                        </a>
+                                                                                        {!isLocked && (
                                                                                             <button
                                                                                                 type="button"
-                                                                                                title="Remove color"
+                                                                                                title="Remove logo"
                                                                                                 onClick={() =>
                                                                                                     patchBrand({
-                                                                                                        colors: content.brand.colors.filter((_, j) => j !== i),
+                                                                                                        logos: (content.brand.logos ?? []).filter(
+                                                                                                            (x) => x.id !== logo.id,
+                                                                                                        ),
                                                                                                     })
                                                                                                 }
                                                                                                 className={removeButton}
                                                                                             >
                                                                                                 <Trash01 className="size-4" aria-hidden="true" />
                                                                                             </button>
-                                                                                        </div>
-                                                                                    </div>
-                                                                                )}
-                                                                            </div>
-                                                                        </div>
-                                                                    ))}
-                                                                    {!isLocked && (
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={() =>
-                                                                                patchBrand({
-                                                                                    colors: [...content.brand.colors, { name: "New color", hex: "#888888" }],
-                                                                                })
-                                                                            }
-                                                                            className="flex min-h-32 flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-secondary text-sm font-medium text-tertiary transition duration-100 ease-linear hover:border-brand hover:text-brand-secondary"
-                                                                        >
-                                                                            <Plus className="size-5" aria-hidden="true" />
-                                                                            Add color
-                                                                        </button>
-                                                                    )}
-                                                                </div>
-
-                                                                {/* Tailwind-style shade scales, generated live from the swatches above. */}
-                                                                {content.brand.colors.length > 0 && (
-                                                                    <div className="mt-8">
-                                                                        <div className="flex flex-wrap items-center justify-between gap-2">
-                                                                            <p className="text-sm font-semibold text-primary">Shade scales</p>
-                                                                            <span className="text-xs text-quaternary">
-                                                                                Generated from each color — click a shade to copy its hex
-                                                                            </span>
-                                                                        </div>
-                                                                        <div className="mt-3">
-                                                                            <ShadeScales
-                                                                                colors={content.brand.colors}
-                                                                                onRemove={
-                                                                                    isLocked
-                                                                                        ? undefined
-                                                                                        : (i) =>
-                                                                                              patchBrand({
-                                                                                                  colors: content.brand.colors.filter((_, j) => j !== i),
-                                                                                              })
-                                                                                }
-                                                                            />
-                                                                        </div>
-                                                                    </div>
-                                                                )}
-                                                            </DocSection>
-
-                                                            {/* ── Typography — the fonts, previewed in the typefaces themselves. ── */}
-                                                            <DocSection id="typography" label="Typography" icon={Type01}>
-                                                                <TypographyCards
-                                                                    fonts={content.brand.fonts}
-                                                                    files={content.brand.font_files}
-                                                                    isLocked={isLocked}
-                                                                    onFonts={(v) => patchBrand({ fonts: v })}
-                                                                    onUpload={(role, file) => void onPickFontFile(role, file)}
-                                                                    onClearUpload={(role) =>
-                                                                        patchBrand({ font_files: { ...content.brand.font_files, [role]: undefined } })
-                                                                    }
-                                                                />
-
-                                                                {/* The Untitled UI type scale in the brand's own fonts, px + fluid clamp(). */}
-                                                                {(content.brand.fonts.trim() ||
-                                                                    content.brand.font_files?.heading ||
-                                                                    content.brand.font_files?.body) && (
-                                                                    <div className="mt-8">
-                                                                        <div className="flex flex-wrap items-center justify-between gap-2">
-                                                                            <p className="text-sm font-semibold text-primary">Type scale</p>
-                                                                            <span className="text-xs text-quaternary">
-                                                                                Untitled UI scale · size / line-height · click the clamp() to copy
-                                                                            </span>
-                                                                        </div>
-                                                                        <div className="mt-2">
-                                                                            <TypeScale fonts={content.brand.fonts} files={content.brand.font_files} />
-                                                                        </div>
-                                                                    </div>
-                                                                )}
-                                                            </DocSection>
-
-                                                            {/* ── Logo files ──
-                                                            Each mark previews on a light AND a dark tile so a white or
-                                                            transparent logo is actually visible on both grounds. Download is
-                                                            a plain <a download> on the data URL — no server round-trip, and
-                                                            a brand kit you can't download is decor. */}
-                                                            {(!!(content.brand.logos ?? []).length || !isLocked) && (
-                                                                <DocSection
-                                                                    id="logos"
-                                                                    label="Logo files"
-                                                                    icon={Image01}
-                                                                    action={
-                                                                        <span className="text-xs text-quaternary">
-                                                                            SVG keeps its vector quality — PNG and JPG are compressed
-                                                                        </span>
-                                                                    }
-                                                                >
-                                                                    <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                                                                        {(content.brand.logos ?? []).map((logo) => (
-                                                                            <div key={logo.id} className="overflow-hidden rounded-xl ring-1 ring-secondary">
-                                                                                {/* Fixed white / near-black tiles on purpose (not theme tokens):
-                                                                                the point is to prove the mark reads on both grounds. */}
-                                                                                <div className="grid h-24 grid-cols-2">
-                                                                                    <div
-                                                                                        className="flex items-center justify-center p-3"
-                                                                                        style={{ background: "#FFFFFF" }}
-                                                                                    >
-                                                                                        <img
-                                                                                            src={logo.url}
-                                                                                            alt={logo.name}
-                                                                                            className="max-h-full max-w-full object-contain"
-                                                                                            draggable={false}
-                                                                                        />
-                                                                                    </div>
-                                                                                    <div
-                                                                                        className="flex items-center justify-center p-3"
-                                                                                        style={{ background: "#0C111D" }}
-                                                                                    >
-                                                                                        <img
-                                                                                            src={logo.url}
-                                                                                            alt=""
-                                                                                            aria-hidden="true"
-                                                                                            className="max-h-full max-w-full object-contain"
-                                                                                            draggable={false}
-                                                                                        />
+                                                                                        )}
                                                                                     </div>
                                                                                 </div>
-                                                                                <div className="flex items-center gap-1 p-3">
-                                                                                    {isLocked ? (
-                                                                                        <p className="min-w-0 flex-1 truncate text-sm font-medium text-secondary">
-                                                                                            {logo.name}
-                                                                                        </p>
-                                                                                    ) : (
-                                                                                        <input
-                                                                                            type="text"
-                                                                                            placeholder="Logo name"
-                                                                                            value={logo.name}
-                                                                                            onChange={(e) =>
-                                                                                                patchBrand({
-                                                                                                    logos: (content.brand.logos ?? []).map((x) =>
-                                                                                                        x.id === logo.id ? { ...x, name: e.target.value } : x,
-                                                                                                    ),
-                                                                                                })
-                                                                                            }
-                                                                                            className={editInput("px-2 py-1 text-xs")}
-                                                                                        />
-                                                                                    )}
-                                                                                    <a
-                                                                                        href={logo.url}
-                                                                                        download={logo.name || "logo"}
-                                                                                        title={`Download ${logo.name || "logo"}`}
-                                                                                        className="flex size-8 shrink-0 items-center justify-center rounded-lg text-fg-quaternary transition duration-100 ease-linear hover:bg-secondary hover:text-brand-secondary"
-                                                                                    >
-                                                                                        <Download01 className="size-4" aria-hidden="true" />
-                                                                                    </a>
-                                                                                    {!isLocked && (
-                                                                                        <button
-                                                                                            type="button"
-                                                                                            title="Remove logo"
-                                                                                            onClick={() =>
-                                                                                                patchBrand({
-                                                                                                    logos: (content.brand.logos ?? []).filter(
-                                                                                                        (x) => x.id !== logo.id,
-                                                                                                    ),
-                                                                                                })
-                                                                                            }
-                                                                                            className={removeButton}
-                                                                                        >
-                                                                                            <Trash01 className="size-4" aria-hidden="true" />
-                                                                                        </button>
-                                                                                    )}
-                                                                                </div>
-                                                                            </div>
-                                                                        ))}
-                                                                        {!isLocked && (
-                                                                            <label className="flex min-h-32 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-secondary text-sm font-medium text-tertiary transition duration-100 ease-linear hover:border-brand hover:text-brand-secondary">
-                                                                                <input
-                                                                                    type="file"
-                                                                                    accept="image/svg+xml,image/png,image/jpeg,image/webp"
-                                                                                    multiple
-                                                                                    className="hidden"
-                                                                                    onChange={(e) => void onPickLogos(e)}
-                                                                                />
-                                                                                <UploadCloud02 className="size-5" aria-hidden="true" />
-                                                                                Upload logos
-                                                                            </label>
-                                                                        )}
-                                                                    </div>
-                                                                </DocSection>
-                                                            )}
-                                                        </div>
+                                                                            ))}
+                                                                            {!isLocked && (
+                                                                                <label className="flex min-h-32 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-secondary text-sm font-medium text-tertiary transition duration-100 ease-linear hover:border-brand hover:text-brand-secondary">
+                                                                                    <input
+                                                                                        type="file"
+                                                                                        accept="image/svg+xml,image/png,image/jpeg,image/webp"
+                                                                                        multiple
+                                                                                        className="hidden"
+                                                                                        onChange={(e) => void onPickLogos(e)}
+                                                                                    />
+                                                                                    <UploadCloud02 className="size-5" aria-hidden="true" />
+                                                                                    Upload logos
+                                                                                </label>
+                                                                            )}
+                                                                        </div>
+                                                                    </DocSection>
+                                                                )}
+                                                            </div>
+                                                        )}
                                                     </Reveal>
                                                 )}
 

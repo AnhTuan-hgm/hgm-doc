@@ -1,19 +1,29 @@
 import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import { Check, Copy01, Image01, Mail01, Monitor01, Phone01, SearchSm, Settings01, XClose } from "@untitledui/icons";
 import { AnimatePresence, motion } from "motion/react";
-import { Check, Copy01, Image01, Monitor01, Phone01, SearchSm, Settings01, XClose } from "@untitledui/icons";
+import { Button } from "@/components/base/buttons/button";
 import { supabase } from "@/lib/supabase";
+import { type Suggestion, flowFeedbackSlot } from "@/pages/client/dashboard/suggestions-model";
 import { cx } from "@/utils/cx";
 
 /**
- * Welcome Email Flow builder — an AM tool living inside each client dashboard
- * (side-menu section). Three emails (Promotion → Reminder → Last Chance) built
- * from the Canva template structure (2026-07-03). Persists to welcome_flows.
+ * Welcome Email Flow — the nine-email welcome sequence inside each client
+ * dashboard (side-menu section). The nine steps are fixed (`FLOW_STEPS`, E1
+ * Welcome → E9 Concierge) and each slot shows whichever finished email exists
+ * for it: pasted HTML, then Pooja's finished email from `email_wf_emails` (her
+ * `week` is the step), then — for the first three slots only — the built-in
+ * editable template from the original Canva structure (2026-07-03). A slot
+ * with none of those shows a "not ready yet" card. Persists to welcome_flows.
+ *
+ * Mobile (390px) and desktop (600px) previews render side by side, each under
+ * an inbox-style header with the subject line and preview text (2026-09-10).
  *
  * Editing UX (WYSIWYG, 2026-07-03): the email preview IS the editor —
  * double-click any text to edit it in place; buttons and images carry a ✎ pen
  * that opens a small popover with the name + link + Save; list sections get
  * inline “+ Add” / “×” controls. No forms, no panels. The HTML copied into
- * GoHighLevel is always rendered clean (no editing chrome).
+ * GoHighLevel is always rendered clean (no editing chrome). Both previews are
+ * editable; a text edit in one is mirrored into the other without a reload.
  */
 
 /* ── Types ───────────────────────────────────────────────────────── */
@@ -51,6 +61,37 @@ export interface WelcomeFlowData {
      *  the client approves is exactly what lands in GHL. Optional: older rows predate it. */
     customHtml?: (string | null)[];
 }
+
+/* ── The nine steps ──────────────────────────────────────────────── */
+
+/** The welcome flow's nine emails, in send order. Pooja's pipeline stamps each
+ *  finished email with its `week` (1–9); the dashboard shows that step as E1–E9.
+ *  The names match her template set (31–39), so the tabs read the same here as
+ *  in her preview. */
+export const FLOW_STEPS = [
+    { key: "welcome", name: "Welcome" },
+    { key: "itinerary", name: "Itinerary" },
+    { key: "reviews", name: "Reviews" },
+    { key: "destination", name: "Destination" },
+    { key: "guest-story", name: "Guest story" },
+    { key: "book-direct", name: "Book direct" },
+    { key: "midweek", name: "Midweek" },
+    { key: "booking-nudge", name: "Booking nudge" },
+    { key: "concierge", name: "Concierge" },
+] as const;
+
+/** "E2 Itinerary" — the tab label for a 0-based slot. */
+export const stepLabel = (slot: number) => `E${slot + 1} ${FLOW_STEPS[slot]?.name ?? ""}`.trim();
+
+/** Subject line of a finished HTML email, read from its <title> (entities decoded
+ *  without executing anything). Empty when the file has none. */
+const htmlTitle = (html: string) => {
+    const m = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html);
+    if (!m) return "";
+    const t = document.createElement("textarea");
+    t.innerHTML = m[1];
+    return t.value.replace(/\s+/g, " ").trim();
+};
 
 /* ── Seed (Lagom Retreat example from the Canva file, with placeholders) ── */
 
@@ -95,7 +136,7 @@ const seedFlow = (clientName: string): WelcomeFlowData => {
                 personal: {
                     image_url: "",
                     body:
-                        "Escape the noise and embrace the art of \"just right\". Whether you are seeking a romantic reset, a solo recharge, " +
+                        'Escape the noise and embrace the art of "just right". Whether you are seeking a romantic reset, a solo recharge, ' +
                         `or a place to unplug with family, ${name} is your perfect space to rest and reconnect.\n\n` +
                         "Book now and SAVE $150 on your stay of 3 nights or more — use code WELCOME150 at checkout.\n\nWe can't wait to welcome you.",
                     signature: `Warmly,\nThe ${name} Team`,
@@ -122,9 +163,33 @@ const seedFlow = (clientName: string): WelcomeFlowData => {
                     heading: "Explore Our Cabins",
                     sub: "Explore our handpicked selection of top-tier properties available now.",
                     items: [
-                        { image_url: "", image_link: "", title: "Listing/Category 1", subheading: "Sub heading — e.g. guest no., total listings", text: "Short description of this listing or category.", cta_text: "View Listings →", cta_url: "" },
-                        { image_url: "", image_link: "", title: "Listing/Category 2", subheading: "Sub heading — e.g. guest no., total listings", text: "Short description of this listing or category.", cta_text: "View Listings →", cta_url: "" },
-                        { image_url: "", image_link: "", title: "Listing/Category 3", subheading: "Sub heading — e.g. guest no., total listings", text: "Short description of this listing or category.", cta_text: "View Listings →", cta_url: "" },
+                        {
+                            image_url: "",
+                            image_link: "",
+                            title: "Listing/Category 1",
+                            subheading: "Sub heading — e.g. guest no., total listings",
+                            text: "Short description of this listing or category.",
+                            cta_text: "View Listings →",
+                            cta_url: "",
+                        },
+                        {
+                            image_url: "",
+                            image_link: "",
+                            title: "Listing/Category 2",
+                            subheading: "Sub heading — e.g. guest no., total listings",
+                            text: "Short description of this listing or category.",
+                            cta_text: "View Listings →",
+                            cta_url: "",
+                        },
+                        {
+                            image_url: "",
+                            image_link: "",
+                            title: "Listing/Category 3",
+                            subheading: "Sub heading — e.g. guest no., total listings",
+                            text: "Short description of this listing or category.",
+                            cta_text: "View Listings →",
+                            cta_url: "",
+                        },
                     ],
                 },
             },
@@ -147,8 +212,18 @@ const seedFlow = (clientName: string): WelcomeFlowData => {
                     heading: "Hear from Our Guests",
                     sub: `Don't just take our word for it. See what our guests are saying about their escape with ${name}.`,
                     items: [
-                        { image_url: "", quote: "The Stargazer was beautifully designed with thoughtful touches. It was the ultimate lone getaway to relax and recharge.", guest: "Guest Name", property: "Property name" },
-                        { image_url: "", quote: "The Stargazer was beautifully designed with thoughtful touches. I am looking forward to making this a yearly refresh.", guest: "Guest Name", property: "Property name" },
+                        {
+                            image_url: "",
+                            quote: "The Stargazer was beautifully designed with thoughtful touches. It was the ultimate lone getaway to relax and recharge.",
+                            guest: "Guest Name",
+                            property: "Property name",
+                        },
+                        {
+                            image_url: "",
+                            quote: "The Stargazer was beautifully designed with thoughtful touches. I am looking forward to making this a yearly refresh.",
+                            guest: "Guest Name",
+                            property: "Property name",
+                        },
                     ],
                 },
                 final_cta: { heading: "Now, it's your turn to make memories.", cta_text: "Redeem [discount] OFF", cta_url: "" },
@@ -159,8 +234,7 @@ const seedFlow = (clientName: string): WelcomeFlowData => {
 
 /* ── Email HTML renderer (email-safe tables + inline styles) ─────── */
 
-const esc = (s: string) =>
-    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const nl2br = (s: string) => esc(s).replace(/\n/g, "<br/>");
 /** Only sane link schemes make it into hrefs (incl. the HTML exported to GHL). */
 const safeHref = (u: string) => {
@@ -287,7 +361,15 @@ export function emailHtml(email: FlowEmail, settings: FlowSettings, interactive 
                 ),
             )
             .join("");
-        parts.push(card(pill(f.pill, "features.pill") + h2(f.heading, "features.heading") + subTxt(f.sub, "features.sub") + rows + addBtn("features.items", "Add amenity")));
+        parts.push(
+            card(
+                pill(f.pill, "features.pill") +
+                    h2(f.heading, "features.heading") +
+                    subTxt(f.sub, "features.sub") +
+                    rows +
+                    addBtn("features.items", "Add amenity"),
+            ),
+        );
     }
 
     // Listings (email 2)
@@ -308,7 +390,15 @@ export function emailHtml(email: FlowEmail, settings: FlowSettings, interactive 
                 ),
             )
             .join("");
-        parts.push(card(pill(l.pill, "listings.pill") + h2(l.heading, "listings.heading") + subTxt(l.sub, "listings.sub") + cards + addBtn("listings.items", "Add listing")));
+        parts.push(
+            card(
+                pill(l.pill, "listings.pill") +
+                    h2(l.heading, "listings.heading") +
+                    subTxt(l.sub, "listings.sub") +
+                    cards +
+                    addBtn("listings.items", "Add listing"),
+            ),
+        );
     }
 
     // Personal touch (email 1)
@@ -342,7 +432,15 @@ export function emailHtml(email: FlowEmail, settings: FlowSettings, interactive 
                 ),
             )
             .join("");
-        parts.push(card(pill(t.pill, "testimonials.pill") + h2(t.heading, "testimonials.heading") + subTxt(t.sub, "testimonials.sub") + cards + addBtn("testimonials.items", "Add review")));
+        parts.push(
+            card(
+                pill(t.pill, "testimonials.pill") +
+                    h2(t.heading, "testimonials.heading") +
+                    subTxt(t.sub, "testimonials.sub") +
+                    cards +
+                    addBtn("testimonials.items", "Add review"),
+            ),
+        );
     }
 
     // Final CTA (email 3)
@@ -395,7 +493,13 @@ document.addEventListener('blur',function(e){
   send({hgm:'text',path:el.getAttribute('data-edit'),ml:el.hasAttribute('data-edit-ml'),value:el.innerText});
 },true);
 var st;window.addEventListener('scroll',function(){clearTimeout(st);st=setTimeout(function(){send({hgm:'scroll',y:window.scrollY})},80)});
-window.addEventListener('message',function(e){if(e.data&&e.data.hgm==='scrollTo'){window.scrollTo(0,e.data.y)}});
+window.addEventListener('message',function(e){var d=e.data;if(!d)return;
+  if(d.hgm==='scrollTo'){window.scrollTo(0,d.y);return;}
+  if(d.hgm==='setText'&&typeof d.path==='string'&&/^[a-zA-Z0-9_.]+$/.test(d.path)){
+    var el=document.querySelector('[data-edit="'+d.path+'"]');
+    if(el&&el.getAttribute('contenteditable')!=='true'){el.innerText=d.value||'';}
+  }
+});
 })();</script>`
         : "";
 
@@ -414,8 +518,7 @@ window.addEventListener('message',function(e){if(e.data&&e.data.hgm==='scrollTo'
 // Paths come from postMessage — whitelist segments hard (no __proto__/constructor/etc).
 const SAFE_SEG = /^(?!__proto__$|constructor$|prototype$)[a-zA-Z0-9_]+$/;
 const safePath = (path: string) => path.length > 0 && path.split(".").every((k) => SAFE_SEG.test(k));
-const getByPath = (obj: any, path: string): any =>
-    safePath(path) ? path.split(".").reduce((o, k) => (o == null ? o : o[k]), obj) : undefined;
+const getByPath = (obj: any, path: string): any => (safePath(path) ? path.split(".").reduce((o, k) => (o == null ? o : o[k]), obj) : undefined);
 const setByPath = (obj: any, path: string, val: unknown) => {
     if (!safePath(path)) return;
     const keys = path.split(".");
@@ -427,18 +530,59 @@ const setByPath = (obj: any, path: string, val: unknown) => {
 
 const NEW_ITEMS: Record<string, () => unknown> = {
     "features.items": () => ({ image_url: "", image_link: "", heading: "New amenity" }),
-    "listings.items": () => ({ image_url: "", image_link: "", title: "New listing", subheading: "", text: "Short description.", cta_text: "View Listings →", cta_url: "" }),
+    "listings.items": () => ({
+        image_url: "",
+        image_link: "",
+        title: "New listing",
+        subheading: "",
+        text: "Short description.",
+        cta_text: "View Listings →",
+        cta_url: "",
+    }),
     "testimonials.items": () => ({ image_url: "", quote: "New review", guest: "Guest Name", property: "Property name" }),
 };
 
 /* ── Small primitives ────────────────────────────────────────────── */
+
+/* ── Client feedback ─────────────────────────────────────────────── */
+
+/**
+ * What the dashboard page hands this section so a client can comment on an email and
+ * the team can read and close the comment. Rows are dashboard_suggestions entries
+ * keyed "welcomeFlow.{slot}" (see suggestions-model.ts); the page owns the fetching
+ * and every write, this section only renders and calls back.
+ */
+export interface FlowFeedbackProps {
+    /** "client" = may send; "review" = team reads and resolves; "off" = nothing shown. */
+    mode: "off" | "client" | "review";
+    /** Every feedback row for this dashboard, newest first, pending and resolved alike. */
+    items: Suggestion[];
+    /** The address a new comment is stamped with; empty means the viewer can't send. */
+    author: string;
+    /** Sends (or replaces) the author's comment on `slot`; `subject` is what they were looking at. */
+    send: (slot: number, text: string, subject: string) => Promise<void>;
+    withdraw: (s: Suggestion) => Promise<void>;
+    /** "accepted" reads as done, "declined" as dismissed — nothing is applied anywhere. */
+    resolve: (s: Suggestion, status: "accepted" | "declined") => Promise<void>;
+}
+
+const shortDate = (iso: string) => {
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+};
+
+/** The two previews, in display order — mobile first. */
+const DEVICES = [
+    { id: "mobile", label: "Mobile", width: 390, icon: Phone01 },
+    { id: "desktop", label: "Desktop", width: 600, icon: Monitor01 },
+] as const;
 
 const inputCls =
     "w-full rounded-lg border border-secondary bg-primary px-2.5 py-1.5 text-sm text-primary placeholder:text-placeholder outline-none transition duration-100 ease-linear focus:border-brand focus:ring-1 focus:ring-brand";
 
 const Field = ({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) => (
     <label className="block">
-        <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-quaternary">{label}</span>
+        <span className="mb-1 block text-[11px] font-semibold tracking-wide text-quaternary uppercase">{label}</span>
         <input type="text" value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} className={inputCls} />
     </label>
 );
@@ -462,15 +606,17 @@ export const WelcomeFlowSection = ({
     clientName,
     isLocked,
     isTemplate,
+    feedback,
 }: {
     slug?: string;
     clientName: string;
     isLocked: boolean;
     isTemplate: boolean;
+    /** Client feedback wiring — omit (or mode "off") and the section shows no feedback UI. */
+    feedback?: FlowFeedbackProps;
 }) => {
     const [flow, setFlow] = useState<WelcomeFlowData>(() => seedFlow(clientName));
     const [tab, setTab] = useState(0);
-    const [device, setDevice] = useState<"mobile" | "desktop">("mobile");
     const [copied, setCopied] = useState(false);
     const [penPop, setPenPop] = useState<PenState | null>(null);
     const [brandOpen, setBrandOpen] = useState(false);
@@ -488,7 +634,11 @@ export const WelcomeFlowSection = ({
     // in place inside the iframe and only sync state — no reload, no flicker.
     const [rev, setRev] = useState(0);
     const hydratedRef = useRef(false);
-    const iframeRef = useRef<HTMLIFrameElement | null>(null);
+    // Two previews of the same document — mobile (390) and desktop (600) — both
+    // editable. Messages are matched to whichever frame sent them.
+    const mobileRef = useRef<HTMLIFrameElement | null>(null);
+    const desktopRef = useRef<HTMLIFrameElement | null>(null);
+    const frames = () => [mobileRef.current, desktopRef.current].filter((f): f is HTMLIFrameElement => !!f);
     const previewWrapRef = useRef<HTMLDivElement | null>(null);
     const scrollYRef = useRef(0);
     const flowRef = useRef(flow);
@@ -518,25 +668,27 @@ export const WelcomeFlowSection = ({
             });
     }, [slug, isTemplate]);
 
-    /** Pooja's finished emails, straight from the email_wf_emails table — keyed by slot
-     *  (her position 1–9 → slot 0–8). Read-only here: her pipeline owns those rows, so
-     *  fixes happen there, not in this editor. Matched by client name (case-insensitive)
-     *  because her table has no dashboard slug. */
+    /** Pooja's finished emails, straight from the email_wf_emails table — keyed by slot.
+     *  Her `week` (1–9) is the step in the flow, so it maps to slot 0–8; `position` is
+     *  the fallback for rows that predate it (in practice it is always 1). Read-only
+     *  here: her pipeline owns those rows, so fixes happen there, not in this editor.
+     *  Matched by client name (case-insensitive) because her table has no dashboard
+     *  slug. Rows arrive oldest-first so a regenerated email replaces the earlier one. */
     const [dbEmails, setDbEmails] = useState<Record<number, { html: string; subject: string; preview: string }>>({});
     useEffect(() => {
         const name = clientName.trim();
         if (!name || isTemplate) return;
         supabase
             .from("email_wf_emails")
-            .select("position, subject_line, preview_text, rendered_html")
+            .select("position, week, subject_line, preview_text, rendered_html")
             .ilike("client_name", name)
-            .order("position")
+            .order("updated_at", { ascending: true })
             .then(({ data, error }) => {
                 if (error || !data?.length) return;
                 const next: Record<number, { html: string; subject: string; preview: string }> = {};
                 for (const r of data) {
-                    const slot = Number(r.position) - 1;
-                    if (slot >= 0 && slot < 9 && r.rendered_html) {
+                    const slot = Number(r.week ?? r.position) - 1;
+                    if (slot >= 0 && slot < FLOW_STEPS.length && r.rendered_html) {
                         next[slot] = { html: r.rendered_html, subject: r.subject_line ?? "", preview: r.preview_text ?? "" };
                     }
                 }
@@ -573,8 +725,19 @@ export const WelcomeFlowSection = ({
     // write into the wrong email — we resolve the target by key, not by tab.
     useEffect(() => {
         const onMsg = (e: MessageEvent) => {
-            if (e.source !== iframeRef.current?.contentWindow) return;
-            const m = e.data as { hgm?: string; k?: string; path?: string; value?: string; ml?: boolean; kind?: string; haslink?: boolean; x?: number; y?: number };
+            const src = frames().find((f) => f.contentWindow === e.source);
+            if (!src) return;
+            const m = e.data as {
+                hgm?: string;
+                k?: string;
+                path?: string;
+                value?: string;
+                ml?: boolean;
+                kind?: string;
+                haslink?: boolean;
+                x?: number;
+                y?: number;
+            };
             if (!m?.hgm) return;
             const emailIdx = flowRef.current.emails.findIndex((em) => em.key === m.k);
 
@@ -594,6 +757,10 @@ export const WelcomeFlowSection = ({
                 const raw = m.value ?? "";
                 const value = m.ml ? raw.replace(/\n+$/, "") : raw.replace(/\s*\n\s*/g, " ").trim();
                 patch((d) => setByPath(d.emails[emailIdx], m.path!, value));
+                // Mirror the edit into the other preview so both frames agree without a reload.
+                if (safePath(m.path)) {
+                    for (const f of frames()) if (f !== src) f.contentWindow?.postMessage({ hgm: "setText", path: m.path, value }, "*");
+                }
                 return;
             }
             if (m.hgm === "remove" && m.path) {
@@ -629,10 +796,11 @@ export const WelcomeFlowSection = ({
                     a = obj?.image_url ?? "";
                     b = obj?.image_link ?? "";
                 }
-                const ifr = iframeRef.current;
                 const wrap = previewWrapRef.current;
-                const rawX = (ifr?.offsetLeft ?? 0) + (m.x ?? 0) - 130;
-                const rawY = (ifr?.offsetTop ?? 0) + (m.y ?? 0) + 8;
+                // The frame's offsets are relative to the preview area (its offsetParent),
+                // so the popover lands under the pen in whichever frame was clicked.
+                const rawX = src.offsetLeft + (m.x ?? 0) - 130;
+                const rawY = src.offsetTop + (m.y ?? 0) + 8;
                 // Real clamps: keep the ~288px-wide popover inside the preview area.
                 const maxX = (wrap?.clientWidth ?? 800) - 300;
                 const maxY = (wrap?.clientHeight ?? 800) - 290;
@@ -712,20 +880,66 @@ export const WelcomeFlowSection = ({
 
     const customs = flow.customHtml ?? [];
     const dbEmail = dbEmails[tab];
-    /** Which Email tabs exist: the three built-in slots, plus any slot holding a
-     *  finished email — an uploaded HTML file or a row from Pooja's table (1–9). */
-    const slots = Array.from({ length: 9 }, (_, i) => i).filter((i) => i < flow.emails.length || !!customs[i] || !!dbEmails[i]);
+    /** The built-in editable template for this slot — only the first three have one. */
+    const builtIn: FlowEmail | undefined = flow.emails[tab];
+    /** What fills this step, by precedence: pasted HTML → Pooja's finished email →
+     *  built-in template → nothing yet. */
+    const source: "pasted" | "finished" | "template" | "empty" = customs[tab] ? "pasted" : dbEmail ? "finished" : builtIn ? "template" : "empty";
     /** The finished HTML for this tab; an uploaded file wins over the table row. */
     const custom = customs[tab] || dbEmail?.html || null;
-    const email = flow.emails[tab] ?? flow.emails[0];
+    const hasContent = source !== "empty";
+    /** Steps that hold a finished email (Pooja's or pasted) — the flow's real progress. */
+    const finishedCount = FLOW_STEPS.filter((_, i) => !!customs[i] || !!dbEmails[i]).length;
+    /** Inbox header — what the recipient sees before opening. */
+    const subject = source === "pasted" ? htmlTitle(customs[tab]!) : source === "finished" ? dbEmail!.subject : (builtIn?.subject ?? "");
+    const previewText = source === "finished" ? dbEmail!.preview : "";
+
+    /* ── Client feedback on this step ── */
+    const fb = feedback && feedback.mode !== "off" ? feedback : null;
+    const feedbackFor = (slot: number) => (fb?.items ?? []).filter((s) => flowFeedbackSlot(s.field_key) === slot);
+    const hasPendingFeedback = (slot: number) => feedbackFor(slot).some((s) => s.status === "pending");
+    const fbPending = feedbackFor(tab).filter((s) => s.status === "pending");
+    /** The viewer's own open comment on this step — the composer edits it in place. */
+    const fbMine = fb ? fbPending.find((s) => s.suggested_by === fb.author) : undefined;
+    /** The viewer's most recent closed comment here, for the "what happened" note. */
+    const fbResolved = fb ? feedbackFor(tab).find((s) => s.status !== "pending" && s.suggested_by === fb.author) : undefined;
+    const [fbText, setFbText] = useState("");
+    const [fbState, setFbState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+    const [fbError, setFbError] = useState("");
+    // Switching steps clears the composer's status; the text tracks the open comment,
+    // which also changes right after a send (the refresh brings the new row back) — that
+    // must not wipe the "Sent" confirmation, so the two are separate effects.
+    useEffect(() => {
+        setFbState("idle");
+        setFbError("");
+    }, [tab]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    useEffect(() => {
+        setFbText(fbMine?.suggested_value ?? "");
+    }, [tab, fbMine?.id]);
+    const sendFeedback = async () => {
+        const text = fbText.trim();
+        if (!fb || !text) return;
+        setFbState("sending");
+        setFbError("");
+        try {
+            await fb.send(tab, text, subject);
+            setFbState("sent");
+            window.setTimeout(() => setFbState((s) => (s === "sent" ? "idle" : s)), 6000);
+        } catch (err) {
+            setFbError(err instanceof Error ? err.message : "Something went wrong. Nothing was sent.");
+            setFbState("error");
+        }
+    };
     // Recompute only on tab switch / structural change / lock toggle — inline text
     // edits keep the iframe document alive so typing never flickers. dbEmails isn't a
     // dep because loading it bumps rev.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    const previewHtml = useMemo(() => {
+    const previewHtml = useMemo((): string | null => {
         const c = (flowRef.current.customHtml ?? [])[tab] || dbEmails[tab]?.html;
         if (c) return c;
-        return emailHtml(flowRef.current.emails[tab] ?? flowRef.current.emails[0], flowRef.current.settings, !isLocked);
+        const em = flowRef.current.emails[tab];
+        return em ? emailHtml(em, flowRef.current.settings, !isLocked) : null;
     }, [tab, rev, isLocked]);
 
     /** Store (or clear) a finished HTML file for a slot; trailing empty slots are
@@ -763,12 +977,16 @@ export const WelcomeFlowSection = ({
     };
 
     const restoreScroll = () => {
-        const win = iframeRef.current?.contentWindow;
-        if (win && !isLocked) setTimeout(() => win.postMessage({ hgm: "scrollTo", y: scrollYRef.current }, "*"), 30);
+        if (isLocked) return;
+        setTimeout(() => {
+            for (const f of frames()) f.contentWindow?.postMessage({ hgm: "scrollTo", y: scrollYRef.current }, "*");
+        }, 30);
     };
 
     const copyHtml = () => {
-        navigator.clipboard.writeText(custom ?? emailHtml(email, flow.settings)).then(() => {
+        const html = custom ?? (builtIn ? emailHtml(builtIn, flow.settings) : "");
+        if (!html) return;
+        navigator.clipboard.writeText(html).then(() => {
             setCopied(true);
             setTimeout(() => setCopied(false), 1800);
         });
@@ -787,53 +1005,71 @@ export const WelcomeFlowSection = ({
             <div>
                 <h2 className="text-display-xs font-semibold text-primary md:text-display-sm">Welcome Email Flow</h2>
                 <p className="mt-1.5 text-md text-tertiary">
-                    {slots.length === 3
-                        ? `Three emails — Promotion → Reminder → Last Chance — sent ${flow.waits[0] || "1 day"} apart. Copy each finished email into GoHighLevel.`
-                        : `${slots.length} emails, designed and delivered as finished HTML. Review each one, then copy it into GoHighLevel.`}
+                    Nine emails, one a week from the day a lead signs up. Review each one, then copy it into GoHighLevel.
+                    {finishedCount > 0 && finishedCount < FLOW_STEPS.length && ` ${finishedCount} of ${FLOW_STEPS.length} are finished so far.`}
                 </p>
             </div>
 
-            {/* Email tabs — the built-in three plus any slot holding a finished HTML file. */}
+            {/* Step tabs — always all nine. A step with nothing in it yet is drawn dashed. */}
             <div className="mt-6 flex flex-wrap items-center gap-2">
-                {slots.map((i) => (
-                    <button
-                        key={i}
-                        type="button"
-                        onClick={() => {
-                            setTab(i);
-                            scrollYRef.current = 0;
-                            setPenPop(null);
-                        }}
-                        className={cx(
-                            "rounded-lg px-3.5 py-2 text-sm font-semibold transition duration-100 ease-linear",
-                            tab === i ? "bg-brand-solid text-white" : "bg-primary text-secondary ring-1 ring-secondary hover:bg-secondary_hover",
-                        )}
-                    >
-                        Email {i + 1}
-                    </button>
-                ))}
-                {!isLocked && (slots[slots.length - 1] ?? -1) < 8 && (
-                    <>
-                        <label className="cursor-pointer rounded-lg border border-dashed border-secondary px-3.5 py-2 text-sm font-semibold text-tertiary transition duration-100 ease-linear hover:border-brand hover:text-brand-secondary">
-                            + Add email (HTML file)
-                            <input type="file" accept=".html,.htm" className="hidden" onChange={onPickHtml((slots[slots.length - 1] ?? -1) + 1)} />
-                        </label>
+                {FLOW_STEPS.map((step, i) => {
+                    const filled = !!customs[i] || !!dbEmails[i] || i < flow.emails.length;
+                    return (
                         <button
+                            key={step.key}
                             type="button"
+                            title={filled ? undefined : "Not ready yet"}
                             onClick={() => {
-                                setPasteText("");
-                                setPasteFor((slots[slots.length - 1] ?? -1) + 1);
+                                setTab(i);
+                                scrollYRef.current = 0;
+                                setPenPop(null);
                             }}
-                            className="rounded-lg border border-dashed border-secondary px-3.5 py-2 text-sm font-semibold text-tertiary transition duration-100 ease-linear hover:border-brand hover:text-brand-secondary"
+                            className={cx(
+                                "rounded-lg border px-3.5 py-2 text-sm font-semibold transition duration-100 ease-linear",
+                                tab === i
+                                    ? "border-transparent bg-brand-solid text-white"
+                                    : filled
+                                      ? "border-secondary bg-primary text-secondary hover:bg-secondary_hover"
+                                      : "border-dashed border-secondary bg-primary text-quaternary hover:text-secondary",
+                            )}
                         >
-                            + Paste HTML
+                            E{i + 1} {step.name}
+                            {hasPendingFeedback(i) && (
+                                <span
+                                    aria-label="has open feedback"
+                                    className={cx("ml-1.5 inline-block size-1.5 rounded-full align-middle", tab === i ? "bg-white" : "bg-warning-solid")}
+                                />
+                            )}
                         </button>
-                    </>
-                )}
-                <span className="ml-1 text-xs text-quaternary">
-                    {tab > 0 ? `sent ${flow.waits[tab - 1] || "1 day"} after Email ${tab}` : "sent when the lead signs up"}
-                </span>
+                    );
+                })}
+                <span className="ml-1 text-xs text-quaternary">{tab === 0 ? "sent when the lead signs up" : `sent in week ${tab + 1}`}</span>
             </div>
+
+            {/* Team review — the client's open comments on this step, read and closed here. */}
+            {fb?.mode === "review" && fbPending.length > 0 && (
+                <div className="mt-4 flex flex-col gap-2">
+                    {fbPending.map((s) => (
+                        <div key={s.id} className="rounded-xl bg-brand-primary p-3.5 ring-1 ring-secondary">
+                            <p className="text-xs font-medium text-secondary">
+                                Client feedback · {s.suggested_by} · {shortDate(s.created_at)}
+                                {s.current_value && s.current_value !== subject && (
+                                    <span className="text-warning-primary"> · written on an earlier version (“{s.current_value}”)</span>
+                                )}
+                            </p>
+                            <p className="mt-1 text-sm whitespace-pre-wrap text-primary">{s.suggested_value}</p>
+                            <div className="mt-2.5 flex items-center gap-2">
+                                <Button size="sm" color="primary" onClick={() => void fb.resolve(s, "accepted")}>
+                                    Mark as done
+                                </Button>
+                                <Button size="sm" color="secondary" onClick={() => void fb.resolve(s, "declined")}>
+                                    Dismiss
+                                </Button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
 
             {/* Table-sourced email — subject/preview from Pooja's row; edits happen in her pipeline. */}
             {dbEmail && !customs[tab] && (
@@ -844,8 +1080,8 @@ export const WelcomeFlowSection = ({
                     {dbEmail.preview && <p className="mt-0.5 text-xs text-quaternary">Preview text: {dbEmail.preview}</p>}
                     {!isLocked && (
                         <p className="mt-1 text-xs text-quaternary">
-                            Loaded from the email designer's table (position {tab + 1}) — to change it, update the row there; this page always shows the
-                            latest version.
+                            Loaded from the email designer's table (week {tab + 1}) — to change it, update the row there; this page always shows the latest
+                            version.
                         </p>
                     )}
                 </div>
@@ -855,8 +1091,8 @@ export const WelcomeFlowSection = ({
             {customs[tab] && !isLocked && (
                 <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl bg-secondary px-4 py-3">
                     <p className="min-w-0 flex-1 text-sm text-tertiary">
-                        <span className="font-semibold text-secondary">Finished HTML email</span> — delivered by Pooja and shown exactly as it will send.
-                        The built-in editor is off for this tab.
+                        <span className="font-semibold text-secondary">Finished HTML email</span> — delivered by Pooja and shown exactly as it will send. The
+                        built-in editor is off for this tab.
                     </p>
                     <label className="cursor-pointer text-sm font-semibold text-brand-secondary hover:underline">
                         Replace file
@@ -874,10 +1110,7 @@ export const WelcomeFlowSection = ({
                     </button>
                     <button
                         type="button"
-                        onClick={() => {
-                            setCustom(tab, null);
-                            if (tab >= flow.emails.length && !dbEmails[tab]) setTab(0);
-                        }}
+                        onClick={() => setCustom(tab, null)}
                         className="text-sm font-semibold text-tertiary transition duration-100 ease-linear hover:text-error-primary"
                     >
                         Remove
@@ -886,10 +1119,10 @@ export const WelcomeFlowSection = ({
             )}
 
             {/* Edit toolbar — built-in emails only; a finished HTML file isn't edited here. */}
-            {!isLocked && !custom && (
+            {!isLocked && source === "template" && (
                 <div className="mt-4 flex flex-wrap items-end gap-3">
                     <div className="min-w-64 flex-1">
-                        <Field label="Subject line" value={email.subject} onChange={(v) => patch((d) => void (d.emails[tab].subject = v))} />
+                        <Field label="Subject line" value={builtIn?.subject ?? ""} onChange={(v) => patch((d) => void (d.emails[tab].subject = v))} />
                     </div>
                     <div className="relative">
                         <button
@@ -901,7 +1134,7 @@ export const WelcomeFlowSection = ({
                             )}
                         >
                             <Settings01 className="size-4" aria-hidden="true" />
-                            Brand & timing
+                            Brand
                         </button>
                         <AnimatePresence>
                             {brandOpen && (
@@ -912,13 +1145,24 @@ export const WelcomeFlowSection = ({
                                     transition={{ duration: 0.12 }}
                                     className="absolute right-0 z-30 mt-1.5 flex w-72 flex-col gap-2.5 rounded-xl bg-primary p-3.5 shadow-lg ring-1 ring-secondary"
                                 >
-                                    <Field label="Brand color (buttons)" value={flow.settings.brand_color} onChange={(v) => brandPatch((d) => void (d.settings.brand_color = v))} placeholder="#5A7B4F" />
-                                    <Field label="Heading font (brand font)" value={flow.settings.heading_font} onChange={(v) => brandPatch((d) => void (d.settings.heading_font = v))} placeholder="Georgia, serif" />
-                                    <Field label="Logo URL" value={flow.settings.logo_url} onChange={(v) => brandPatch((d) => void (d.settings.logo_url = v))} placeholder="https://…" />
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <Field label="Wait after Email 1" value={flow.waits[0]} onChange={(v) => patch((d) => void (d.waits[0] = v))} placeholder="1 day" />
-                                        <Field label="Wait after Email 2" value={flow.waits[1]} onChange={(v) => patch((d) => void (d.waits[1] = v))} placeholder="1 day" />
-                                    </div>
+                                    <Field
+                                        label="Brand color (buttons)"
+                                        value={flow.settings.brand_color}
+                                        onChange={(v) => brandPatch((d) => void (d.settings.brand_color = v))}
+                                        placeholder="#5A7B4F"
+                                    />
+                                    <Field
+                                        label="Heading font (brand font)"
+                                        value={flow.settings.heading_font}
+                                        onChange={(v) => brandPatch((d) => void (d.settings.heading_font = v))}
+                                        placeholder="Georgia, serif"
+                                    />
+                                    <Field
+                                        label="Logo URL"
+                                        value={flow.settings.logo_url}
+                                        onChange={(v) => brandPatch((d) => void (d.settings.logo_url = v))}
+                                        placeholder="https://…"
+                                    />
                                 </motion.div>
                             )}
                         </AnimatePresence>
@@ -927,7 +1171,7 @@ export const WelcomeFlowSection = ({
             )}
 
             {/* Even a built-in tab can be replaced by a finished email — file or pasted code. */}
-            {!isLocked && !custom && (
+            {!isLocked && source === "template" && (
                 <p className="mt-3 text-sm text-tertiary">
                     Replace this email with finished HTML:{" "}
                     <label className="cursor-pointer font-semibold text-brand-secondary hover:underline">
@@ -983,7 +1227,7 @@ export const WelcomeFlowSection = ({
                 </div>
             )}
 
-            {!isLocked && !custom && (
+            {!isLocked && source === "template" && (
                 <p className="mt-3 text-sm text-tertiary">
                     <span className="font-semibold text-secondary">Double-click</span> any text in the email to edit it · click the{" "}
                     <span className="inline-flex size-5 items-center justify-center rounded-full bg-brand-solid text-[11px] text-white">✎</span> on buttons and
@@ -991,102 +1235,206 @@ export const WelcomeFlowSection = ({
                 </p>
             )}
 
-            {/* ── Preview = the editor ── */}
-            <div className="mt-4 flex flex-col rounded-2xl ring-1 ring-secondary">
-                <div className="flex flex-wrap items-center justify-between gap-2 rounded-t-2xl border-b border-secondary bg-primary px-3 py-2">
-                    <div className="flex items-center gap-1">
-                        {(
-                            [
-                                { id: "mobile", icon: Phone01 },
-                                { id: "desktop", icon: Monitor01 },
-                            ] as const
-                        ).map((v) => (
+            {/* ── Preview = the editor. Mobile and desktop side by side, mobile first;
+                   they wrap onto two rows when the column is too narrow for both. ── */}
+            {!hasContent ? (
+                <div className="mt-4 flex flex-col items-center rounded-2xl border border-dashed border-secondary bg-secondary px-6 py-14 text-center">
+                    <Mail01 className="size-6 text-fg-quaternary" aria-hidden="true" />
+                    <p className="mt-3 text-md font-semibold text-primary">{stepLabel(tab)} isn't ready yet</p>
+                    <p className="mt-1 max-w-md text-sm text-tertiary">
+                        {isLocked
+                            ? "This email is still being designed. It will show up here as soon as it's finished."
+                            : "The email designer fills this step automatically when the finished email lands. To place one now, upload the HTML file or paste the code."}
+                    </p>
+                    {!isLocked && (
+                        <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+                            <label className="cursor-pointer rounded-lg bg-brand-solid px-3.5 py-2 text-sm font-semibold text-white transition duration-100 ease-linear hover:opacity-90">
+                                Upload HTML file
+                                <input type="file" accept=".html,.htm" className="hidden" onChange={onPickHtml(tab)} />
+                            </label>
                             <button
-                                key={v.id}
                                 type="button"
-                                onClick={() => setDevice(v.id)}
-                                className={cx(
-                                    "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition duration-100 ease-linear",
-                                    device === v.id ? "bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300" : "text-tertiary hover:text-primary",
-                                )}
+                                onClick={() => {
+                                    setPasteText("");
+                                    setPasteFor(tab);
+                                }}
+                                className="rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-secondary ring-1 ring-secondary transition duration-100 ease-linear hover:bg-secondary_hover"
                             >
-                                <v.icon className="size-3.5" aria-hidden="true" />
-                                {v.id === "mobile" ? "Mobile" : "Desktop"}
+                                Paste HTML
                             </button>
-                        ))}
-                    </div>
-                    <button
-                        type="button"
-                        onClick={copyHtml}
-                        className="flex items-center gap-1.5 rounded-lg bg-brand-solid px-3 py-1.5 text-xs font-semibold text-white transition duration-100 ease-linear hover:opacity-90"
-                    >
-                        {copied ? <Check className="size-3.5" /> : <Copy01 className="size-3.5" />}
-                        {copied ? "Copied!" : "Copy HTML for GHL"}
-                    </button>
+                        </div>
+                    )}
                 </div>
+            ) : (
+                <div className="mt-4 flex flex-col rounded-2xl ring-1 ring-secondary">
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-t-2xl border-b border-secondary bg-primary px-3 py-2">
+                        <p className="px-1 text-xs text-tertiary">
+                            <span className="font-semibold text-secondary">{stepLabel(tab)}</span>
+                            {" · "}
+                            {source === "pasted" ? "pasted HTML" : source === "finished" ? "finished HTML from the email designer" : "built-in template"}
+                        </p>
+                        <button
+                            type="button"
+                            onClick={copyHtml}
+                            className="flex items-center gap-1.5 rounded-lg bg-brand-solid px-3 py-1.5 text-xs font-semibold text-white transition duration-100 ease-linear hover:opacity-90"
+                        >
+                            {copied ? <Check className="size-3.5" /> : <Copy01 className="size-3.5" />}
+                            {copied ? "Copied!" : "Copy HTML for GHL"}
+                        </button>
+                    </div>
 
-                <div ref={previewWrapRef} className="relative flex justify-center rounded-b-2xl bg-tertiary p-4" onClick={() => { setBrandOpen(false); setPenPop(null); }}>
-                    <iframe
-                        ref={iframeRef}
-                        title={`${email.label} preview`}
-                        srcDoc={previewHtml}
-                        sandbox={isLocked || custom ? "" : "allow-scripts"}
-                        onLoad={restoreScroll}
-                        className="rounded-xl bg-white shadow-lg ring-1 ring-secondary"
-                        style={{ width: device === "mobile" ? 375 : 620, height: isLocked ? 640 : 780, border: "0", maxWidth: "100%" }}
-                    />
-
-                    {/* ✎ popover — change the name, attach a link, save */}
-                    <AnimatePresence>
-                        {penPop && !isLocked && (
-                            <motion.div
-                                initial={{ opacity: 0, scale: 0.95, y: 4 }}
-                                animate={{ opacity: 1, scale: 1, y: 0 }}
-                                exit={{ opacity: 0, scale: 0.97, y: 4 }}
-                                transition={{ duration: 0.12 }}
-                                className="absolute z-30 flex w-72 flex-col gap-2.5 rounded-xl bg-primary p-3.5 shadow-lg ring-1 ring-secondary"
-                                style={{ left: penPop.x, top: penPop.y }}
-                                onClick={(e) => e.stopPropagation()}
-                            >
-                                <div className="flex items-center justify-between">
-                                    <p className="text-xs font-bold uppercase tracking-wide text-quaternary">
-                                        {penPop.kind === "btn" ? "Edit button" : penPop.kind === "logo" ? "Edit logo" : "Edit image"}
-                                    </p>
-                                    <button type="button" title="Close" onClick={() => setPenPop(null)} className="text-fg-quaternary hover:text-fg-secondary">
-                                        <XClose className="size-4" aria-hidden="true" />
-                                    </button>
+                    <div
+                        ref={previewWrapRef}
+                        className="relative flex flex-wrap items-start justify-center gap-6 rounded-b-2xl bg-tertiary p-4 md:p-6"
+                        onClick={() => {
+                            setBrandOpen(false);
+                            setPenPop(null);
+                        }}
+                    >
+                        {DEVICES.map((d) => (
+                            <figure key={d.id} className="flex max-w-full flex-col" style={{ width: d.width }}>
+                                <figcaption className="mb-2 flex items-center gap-1.5 px-0.5 text-[11px] font-semibold tracking-wide text-quaternary uppercase">
+                                    <d.icon className="size-3.5" aria-hidden="true" />
+                                    {d.label}
+                                    <span className="font-normal tracking-normal normal-case">{d.width}px</span>
+                                </figcaption>
+                                {/* The "device" stays a light surface in both themes on purpose — the
+                                email inside assumes one — so its inbox header uses fixed colours
+                                rather than theme tokens, exactly like the white iframe below it. */}
+                                <div className="overflow-hidden rounded-xl bg-white shadow-lg ring-1 ring-secondary">
+                                    <div className="border-b border-[#e9eaeb] bg-[#f7f7f8] px-5 py-4 text-left">
+                                        <p className="text-sm font-semibold text-[#181d27]">{subject || "No subject line yet"}</p>
+                                        {previewText && <p className="mt-0.5 text-sm text-[#535862]">{previewText}</p>}
+                                    </div>
+                                    <iframe
+                                        ref={d.id === "mobile" ? mobileRef : desktopRef}
+                                        title={`${stepLabel(tab)} — ${d.label} preview`}
+                                        srcDoc={previewHtml ?? ""}
+                                        sandbox={isLocked || custom ? "" : "allow-scripts"}
+                                        onLoad={restoreScroll}
+                                        className="block w-full bg-white"
+                                        style={{ height: isLocked ? 640 : 780, border: "0" }}
+                                    />
                                 </div>
-                                <Field
-                                    label={penPop.kind === "btn" ? "Name" : penPop.kind === "logo" ? "Logo image URL" : "Image URL (from GoHighLevel)"}
-                                    value={penPop.a}
-                                    onChange={(v) => setPenPop((p) => (p ? { ...p, a: v } : p))}
-                                    placeholder={penPop.kind === "btn" ? "Button text" : "https://…"}
-                                />
-                                {penPop.hasLink && (
-                                    <Field label="Link" value={penPop.b} onChange={(v) => setPenPop((p) => (p ? { ...p, b: v } : p))} placeholder="https://…" />
-                                )}
-                                {penPop.kind !== "btn" && !isTemplate && clientName.trim() && (
+                            </figure>
+                        ))}
+
+                        {/* ✎ popover — change the name, attach a link, save */}
+                        <AnimatePresence>
+                            {penPop && !isLocked && (
+                                <motion.div
+                                    initial={{ opacity: 0, scale: 0.95, y: 4 }}
+                                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                                    exit={{ opacity: 0, scale: 0.97, y: 4 }}
+                                    transition={{ duration: 0.12 }}
+                                    className="absolute z-30 flex w-72 flex-col gap-2.5 rounded-xl bg-primary p-3.5 shadow-lg ring-1 ring-secondary"
+                                    style={{ left: penPop.x, top: penPop.y }}
+                                    onClick={(e) => e.stopPropagation()}
+                                >
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-xs font-bold tracking-wide text-quaternary uppercase">
+                                            {penPop.kind === "btn" ? "Edit button" : penPop.kind === "logo" ? "Edit logo" : "Edit image"}
+                                        </p>
+                                        <button
+                                            type="button"
+                                            title="Close"
+                                            onClick={() => setPenPop(null)}
+                                            className="text-fg-quaternary hover:text-fg-secondary"
+                                        >
+                                            <XClose className="size-4" aria-hidden="true" />
+                                        </button>
+                                    </div>
+                                    <Field
+                                        label={penPop.kind === "btn" ? "Name" : penPop.kind === "logo" ? "Logo image URL" : "Image URL (from GoHighLevel)"}
+                                        value={penPop.a}
+                                        onChange={(v) => setPenPop((p) => (p ? { ...p, a: v } : p))}
+                                        placeholder={penPop.kind === "btn" ? "Button text" : "https://…"}
+                                    />
+                                    {penPop.hasLink && (
+                                        <Field
+                                            label="Link"
+                                            value={penPop.b}
+                                            onChange={(v) => setPenPop((p) => (p ? { ...p, b: v } : p))}
+                                            placeholder="https://…"
+                                        />
+                                    )}
+                                    {penPop.kind !== "btn" && !isTemplate && clientName.trim() && (
+                                        <button
+                                            type="button"
+                                            onClick={openGhlPicker}
+                                            className="flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-secondary ring-1 ring-secondary transition duration-100 ease-linear hover:bg-secondary_hover"
+                                        >
+                                            <Image01 className="size-4" aria-hidden="true" />
+                                            Browse GoHighLevel images
+                                        </button>
+                                    )}
                                     <button
                                         type="button"
-                                        onClick={openGhlPicker}
-                                        className="flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-secondary ring-1 ring-secondary transition duration-100 ease-linear hover:bg-secondary_hover"
+                                        onClick={savePen}
+                                        className="mt-0.5 rounded-lg bg-brand-solid px-3 py-2 text-sm font-semibold text-white transition duration-100 ease-linear hover:opacity-90"
                                     >
-                                        <Image01 className="size-4" aria-hidden="true" />
-                                        Browse GoHighLevel images
+                                        Save
                                     </button>
-                                )}
-                                <button
-                                    type="button"
-                                    onClick={savePen}
-                                    className="mt-0.5 rounded-lg bg-brand-solid px-3 py-2 text-sm font-semibold text-white transition duration-100 ease-linear hover:opacity-90"
-                                >
-                                    Save
-                                </button>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+                    </div>
                 </div>
-            </div>
+            )}
+
+            {/* Client feedback composer — one open comment per person per step; sending
+                again replaces it. The team reads it in the review card above. */}
+            {fb?.mode === "client" && hasContent && (
+                <div className="mt-4 rounded-2xl bg-primary p-4 ring-1 ring-secondary md:p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <p className="text-sm font-semibold text-primary">Your feedback on {stepLabel(tab)}</p>
+                            <p className="mt-0.5 text-sm text-tertiary">
+                                Anything you'd change — the wording, the offer, the photos, the timing. Your account manager reads every note.
+                            </p>
+                        </div>
+                        {fbMine && (
+                            <span className="rounded-full bg-warning-primary px-2.5 py-1 text-xs font-medium text-warning-primary">Awaiting review</span>
+                        )}
+                    </div>
+                    <textarea
+                        rows={3}
+                        value={fbText}
+                        onChange={(e) => setFbText(e.target.value)}
+                        placeholder="e.g. The subject line feels too pushy for a first email — could we soften it?"
+                        className="mt-3 w-full resize-y rounded-lg border border-secondary bg-primary px-3 py-2 text-sm text-primary transition duration-100 ease-linear outline-none placeholder:text-placeholder focus:border-brand focus:ring-1 focus:ring-brand"
+                    />
+                    <div className="mt-3 flex flex-wrap items-center gap-3">
+                        <Button
+                            size="sm"
+                            color="primary"
+                            onClick={() => void sendFeedback()}
+                            isDisabled={!fbText.trim() || fbText.trim() === (fbMine?.suggested_value ?? "")}
+                            isLoading={fbState === "sending"}
+                            showTextWhileLoading
+                        >
+                            {fbMine ? "Update feedback" : "Send feedback"}
+                        </Button>
+                        {fbMine && (
+                            <button
+                                type="button"
+                                onClick={() => void fb.withdraw(fbMine).catch(() => undefined)}
+                                className="text-sm font-semibold text-tertiary transition duration-100 ease-linear hover:text-error-primary"
+                            >
+                                Withdraw
+                            </button>
+                        )}
+                        {fbState === "sent" && <p className="text-sm text-success-primary">Sent — thank you. Your account manager will follow up.</p>}
+                        {fbState === "error" && <p className="text-sm text-error-primary">{fbError}</p>}
+                        {fbState === "idle" && !fbMine && fbResolved && (
+                            <p className="text-xs text-quaternary">
+                                Your note from {shortDate(fbResolved.created_at)} was marked {fbResolved.status === "accepted" ? "done" : "closed"}
+                                {fbResolved.resolved_at ? ` on ${shortDate(fbResolved.resolved_at)}` : ""}.
+                            </p>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* GHL Media Library picker — click a thumbnail to fill the pen popover's URL */}
             <AnimatePresence>
@@ -1112,14 +1460,17 @@ export const WelcomeFlowSection = ({
                                     <p className="text-xs text-tertiary">Newest first, straight from the client's Media Library. Click one to use it.</p>
                                 </div>
                                 <div className="relative w-56 shrink-0">
-                                    <SearchSm className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-quaternary" aria-hidden="true" />
+                                    <SearchSm
+                                        className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-fg-quaternary"
+                                        aria-hidden="true"
+                                    />
                                     <input
                                         type="text"
                                         value={ghlPicker.query}
                                         placeholder="Search, then press Enter"
                                         onChange={(e) => setGhlPicker((p) => (p ? { ...p, query: e.target.value } : p))}
                                         onKeyDown={(e) => e.key === "Enter" && void fetchGhlImages(ghlPicker.query, 0, false)}
-                                        className="w-full rounded-lg border border-secondary bg-primary py-2 pl-9 pr-3 text-sm text-primary placeholder:text-placeholder outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                                        className="w-full rounded-lg border border-secondary bg-primary py-2 pr-3 pl-9 text-sm text-primary outline-none placeholder:text-placeholder focus:border-brand focus:ring-1 focus:ring-brand"
                                     />
                                 </div>
                                 <button
@@ -1137,7 +1488,9 @@ export const WelcomeFlowSection = ({
                                     <p className="rounded-xl bg-error-primary px-4 py-3 text-sm text-error-primary">{ghlPicker.error}</p>
                                 ) : ghlPicker.images.length === 0 && !ghlPicker.loading ? (
                                     <p className="py-10 text-center text-sm text-tertiary">
-                                        {ghlPicker.query.trim() ? `No images match “${ghlPicker.query.trim()}”.` : "No images in this client's Media Library yet."}
+                                        {ghlPicker.query.trim()
+                                            ? `No images match “${ghlPicker.query.trim()}”.`
+                                            : "No images in this client's Media Library yet."}
                                     </p>
                                 ) : (
                                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
@@ -1182,13 +1535,6 @@ export const WelcomeFlowSection = ({
                     </motion.div>
                 )}
             </AnimatePresence>
-
-            {/* Read-only note */}
-            {isLocked && (
-                <p className="mt-3 text-sm text-tertiary">
-                    Subject: <span className="font-semibold text-primary">{email.subject}</span>
-                </p>
-            )}
         </div>
     );
 };
