@@ -9,7 +9,7 @@
  *   ; node /tmp/hgm-check/color-scale.check.js
  */
 import assert from "node:assert/strict";
-import { SCALE_STEPS, makeShadeScale } from "./color-scale";
+import { INK, SCALE_STEPS, WHITE, contrastRatio, hexToRgb, makeShadeScale, readableTextOn, rgbString, wcagLabel } from "./color-scale";
 
 /* 1. Eleven steps, and the scale passes through the EXACT brand hex. */
 {
@@ -36,4 +36,30 @@ import { SCALE_STEPS, makeShadeScale } from "./color-scale";
     assert.equal(makeShadeScale(""), null);
 }
 
-console.log("makeShadeScale: all checks passed");
+/* 4. Contrast — the WCAG reference values, so a swatch's "AA" badge means what it says. */
+{
+    assert.deepEqual(hexToRgb("#7F56D9"), { r: 127, g: 86, b: 217 });
+    assert.equal(rgbString("#abc"), "rgb(170 187 204)");
+    assert.equal(rgbString("nope"), null);
+    assert.equal(Math.round(contrastRatio("#000000", "#FFFFFF")!), 21);
+    assert.equal(contrastRatio("#FFFFFF", "#FFFFFF"), 1);
+    assert.equal(contrastRatio("#zzz", "#FFFFFF"), null);
+    // #767676 on white is the canonical "just passes AA" grey (4.54:1).
+    const grey = contrastRatio("#767676", WHITE)!;
+    assert.ok(grey > 4.5 && grey < 4.6, `expected ~4.54, got ${grey}`);
+    assert.equal(wcagLabel(grey), "AA");
+    assert.equal(wcagLabel(7.5), "AAA");
+    assert.equal(wcagLabel(3.2), "AA large");
+    assert.equal(wcagLabel(1.5), "Low");
+}
+
+/* 5. Readable text — dark grounds get white text, light grounds get ink, junk gets null. */
+{
+    assert.equal(readableTextOn("#214254")!.text, WHITE);
+    assert.equal(readableTextOn("#214254")!.light, true);
+    assert.equal(readableTextOn("#F4EBFF")!.text, INK);
+    assert.equal(readableTextOn("#F4EBFF")!.light, false);
+    assert.equal(readableTextOn(""), null);
+}
+
+console.log("color-scale: all checks passed");
