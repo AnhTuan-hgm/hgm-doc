@@ -999,6 +999,77 @@ export const WelcomeFlowSection = ({
         brandTimer.current = setTimeout(() => setRev((r) => r + 1), 500);
     };
 
+    /** Steps other than this one where the viewer has a note still awaiting review —
+     *  the rail names them, so the tab dots aren't the only record. */
+    const fbOtherOpen = !fb
+        ? []
+        : FLOW_STEPS.map((_, i) => i).filter((i) => i !== tab && feedbackFor(i).some((s) => s.status === "pending" && s.suggested_by === fb.author));
+
+    /* ── The client's feedback rail ──
+       Sits beside the previews so a note can be written while the email is still on
+       screen; it used to sit underneath them, past two full-height previews. One open
+       comment per person per step — sending again replaces it — and the team reads it
+       in the review card above. Null for the team and for a viewer who can't send. */
+    const fbRail =
+        fb?.mode === "client" ? (
+            <aside className="w-full shrink-0 @min-[1012px]:sticky @min-[1012px]:top-4 @min-[1012px]:w-[340px]">
+                <div className="rounded-2xl bg-primary p-4 ring-1 ring-secondary md:p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                        <p className="text-sm font-semibold text-primary">Your feedback on {stepLabel(tab)}</p>
+                        {fbMine && (
+                            <span className="rounded-full bg-warning-primary px-2.5 py-1 text-xs font-medium text-warning-primary">Awaiting review</span>
+                        )}
+                    </div>
+                    <p className="mt-1 text-sm text-tertiary">
+                        Anything you'd change — the wording, the offer, the photos, the timing. Your account manager reads every note.
+                    </p>
+                    <textarea
+                        rows={5}
+                        value={fbText}
+                        onChange={(e) => setFbText(e.target.value)}
+                        placeholder="e.g. The subject line feels too pushy for a first email — could we soften it?"
+                        className="mt-3 w-full resize-y rounded-lg border border-secondary bg-primary px-3 py-2 text-sm text-primary transition duration-100 ease-linear outline-none placeholder:text-placeholder focus:border-brand focus:ring-1 focus:ring-brand"
+                    />
+                    <div className="mt-3 flex flex-wrap items-center gap-3">
+                        <Button
+                            size="sm"
+                            color="primary"
+                            onClick={() => void sendFeedback()}
+                            isDisabled={!fbText.trim() || fbText.trim() === (fbMine?.suggested_value ?? "")}
+                            isLoading={fbState === "sending"}
+                            showTextWhileLoading
+                        >
+                            {fbMine ? "Update feedback" : "Send feedback"}
+                        </Button>
+                        {fbMine && (
+                            <button
+                                type="button"
+                                onClick={() => void fb.withdraw(fbMine).catch(() => undefined)}
+                                className="text-sm font-semibold text-tertiary transition duration-100 ease-linear hover:text-error-primary"
+                            >
+                                Withdraw
+                            </button>
+                        )}
+                    </div>
+                    {/* Status sits under the button rather than beside it — at rail width a
+                        sentence next to the button wrapped to three lines. */}
+                    {fbState === "sent" && <p className="mt-2.5 text-sm text-success-primary">Sent — thank you. Your account manager will follow up.</p>}
+                    {fbState === "error" && <p className="mt-2.5 text-sm text-error-primary">{fbError}</p>}
+                    {fbState === "idle" && !fbMine && fbResolved && (
+                        <p className="mt-2.5 text-xs text-quaternary">
+                            Your note from {shortDate(fbResolved.created_at)} was marked {fbResolved.status === "accepted" ? "done" : "closed"}
+                            {fbResolved.resolved_at ? ` on ${shortDate(fbResolved.resolved_at)}` : ""}.
+                        </p>
+                    )}
+                    {fbOtherOpen.length > 0 && (
+                        <p className="mt-3 border-t border-secondary pt-3 text-xs text-quaternary">
+                            You also have an open note on {fbOtherOpen.map((i) => `E${i + 1}`).join(", ")}.
+                        </p>
+                    )}
+                </div>
+            </aside>
+        ) : null;
+
     return (
         <div>
             {/* Heading */}
@@ -1266,172 +1337,134 @@ export const WelcomeFlowSection = ({
                     )}
                 </div>
             ) : (
-                <div className="mt-4 flex flex-col rounded-2xl ring-1 ring-secondary">
-                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-t-2xl border-b border-secondary bg-primary px-3 py-2">
-                        <p className="px-1 text-xs text-tertiary">
-                            <span className="font-semibold text-secondary">{stepLabel(tab)}</span>
-                            {" · "}
-                            {source === "pasted" ? "pasted HTML" : source === "finished" ? "finished HTML from the email designer" : "built-in template"}
-                        </p>
-                        <button
-                            type="button"
-                            onClick={copyHtml}
-                            className="flex items-center gap-1.5 rounded-lg bg-brand-solid px-3 py-1.5 text-xs font-semibold text-white transition duration-100 ease-linear hover:opacity-90"
-                        >
-                            {copied ? <Check className="size-3.5" /> : <Copy01 className="size-3.5" />}
-                            {copied ? "Copied!" : "Copy HTML for GHL"}
-                        </button>
-                    </div>
-
-                    <div
-                        ref={previewWrapRef}
-                        className="relative flex flex-wrap items-start justify-center gap-6 rounded-b-2xl bg-tertiary p-4 md:p-6"
-                        onClick={() => {
-                            setBrandOpen(false);
-                            setPenPop(null);
-                        }}
-                    >
-                        {DEVICES.map((d) => (
-                            <figure key={d.id} className="flex max-w-full flex-col" style={{ width: d.width }}>
-                                <figcaption className="mb-2 flex items-center gap-1.5 px-0.5 text-[11px] font-semibold tracking-wide text-quaternary uppercase">
-                                    <d.icon className="size-3.5" aria-hidden="true" />
-                                    {d.label}
-                                    <span className="font-normal tracking-normal normal-case">{d.width}px</span>
-                                </figcaption>
-                                {/* The "device" stays a light surface in both themes on purpose — the
-                                email inside assumes one — so its inbox header uses fixed colours
-                                rather than theme tokens, exactly like the white iframe below it. */}
-                                <div className="overflow-hidden rounded-xl bg-white shadow-lg ring-1 ring-secondary">
-                                    <div className="border-b border-[#e9eaeb] bg-[#f7f7f8] px-5 py-4 text-left">
-                                        <p className="text-sm font-semibold text-[#181d27]">{subject || "No subject line yet"}</p>
-                                        {previewText && <p className="mt-0.5 text-sm text-[#535862]">{previewText}</p>}
-                                    </div>
-                                    <iframe
-                                        ref={d.id === "mobile" ? mobileRef : desktopRef}
-                                        title={`${stepLabel(tab)} — ${d.label} preview`}
-                                        srcDoc={previewHtml ?? ""}
-                                        sandbox={isLocked || custom ? "" : "allow-scripts"}
-                                        onLoad={restoreScroll}
-                                        className="block w-full bg-white"
-                                        style={{ height: isLocked ? 640 : 780, border: "0" }}
-                                    />
-                                </div>
-                            </figure>
-                        ))}
-
-                        {/* ✎ popover — change the name, attach a link, save */}
-                        <AnimatePresence>
-                            {penPop && !isLocked && (
-                                <motion.div
-                                    initial={{ opacity: 0, scale: 0.95, y: 4 }}
-                                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                                    exit={{ opacity: 0, scale: 0.97, y: 4 }}
-                                    transition={{ duration: 0.12 }}
-                                    className="absolute z-30 flex w-72 flex-col gap-2.5 rounded-xl bg-primary p-3.5 shadow-lg ring-1 ring-secondary"
-                                    style={{ left: penPop.x, top: penPop.y }}
-                                    onClick={(e) => e.stopPropagation()}
+                /* The previews and the client's feedback rail share a row as soon as there is
+                   width for both. The test is a container query, not a viewport breakpoint:
+                   the side menu is draggable, so only the column's real width can decide.
+                   Narrower than that and the rail drops under the previews, where the
+                   composer used to live. */
+                <div className="@container mt-4">
+                    <div className={cx("flex flex-col gap-4", fbRail && "@min-[1012px]:flex-row @min-[1012px]:items-start")}>
+                        <div className="flex min-w-0 flex-1 flex-col rounded-2xl ring-1 ring-secondary">
+                            <div className="flex flex-wrap items-center justify-between gap-2 rounded-t-2xl border-b border-secondary bg-primary px-3 py-2">
+                                <p className="px-1 text-xs text-tertiary">
+                                    <span className="font-semibold text-secondary">{stepLabel(tab)}</span>
+                                    {" · "}
+                                    {source === "pasted"
+                                        ? "pasted HTML"
+                                        : source === "finished"
+                                          ? "finished HTML from the email designer"
+                                          : "built-in template"}
+                                </p>
+                                <button
+                                    type="button"
+                                    onClick={copyHtml}
+                                    className="flex items-center gap-1.5 rounded-lg bg-brand-solid px-3 py-1.5 text-xs font-semibold text-white transition duration-100 ease-linear hover:opacity-90"
                                 >
-                                    <div className="flex items-center justify-between">
-                                        <p className="text-xs font-bold tracking-wide text-quaternary uppercase">
-                                            {penPop.kind === "btn" ? "Edit button" : penPop.kind === "logo" ? "Edit logo" : "Edit image"}
-                                        </p>
-                                        <button
-                                            type="button"
-                                            title="Close"
-                                            onClick={() => setPenPop(null)}
-                                            className="text-fg-quaternary hover:text-fg-secondary"
-                                        >
-                                            <XClose className="size-4" aria-hidden="true" />
-                                        </button>
-                                    </div>
-                                    <Field
-                                        label={penPop.kind === "btn" ? "Name" : penPop.kind === "logo" ? "Logo image URL" : "Image URL (from GoHighLevel)"}
-                                        value={penPop.a}
-                                        onChange={(v) => setPenPop((p) => (p ? { ...p, a: v } : p))}
-                                        placeholder={penPop.kind === "btn" ? "Button text" : "https://…"}
-                                    />
-                                    {penPop.hasLink && (
-                                        <Field
-                                            label="Link"
-                                            value={penPop.b}
-                                            onChange={(v) => setPenPop((p) => (p ? { ...p, b: v } : p))}
-                                            placeholder="https://…"
-                                        />
-                                    )}
-                                    {penPop.kind !== "btn" && !isTemplate && clientName.trim() && (
-                                        <button
-                                            type="button"
-                                            onClick={openGhlPicker}
-                                            className="flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-secondary ring-1 ring-secondary transition duration-100 ease-linear hover:bg-secondary_hover"
-                                        >
-                                            <Image01 className="size-4" aria-hidden="true" />
-                                            Browse GoHighLevel images
-                                        </button>
-                                    )}
-                                    <button
-                                        type="button"
-                                        onClick={savePen}
-                                        className="mt-0.5 rounded-lg bg-brand-solid px-3 py-2 text-sm font-semibold text-white transition duration-100 ease-linear hover:opacity-90"
-                                    >
-                                        Save
-                                    </button>
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
-                    </div>
-                </div>
-            )}
+                                    {copied ? <Check className="size-3.5" /> : <Copy01 className="size-3.5" />}
+                                    {copied ? "Copied!" : "Copy HTML for GHL"}
+                                </button>
+                            </div>
 
-            {/* Client feedback composer — one open comment per person per step; sending
-                again replaces it. The team reads it in the review card above. */}
-            {fb?.mode === "client" && hasContent && (
-                <div className="mt-4 rounded-2xl bg-primary p-4 ring-1 ring-secondary md:p-5">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                            <p className="text-sm font-semibold text-primary">Your feedback on {stepLabel(tab)}</p>
-                            <p className="mt-0.5 text-sm text-tertiary">
-                                Anything you'd change — the wording, the offer, the photos, the timing. Your account manager reads every note.
-                            </p>
-                        </div>
-                        {fbMine && (
-                            <span className="rounded-full bg-warning-primary px-2.5 py-1 text-xs font-medium text-warning-primary">Awaiting review</span>
-                        )}
-                    </div>
-                    <textarea
-                        rows={3}
-                        value={fbText}
-                        onChange={(e) => setFbText(e.target.value)}
-                        placeholder="e.g. The subject line feels too pushy for a first email — could we soften it?"
-                        className="mt-3 w-full resize-y rounded-lg border border-secondary bg-primary px-3 py-2 text-sm text-primary transition duration-100 ease-linear outline-none placeholder:text-placeholder focus:border-brand focus:ring-1 focus:ring-brand"
-                    />
-                    <div className="mt-3 flex flex-wrap items-center gap-3">
-                        <Button
-                            size="sm"
-                            color="primary"
-                            onClick={() => void sendFeedback()}
-                            isDisabled={!fbText.trim() || fbText.trim() === (fbMine?.suggested_value ?? "")}
-                            isLoading={fbState === "sending"}
-                            showTextWhileLoading
-                        >
-                            {fbMine ? "Update feedback" : "Send feedback"}
-                        </Button>
-                        {fbMine && (
-                            <button
-                                type="button"
-                                onClick={() => void fb.withdraw(fbMine).catch(() => undefined)}
-                                className="text-sm font-semibold text-tertiary transition duration-100 ease-linear hover:text-error-primary"
+                            <div
+                                ref={previewWrapRef}
+                                className="relative flex flex-wrap items-start justify-center gap-6 rounded-b-2xl bg-tertiary p-4 md:p-6"
+                                onClick={() => {
+                                    setBrandOpen(false);
+                                    setPenPop(null);
+                                }}
                             >
-                                Withdraw
-                            </button>
-                        )}
-                        {fbState === "sent" && <p className="text-sm text-success-primary">Sent — thank you. Your account manager will follow up.</p>}
-                        {fbState === "error" && <p className="text-sm text-error-primary">{fbError}</p>}
-                        {fbState === "idle" && !fbMine && fbResolved && (
-                            <p className="text-xs text-quaternary">
-                                Your note from {shortDate(fbResolved.created_at)} was marked {fbResolved.status === "accepted" ? "done" : "closed"}
-                                {fbResolved.resolved_at ? ` on ${shortDate(fbResolved.resolved_at)}` : ""}.
-                            </p>
-                        )}
+                                {DEVICES.map((d) => (
+                                    <figure key={d.id} className="flex max-w-full flex-col" style={{ width: d.width }}>
+                                        <figcaption className="mb-2 flex items-center gap-1.5 px-0.5 text-[11px] font-semibold tracking-wide text-quaternary uppercase">
+                                            <d.icon className="size-3.5" aria-hidden="true" />
+                                            {d.label}
+                                            <span className="font-normal tracking-normal normal-case">{d.width}px</span>
+                                        </figcaption>
+                                        {/* The "device" stays a light surface in both themes on purpose — the
+                                        email inside assumes one — so its inbox header uses fixed colours
+                                        rather than theme tokens, exactly like the white iframe below it. */}
+                                        <div className="overflow-hidden rounded-xl bg-white shadow-lg ring-1 ring-secondary">
+                                            <div className="border-b border-[#e9eaeb] bg-[#f7f7f8] px-5 py-4 text-left">
+                                                <p className="text-sm font-semibold text-[#181d27]">{subject || "No subject line yet"}</p>
+                                                {previewText && <p className="mt-0.5 text-sm text-[#535862]">{previewText}</p>}
+                                            </div>
+                                            <iframe
+                                                ref={d.id === "mobile" ? mobileRef : desktopRef}
+                                                title={`${stepLabel(tab)} — ${d.label} preview`}
+                                                srcDoc={previewHtml ?? ""}
+                                                sandbox={isLocked || custom ? "" : "allow-scripts"}
+                                                onLoad={restoreScroll}
+                                                className="block w-full bg-white"
+                                                style={{ height: isLocked ? 640 : 780, border: "0" }}
+                                            />
+                                        </div>
+                                    </figure>
+                                ))}
+
+                                {/* ✎ popover — change the name, attach a link, save */}
+                                <AnimatePresence>
+                                    {penPop && !isLocked && (
+                                        <motion.div
+                                            initial={{ opacity: 0, scale: 0.95, y: 4 }}
+                                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                                            exit={{ opacity: 0, scale: 0.97, y: 4 }}
+                                            transition={{ duration: 0.12 }}
+                                            className="absolute z-30 flex w-72 flex-col gap-2.5 rounded-xl bg-primary p-3.5 shadow-lg ring-1 ring-secondary"
+                                            style={{ left: penPop.x, top: penPop.y }}
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            <div className="flex items-center justify-between">
+                                                <p className="text-xs font-bold tracking-wide text-quaternary uppercase">
+                                                    {penPop.kind === "btn" ? "Edit button" : penPop.kind === "logo" ? "Edit logo" : "Edit image"}
+                                                </p>
+                                                <button
+                                                    type="button"
+                                                    title="Close"
+                                                    onClick={() => setPenPop(null)}
+                                                    className="text-fg-quaternary hover:text-fg-secondary"
+                                                >
+                                                    <XClose className="size-4" aria-hidden="true" />
+                                                </button>
+                                            </div>
+                                            <Field
+                                                label={
+                                                    penPop.kind === "btn" ? "Name" : penPop.kind === "logo" ? "Logo image URL" : "Image URL (from GoHighLevel)"
+                                                }
+                                                value={penPop.a}
+                                                onChange={(v) => setPenPop((p) => (p ? { ...p, a: v } : p))}
+                                                placeholder={penPop.kind === "btn" ? "Button text" : "https://…"}
+                                            />
+                                            {penPop.hasLink && (
+                                                <Field
+                                                    label="Link"
+                                                    value={penPop.b}
+                                                    onChange={(v) => setPenPop((p) => (p ? { ...p, b: v } : p))}
+                                                    placeholder="https://…"
+                                                />
+                                            )}
+                                            {penPop.kind !== "btn" && !isTemplate && clientName.trim() && (
+                                                <button
+                                                    type="button"
+                                                    onClick={openGhlPicker}
+                                                    className="flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-secondary ring-1 ring-secondary transition duration-100 ease-linear hover:bg-secondary_hover"
+                                                >
+                                                    <Image01 className="size-4" aria-hidden="true" />
+                                                    Browse GoHighLevel images
+                                                </button>
+                                            )}
+                                            <button
+                                                type="button"
+                                                onClick={savePen}
+                                                className="mt-0.5 rounded-lg bg-brand-solid px-3 py-2 text-sm font-semibold text-white transition duration-100 ease-linear hover:opacity-90"
+                                            >
+                                                Save
+                                            </button>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
+                            </div>
+                        </div>
+                        {fbRail}
                     </div>
                 </div>
             )}
