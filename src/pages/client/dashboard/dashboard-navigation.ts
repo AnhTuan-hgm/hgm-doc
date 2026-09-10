@@ -175,8 +175,11 @@ export const JOURNEY_STEPS: {
         icon: Folder,
         items: [
             {
-                label: "Upload your photos and video",
-                note: "Please upload your photos and videos, including listing photos, drone footage, and any other assets. Our team will enhance them from there.",
+                // Brand assets share the content folder rather than sitting in an item of their
+                // own: a second item would carry a second "Open your folder" button to the very
+                // same URL, and the client would have to guess which one to press.
+                label: "Upload your photos, video and brand assets",
+                note: "Please upload your photos and videos, including listing photos, drone footage, and any other assets. Add any brand material you already have too — fonts, graphics, logos and colours. Our team will enhance them from there.",
                 link: "folder",
                 action: "Open your folder",
             },
