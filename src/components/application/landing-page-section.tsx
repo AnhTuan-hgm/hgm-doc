@@ -1,5 +1,5 @@
 import { type ChangeEvent, type DragEvent, useEffect, useRef, useState } from "react";
-import { AlertCircle, CheckCircle, Code02, Globe01, LinkExternal01, MessageChatCircle, Monitor01, Phone01, UploadCloud02 } from "@untitledui/icons";
+import { AlertCircle, CheckCircle, Code02, Globe01, Link01, LinkExternal01, MessageChatCircle, Monitor01, Phone01, UploadCloud02 } from "@untitledui/icons";
 import { Badge, BadgeWithDot } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
 import { FeaturedIcon } from "@/components/foundations/featured-icon/featured-icon";
@@ -8,12 +8,14 @@ import { uid } from "@/pages/client/dashboard/dashboard-model";
 import { cx } from "@/utils/cx";
 
 /**
- * Marketing → Landing page — an AM uploads or pastes the finished HTML, the client reviews it live
- * in-frame and approves or asks for changes. Persists to landing_pages (see the
+ * Marketing → Landing page — an AM uploads or pastes the finished HTML, or points at the
+ * live URL of a page that is already hosted, and the client reviews it in-frame and
+ * approves or asks for changes. Persists to landing_pages (see the
  * 20260910150000_landing_pages migration): one row per dashboard slug, holding every
- * published version (newest first) and the client's current review state. The HTML
- * itself lives in the `landing-pages` Storage bucket (20260910170000 migration), one
- * immutable object per version; the row only carries its path.
+ * published version (newest first) and the client's current review state. Pasted HTML
+ * lives in the `landing-pages` Storage bucket (20260910170000 migration), one immutable
+ * object per version; the row only carries its path. A link version carries just the URL
+ * and the frame loads it directly.
  *
  * Team writes (publish / restore) go straight to Supabase under the team-only RLS policy.
  * The client is `anon` to Supabase, so Approve / Request changes go through
@@ -27,6 +29,10 @@ import { cx } from "@/utils/cx";
 
 interface LandingPageVersion {
     id: string;
+    /** A live URL instead of stored HTML — the page is already hosted (a Netlify preview,
+     *  the client's own domain) and the frame loads it as-is. A link version has neither
+     *  `path` nor `html`. */
+    url?: string;
     /** Object path in the `landing-pages` Storage bucket — every version published since
      *  the 20260910170000 bucket migration. The row holds the path; the bytes live there. */
     path?: string;
@@ -73,6 +79,29 @@ const fmtSize = (bytes: number) => (bytes >= 1024 * 1024 ? `${(bytes / 1024 / 10
 const sizeOf = (v: LandingPageVersion) => fmtSize(v.bytes ?? bytesOf(v.html ?? ""));
 const urlOf = (path: string) => supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
 const titleOf = (html: string) => html.match(/<title>([^<]*)<\/title>/i)?.[1]?.trim() ?? "";
+/** A version is stored HTML (path / html) or a live link (url) — never both. */
+const isLink = (v: LandingPageVersion) => !!v.url;
+/** Accepts what actually gets pasted — a bare domain, a full URL, with or without www —
+ *  and returns it as an absolute http(s) address, or "" when it isn't one. */
+const normalizeUrl = (raw: string) => {
+    const trimmed = raw.trim();
+    if (!trimmed) return "";
+    try {
+        const u = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
+        return u.hostname.includes(".") ? u.toString() : "";
+    } catch {
+        return "";
+    }
+};
+const hostOf = (url: string) => {
+    try {
+        return new URL(url).hostname.replace(/^www\./, "");
+    } catch {
+        return url;
+    }
+};
+/** What the versions list shows after the date: the file size, or the link's host. */
+const descOf = (v: LandingPageVersion) => (isLink(v) ? hostOf(v.url!) : sizeOf(v));
 const shortDate = (iso?: string) => {
     if (!iso) return "";
     const d = new Date(iso);
@@ -102,8 +131,13 @@ const fetchHtml = async (v: LandingPageVersion): Promise<string> => {
     if (!res.ok) throw new Error(`Storage returned ${res.status}`);
     return res.text();
 };
-/** Open the tab synchronously (popup blockers), then fill it once the HTML arrives. */
+/** Open the tab synchronously (popup blockers), then fill it once the HTML arrives. A link
+ *  version is just opened. */
 const openVersion = async (v: LandingPageVersion) => {
+    if (isLink(v)) {
+        window.open(v.url, "_blank", "noopener,noreferrer");
+        return;
+    }
     const w = window.open("about:blank");
     if (!w) return;
     try {
@@ -144,8 +178,13 @@ export const LandingPageSection = ({
     const [data, setData] = useState<LandingPageData>(EMPTY_DATA);
     const [device, setDevice] = useState<"desktop" | "mobile">("desktop");
 
+    // Two ways to fill the composer: paste / upload HTML, or point at a live URL. Each keeps
+    // its own draft so switching tabs never throws away what was typed in the other.
+    const [mode, setMode] = useState<"html" | "link">("html");
     const [draft, setDraft] = useState("");
     const [draftError, setDraftError] = useState(false);
+    const [linkDraft, setLinkDraft] = useState("");
+    const [linkError, setLinkError] = useState(false);
     const [publishing, setPublishing] = useState(false);
     const [publishErr, setPublishErr] = useState("");
     const [showReplace, setShowReplace] = useState(false);
@@ -179,7 +218,8 @@ export const LandingPageSection = ({
     const [liveErr, setLiveErr] = useState(false);
     const liveId = live?.id;
     useEffect(() => {
-        if (!live) return;
+        // A link version needs no fetch — the frame loads the URL itself.
+        if (!live || isLink(live)) return;
         let cancelled = false;
         setLiveHtml(null);
         setLiveErr(false);
@@ -249,6 +289,82 @@ export const LandingPageSection = ({
         </>
     );
 
+    const linkUrl = normalizeUrl(linkDraft);
+    const hasDraft = mode === "link" ? !!linkUrl : !!draft.trim();
+    const resetComposer = () => {
+        setDraft("");
+        setLinkDraft("");
+        setDraftError(false);
+        setLinkError(false);
+        setPublishErr("");
+    };
+    /** Preview the draft in a new tab — the pasted HTML written into a blank tab, or the link itself. */
+    const previewDraft = () => {
+        if (mode === "link") window.open(linkUrl, "_blank", "noopener,noreferrer");
+        else openInNewTab(draft);
+    };
+
+    /** Paste HTML / Live link — same segmented control as the Desktop / Mobile switch. */
+    const modeTabs = (
+        <div className="flex w-fit items-center gap-1 rounded-lg bg-secondary p-1">
+            {(
+                [
+                    { id: "html", icon: Code02, label: "Paste HTML" },
+                    { id: "link", icon: Link01, label: "Live link" },
+                ] as const
+            ).map((m) => (
+                <button
+                    key={m.id}
+                    type="button"
+                    disabled={!canEdit}
+                    onClick={() => {
+                        setMode(m.id);
+                        setDraftError(false);
+                        setLinkError(false);
+                        setPublishErr("");
+                    }}
+                    className={cx(
+                        "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition duration-100 ease-linear disabled:cursor-not-allowed disabled:opacity-50",
+                        mode === m.id ? "bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300" : "text-tertiary hover:text-primary",
+                    )}
+                >
+                    <m.icon className="size-3.5" aria-hidden="true" />
+                    {m.label}
+                </button>
+            ))}
+        </div>
+    );
+
+    /** The URL input — rendered in place of the textarea when the Live link tab is active. */
+    const linkField = (
+        <div className="flex flex-col gap-2">
+            <input
+                type="url"
+                inputMode="url"
+                value={linkDraft}
+                onChange={(e) => {
+                    setLinkDraft(e.target.value);
+                    setLinkError(false);
+                }}
+                onKeyDown={(e) => {
+                    if (e.key === "Enter" && hasDraft && !publishing) void publish();
+                }}
+                spellCheck={false}
+                disabled={!canEdit}
+                placeholder="https://client-page.netlify.app"
+                className={cx(inputCls, "disabled:cursor-not-allowed disabled:opacity-50", linkError ? "border-error-primary" : "border-secondary")}
+            />
+            {linkError ? (
+                <p className="text-sm text-error-primary">That doesn't look like a web address — paste the full link, starting with https://.</p>
+            ) : (
+                <p className="text-sm text-quaternary">
+                    The live page loads in the frame below on desktop and mobile. Some hosts refuse to be embedded — if the frame stays blank, Open full page
+                    still works.
+                </p>
+            )}
+        </div>
+    );
+
     const [changesOpen, setChangesOpen] = useState(false);
     const [reviewNote, setReviewNote] = useState("");
     const [reviewBusy, setReviewBusy] = useState(false);
@@ -262,7 +378,39 @@ export const LandingPageSection = ({
         return !error;
     };
 
+    /** A link version is a row write only — nothing goes to Storage. */
+    const publishLink = async () => {
+        const url = normalizeUrl(linkDraft);
+        if (!url) {
+            setLinkError(true);
+            setPublishErr("");
+            return;
+        }
+        if (!slug) return;
+        setLinkError(false);
+        setPublishErr("");
+        setPublishing(true);
+        const version: LandingPageVersion = {
+            id: uid(),
+            url,
+            note: hostOf(url),
+            publishedAt: new Date().toISOString(),
+            publishedBy: teamName,
+        };
+        const next: LandingPageData = { versions: [version, ...versions], review: { status: "pending" } };
+        const ok = await persist(next);
+        setPublishing(false);
+        if (!ok) {
+            setPublishErr("Couldn't publish — try again.");
+            return;
+        }
+        setData(next);
+        setLinkDraft("");
+        setShowReplace(false);
+    };
+
     const publish = async () => {
+        if (mode === "link") return publishLink();
         if (!draft.trim()) return;
         if (!looksLikeAPage(draft)) {
             setDraftError(true);
@@ -323,6 +471,7 @@ export const LandingPageSection = ({
         // copied, so a restore is a row write only.
         const version: LandingPageVersion = {
             id: uid(),
+            url: v.url,
             path: v.path,
             bytes: v.bytes,
             html: v.html,
@@ -362,7 +511,7 @@ export const LandingPageSection = ({
     };
 
     const subtitle = isTeam
-        ? "Upload or paste the finished HTML and it renders here for the client. Every publish is kept as a version you can restore."
+        ? "Upload or paste the finished HTML, or drop in the live link, and it renders here for the client. Every publish is kept as a version you can restore."
         : live
           ? "Your direct-booking page, ready for review. Try it on desktop and mobile, then let us know."
           : "The page that turns visitors into direct bookings.";
@@ -398,10 +547,10 @@ export const LandingPageSection = ({
                 <div className="mt-6 flex flex-col rounded-2xl bg-primary ring-1 ring-secondary">
                     <div className="flex items-start justify-between gap-4 border-b border-secondary px-6 py-5">
                         <div>
-                            <p className="text-md font-semibold text-primary">Add the landing page HTML</p>
+                            <p className="text-md font-semibold text-primary">Add the landing page</p>
                             <p className="mt-0.5 text-sm text-pretty text-tertiary">
-                                Upload the exported .html file, or paste the complete page including the head and any inline styles. It renders exactly as the
-                                client will see it. Clients see "on its way" until you publish.
+                                Upload the exported .html file or paste the complete page, or link to the page where it's already hosted. It renders exactly as
+                                the client will see it. Clients see "on its way" until you publish.
                             </p>
                         </div>
                         <Badge color="gray" size="md" type="pill-color">
@@ -409,17 +558,25 @@ export const LandingPageSection = ({
                         </Badge>
                     </div>
                     <div className="flex flex-col gap-3 px-6 py-5">
-                        <textarea
-                            value={draft}
-                            onChange={(e) => setDraft(e.target.value)}
-                            onDrop={onDrop}
-                            onDragOver={onDragOver}
-                            onDragLeave={() => setDragOver(false)}
-                            spellCheck={false}
-                            disabled={!canEdit}
-                            placeholder="Drop the .html file here, or paste the full page — from the opening html tag to the closing one."
-                            className={cx(monoInputCls, draftError ? "border-error-primary" : dragOver ? "border-brand ring-1 ring-brand" : "border-secondary")}
-                        />
+                        {modeTabs}
+                        {mode === "link" ? (
+                            linkField
+                        ) : (
+                            <textarea
+                                value={draft}
+                                onChange={(e) => setDraft(e.target.value)}
+                                onDrop={onDrop}
+                                onDragOver={onDragOver}
+                                onDragLeave={() => setDragOver(false)}
+                                spellCheck={false}
+                                disabled={!canEdit}
+                                placeholder="Drop the .html file here, or paste the full page — from the opening html tag to the closing one."
+                                className={cx(
+                                    monoInputCls,
+                                    draftError ? "border-error-primary" : dragOver ? "border-brand ring-1 ring-brand" : "border-secondary",
+                                )}
+                            />
+                        )}
                         {draftError && (
                             <div role="alert" className="flex items-start gap-3 rounded-xl bg-error-primary p-3.5 ring-1 ring-error_subtle">
                                 <AlertCircle className="mt-0.5 size-5 shrink-0 text-fg-error-secondary" aria-hidden="true" />
@@ -431,30 +588,28 @@ export const LandingPageSection = ({
                                 </div>
                             </div>
                         )}
-                        {publishErr && !draftError && <p className="text-sm text-error-primary">{publishErr}</p>}
+                        {publishErr && !draftError && !linkError && <p className="text-sm text-error-primary">{publishErr}</p>}
                         <div className="flex flex-wrap items-center justify-between gap-3">
                             <p className="text-sm text-quaternary">
-                                {draft.trim()
-                                    ? `${fmtSize(bytesOf(draft))} · ${titleOf(draft) ? `Title: ${titleOf(draft)}` : "No title tag found"}`
-                                    : "Nothing added yet"}
+                                {mode === "link"
+                                    ? linkUrl
+                                        ? `Link: ${hostOf(linkUrl)}`
+                                        : "Nothing added yet"
+                                    : draft.trim()
+                                      ? `${fmtSize(bytesOf(draft))} · ${titleOf(draft) ? `Title: ${titleOf(draft)}` : "No title tag found"}`
+                                      : "Nothing added yet"}
                             </p>
                             <div className="flex flex-wrap gap-3">
-                                {uploadButton}
-                                <Button color="secondary" size="md" isDisabled={!draft.trim() || !canEdit} onClick={() => openInNewTab(draft)}>
+                                {mode === "html" && uploadButton}
+                                <Button color="secondary" size="md" isDisabled={!hasDraft || !canEdit} onClick={previewDraft}>
                                     Preview
                                 </Button>
-                                <Button
-                                    size="md"
-                                    isDisabled={!draft.trim() || !canEdit}
-                                    isLoading={publishing}
-                                    showTextWhileLoading
-                                    onClick={() => void publish()}
-                                >
+                                <Button size="md" isDisabled={!hasDraft || !canEdit} isLoading={publishing} showTextWhileLoading onClick={() => void publish()}>
                                     {publishing ? "Publishing…" : "Publish to client"}
                                 </Button>
                             </div>
                         </div>
-                        {isLocked && <p className="text-xs text-quaternary">Unlock the dashboard to upload, paste and publish.</p>}
+                        {isLocked && <p className="text-xs text-quaternary">Unlock the dashboard to upload, paste, link and publish.</p>}
                     </div>
                 </div>
             )}
@@ -498,7 +653,7 @@ export const LandingPageSection = ({
                         <div className="flex flex-1 justify-end gap-2">
                             {canEdit && (
                                 <Button color="secondary" size="sm" iconLeading={Code02} onClick={() => setShowReplace((v) => !v)}>
-                                    Replace HTML
+                                    Replace page
                                 </Button>
                             )}
                             <Button color="secondary" size="sm" iconLeading={LinkExternal01} onClick={() => void openVersion(live)}>
@@ -509,40 +664,52 @@ export const LandingPageSection = ({
 
                     {canEdit && showReplace && (
                         <div className="flex flex-col gap-3 border-b border-secondary bg-secondary px-4 py-4">
-                            <textarea
-                                value={draft}
-                                onChange={(e) => setDraft(e.target.value)}
-                                onDrop={onDrop}
-                                onDragOver={onDragOver}
-                                onDragLeave={() => setDragOver(false)}
-                                spellCheck={false}
-                                placeholder="Drop or paste the new HTML here. Publishing creates a new version — the current one stays in the list below."
-                                className={cx(
-                                    monoInputCls,
-                                    "min-h-[180px] bg-primary",
-                                    draftError ? "border-error-primary" : dragOver ? "border-brand ring-1 ring-brand" : "border-secondary",
-                                )}
-                            />
+                            {modeTabs}
+                            {mode === "link" ? (
+                                linkField
+                            ) : (
+                                <textarea
+                                    value={draft}
+                                    onChange={(e) => setDraft(e.target.value)}
+                                    onDrop={onDrop}
+                                    onDragOver={onDragOver}
+                                    onDragLeave={() => setDragOver(false)}
+                                    spellCheck={false}
+                                    placeholder="Drop or paste the new HTML here. Publishing creates a new version — the current one stays in the list below."
+                                    className={cx(
+                                        monoInputCls,
+                                        "min-h-[180px] bg-primary",
+                                        draftError ? "border-error-primary" : dragOver ? "border-brand ring-1 ring-brand" : "border-secondary",
+                                    )}
+                                />
+                            )}
                             {draftError && (
                                 <p className="text-sm text-error-primary">It doesn't look like a complete page — make sure it has an html or body tag.</p>
                             )}
-                            {publishErr && !draftError && <p className="text-sm text-error-primary">{publishErr}</p>}
+                            {publishErr && !draftError && !linkError && <p className="text-sm text-error-primary">{publishErr}</p>}
                             <div className="flex items-center justify-between gap-3">
-                                <p className="text-sm text-quaternary">{draft.trim() ? fmtSize(bytesOf(draft)) : "Nothing added yet"}</p>
+                                <p className="text-sm text-quaternary">
+                                    {mode === "link"
+                                        ? linkUrl
+                                            ? `Link: ${hostOf(linkUrl)}`
+                                            : "Nothing added yet"
+                                        : draft.trim()
+                                          ? fmtSize(bytesOf(draft))
+                                          : "Nothing added yet"}
+                                </p>
                                 <div className="flex flex-wrap gap-3">
-                                    {uploadButton}
+                                    {mode === "html" && uploadButton}
                                     <Button
                                         color="tertiary"
                                         size="md"
                                         onClick={() => {
                                             setShowReplace(false);
-                                            setDraft("");
-                                            setDraftError(false);
+                                            resetComposer();
                                         }}
                                     >
                                         Cancel
                                     </Button>
-                                    <Button size="md" isDisabled={!draft.trim()} isLoading={publishing} showTextWhileLoading onClick={() => void publish()}>
+                                    <Button size="md" isDisabled={!hasDraft} isLoading={publishing} showTextWhileLoading onClick={() => void publish()}>
                                         {publishing ? "Publishing…" : `Publish as ${tagOf(-1)}`}
                                     </Button>
                                 </div>
@@ -558,10 +725,21 @@ export const LandingPageSection = ({
                             )}
                             style={{ width: device === "mobile" ? 390 : "100%", maxWidth: "100%", height: device === "mobile" ? 760 : 640 }}
                         >
-                            {/* Always srcDoc, never the Storage URL as src — see fetchHtml. Keyed by
-                                version id so a new version remounts the frame rather than leaving a
-                                stale document behind a changed srcDoc. */}
-                            {liveHtml !== null ? (
+                            {/* A link version is framed straight from its URL. The sandbox keeps the
+                                live page's scripts and forms working but stops it navigating this
+                                tab. Stored HTML is always srcDoc, never the Storage URL as src — see
+                                fetchHtml. Keyed by version id so a new version remounts the frame
+                                rather than leaving a stale document behind a changed srcDoc. */}
+                            {live.url ? (
+                                <iframe
+                                    key={live.id}
+                                    title="Landing page preview"
+                                    src={live.url}
+                                    sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                                    referrerPolicy="no-referrer"
+                                    className="size-full border-0"
+                                />
+                            ) : liveHtml !== null ? (
                                 <iframe
                                     key={live.id}
                                     title="Landing page preview"
@@ -592,6 +770,13 @@ export const LandingPageSection = ({
                             )}
                         </div>
                     </div>
+                    {/* Can't detect a host that refuses framing (the blocked frame still fires load),
+                        so say where the page comes from and point at the way out. */}
+                    {live.url && (
+                        <p className="border-t border-secondary px-4 py-2.5 text-xs text-quaternary">
+                            Showing the live page at {hostOf(live.url)}. If it stays blank, that host blocks embedding — use Open full page.
+                        </p>
+                    )}
                 </div>
             )}
 
@@ -614,7 +799,7 @@ export const LandingPageSection = ({
                                     <p className="truncate text-sm font-medium text-primary">{v.note || "Landing page update"}</p>
                                     <p className="text-sm text-quaternary">
                                         {shortDate(v.publishedAt)}
-                                        {v.publishedBy ? ` · ${v.publishedBy}` : ""} · {sizeOf(v)}
+                                        {v.publishedBy ? ` · ${v.publishedBy}` : ""} · {descOf(v)}
                                     </p>
                                 </div>
                                 {i === 0 ? (
