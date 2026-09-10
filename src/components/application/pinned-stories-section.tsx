@@ -5,6 +5,7 @@ import {
     CheckCircle,
     ChevronLeft,
     ChevronRight,
+    Download01,
     Image03,
     Link01,
     LinkExternal01,
@@ -135,8 +136,6 @@ export const PinnedStoriesSection = ({
 }) => {
     const [data, setData] = useState<PinnedStoriesData>(EMPTY_PINNED_STORIES);
     const [position, setPosition] = useState<StoryPosition>(PROFILE);
-    /** Which set the phone plays for the team. Clients only ever see "live". */
-    const [view, setView] = useState<"live" | "draft">("live");
 
     const [canvaLink, setCanvaLink] = useState("");
     const [importing, setImporting] = useState<string | null>(null);
@@ -220,13 +219,20 @@ export const PinnedStoriesSection = ({
                 if (error) return;
                 const merged = mergePinnedStories(row?.data as Partial<PinnedStoriesData> | null);
                 setData(merged);
-                if (merged.draft && !merged.versions.length) setView("draft");
             });
     }, [slug, isTemplate]);
 
     const live = data.versions[0];
     const draft = data.draft;
-    const shownHighlights = isTeam && view === "draft" && draft ? draft.highlights : (live?.highlights ?? []);
+    // The design link lives with the import (draft.source / the live version's source), so
+    // coming back to edit finds it in the field again — same as Pinned Posts' canva_url.
+    const storedCanvaUrl = draft?.source.canvaUrl || live?.source.canvaUrl || "";
+    useEffect(() => {
+        if (storedCanvaUrl) setCanvaLink((cur) => cur || storedCanvaUrl);
+    }, [storedCanvaUrl]);
+    /** What the phone plays: the team sees their draft while one exists, everyone else the live set. */
+    const view: "live" | "draft" = isTeam && draft ? "draft" : "live";
+    const shownHighlights = view === "draft" && draft ? draft.highlights : (live?.highlights ?? []);
     const review = live?.review ?? EMPTY_REVIEW;
     /* The same account Pinned Posts renders (its carousels in the grid), with the tray swapped
        for whichever story set the phone is playing — the player does that swap itself. */
@@ -273,13 +279,10 @@ export const PinnedStoriesSection = ({
         };
         const ok = await persist({ draft: null, versions: [version, ...data.versions] });
         setPublishing(false);
-        if (ok) {
-            setView("live");
-            setPosition(PROFILE);
-        }
+        if (ok) setPosition(PROFILE);
     };
 
-    const discardDraft = () => void persist({ ...data, draft: null }).then(() => setView("live"));
+    const discardDraft = () => void persist({ ...data, draft: null }).then(() => setPosition(PROFILE));
 
     /**
      * Back to stage 0: no draft, no versions, so the section shows the import panel again
@@ -296,7 +299,6 @@ export const PinnedStoriesSection = ({
         setResetting(false);
         setResetArmed(false);
         if (ok) {
-            setView("live");
             setPosition(PROFILE);
             setShowImport(false);
             setCanvaLink("");
@@ -325,16 +327,16 @@ export const PinnedStoriesSection = ({
                 source: live.source,
             },
         });
-        setView("draft");
         setPosition(PROFILE);
     };
 
     const startDraftWith = (pages: StorySlide[], source: StoryDraft["source"]) => {
         // A second import while a draft is open adds to it (that's how a video page joins an
         // image set) rather than throwing the AM's arrangement away.
-        const next: StoryDraft = draft ? { ...draft, unassigned: [...draft.unassigned, ...pages], source: draft.source } : draftFromPages(pages, source);
+        const next: StoryDraft = draft
+            ? { ...draft, unassigned: [...draft.unassigned, ...pages], source: source.designId || !draft.source.designId ? source : draft.source }
+            : draftFromPages(pages, source);
         void persist({ ...data, draft: next });
-        setView("draft");
         setPosition(PROFILE);
         setShowImport(false);
     };
@@ -369,7 +371,8 @@ export const PinnedStoriesSection = ({
                 importedAt: new Date().toISOString(),
                 importedBy: teamName,
             });
-            setCanvaLink("");
+            // The link stays in the field: the arrange panel shows it so the AM can open the
+            // design or pull the pages in again after editing it in Canva.
         } catch (e) {
             // The stored token stopped working mid-way — re-read the status so the panel
             // swaps the import button for Connect Canva.
@@ -431,7 +434,6 @@ export const PinnedStoriesSection = ({
 
     const loadSample = () => {
         void persist({ ...data, draft: sampleDraft(teamName) });
-        setView("draft");
         setPosition(PROFILE);
         setShowImport(false);
     };
@@ -549,11 +551,11 @@ export const PinnedStoriesSection = ({
     };
 
     const jumpTo = (c: { highlightId: string; slideId: string }) => {
-        const h = live?.highlights.find((x) => x.id === c.highlightId);
-        const i = h ? storyFrames(h).findIndex((s) => s.id === c.slideId) : -1;
-        if (h && i >= 0) {
-            setView("live");
-            setPosition({ highlightId: h.id, slide: i });
+        // Slides keep their ids when the live set becomes a draft, so the note can be found
+        // in whichever set the phone is showing.
+        for (const h of shownHighlights) {
+            const i = storyFrames(h).findIndex((s) => s.id === c.slideId);
+            if (i >= 0) return setPosition({ highlightId: h.id, slide: i });
         }
     };
 
@@ -729,26 +731,6 @@ export const PinnedStoriesSection = ({
                 <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(260px,320px)_1fr]">
                     {/* Phone */}
                     <div className="flex flex-col items-center gap-4">
-                        {isTeam && live && draft && (
-                            <div className="flex items-center gap-1 rounded-lg bg-secondary p-1">
-                                {(["live", "draft"] as const).map((v) => (
-                                    <button
-                                        key={v}
-                                        type="button"
-                                        onClick={() => {
-                                            setView(v);
-                                            setPosition(PROFILE);
-                                        }}
-                                        className={cx(
-                                            "rounded-md px-3 py-1.5 text-xs font-semibold transition duration-100 ease-linear",
-                                            view === v ? "bg-primary text-primary shadow-xs ring-1 ring-secondary" : "text-tertiary hover:text-primary",
-                                        )}
-                                    >
-                                        {v === "live" ? `Live · ${tagOf(0)}` : "Draft"}
-                                    </button>
-                                ))}
-                            </div>
-                        )}
                         <PhoneFrame label="Pinned stories" className="w-[248px] sm:w-[280px]">
                             <StoryPlayer
                                 highlights={shownHighlights}
@@ -871,6 +853,79 @@ export const PinnedStoriesSection = ({
                                         </Button>
                                     )}
                                 </div>
+
+                                {/* The Canva source, always to hand — open the design, or pull its pages in again after editing it. Same row Pinned Posts has. */}
+                                {canEdit && (
+                                    <div className="border-b border-secondary bg-secondary px-5 py-4">
+                                        <label className="flex flex-col gap-1">
+                                            <span className="text-xs font-medium text-secondary">Canva design link</span>
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <input
+                                                    type="url"
+                                                    value={canvaLink}
+                                                    onChange={(e) => setCanvaLink(e.target.value)}
+                                                    disabled={!!importing}
+                                                    placeholder="https://www.canva.com/design/…/edit"
+                                                    className={cx(inputCls, "min-w-60 flex-1 font-mono text-xs")}
+                                                    spellCheck={false}
+                                                />
+                                                {parseCanvaUrl(canvaLink) && (
+                                                    <Button
+                                                        href={canvaEditUrl(parseCanvaUrl(canvaLink)!.id)}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        color="secondary"
+                                                        size="sm"
+                                                        iconTrailing={LinkExternal01}
+                                                    >
+                                                        Open
+                                                    </Button>
+                                                )}
+                                                {canva && !canva.connected && canva.configured ? (
+                                                    <Button
+                                                        size="sm"
+                                                        iconLeading={Link01}
+                                                        isLoading={canvaBusy}
+                                                        showTextWhileLoading
+                                                        onClick={() => void connectCanva()}
+                                                    >
+                                                        Connect Canva
+                                                    </Button>
+                                                ) : (
+                                                    <Button
+                                                        size="sm"
+                                                        iconLeading={Download01}
+                                                        isDisabled={!parseCanvaUrl(canvaLink) || (!!canva && !canva.connected)}
+                                                        isLoading={!!importing}
+                                                        showTextWhileLoading
+                                                        onClick={() => void importFromCanva()}
+                                                    >
+                                                        {importing ?? "Import from Canva"}
+                                                    </Button>
+                                                )}
+                                            </div>
+                                            {canvaLink.trim() && !parseCanvaUrl(canvaLink) && (
+                                                <span className="text-xs text-warning-primary">That doesn't look like a Canva design link.</span>
+                                            )}
+                                            {!showImport && importErr && <span className="text-xs text-error-primary">{importErr}</span>}
+                                            {canvaNote && (
+                                                <span className={cx("text-xs", canvaNote.kind === "ok" ? "text-success-primary" : "text-error-primary")}>
+                                                    {canvaNote.text}
+                                                </span>
+                                            )}
+                                            {canva && !canva.configured && (
+                                                <span className="text-xs text-quaternary">
+                                                    Canva isn't set up on the portal yet — use Add pages to upload the export.
+                                                </span>
+                                            )}
+                                            {importing === null && !importErr && (
+                                                <span className="text-xs text-quaternary">
+                                                    Importing again adds every page to the tray below; the highlights you've arranged stay as they are.
+                                                </span>
+                                            )}
+                                        </label>
+                                    </div>
+                                )}
 
                                 <div className="flex flex-col divide-y divide-border-secondary">
                                     {draft.highlights.length === 0 && (
@@ -1188,7 +1243,7 @@ export const PinnedStoriesSection = ({
                         )}
 
                         {/* Team: the live set's highlights, read-only, and the client's notes */}
-                        {isTeam && live && view === "live" && (
+                        {isTeam && live && (
                             <div className="flex flex-col rounded-2xl bg-primary ring-1 ring-secondary">
                                 <div className="flex items-center justify-between gap-3 border-b border-secondary px-5 py-4">
                                     <p className="text-md font-semibold text-primary">Client notes</p>
