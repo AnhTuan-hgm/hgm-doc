@@ -105,6 +105,50 @@ export const OVERVIEW_COUNTED_FIELDS: (keyof OverviewDoc)[] = [
     "instagram_screenshot",
 ];
 
+/**
+ * The Overview brief as one pasteable document, in the rail's reading order.
+ *
+ * Mirrors compileMasterDocument: `sections` is returned beside the markdown so a caller
+ * can build rich HTML from the same content rather than re-parsing it. Empty fields are
+ * dropped rather than printed blank — an AM pastes this into a Google Doc to work from,
+ * and rows of "Not filled in" are noise there.
+ */
+export const compileOverviewDocument = (doc: OverviewDoc): { doc: string; sections: { label: string; value: string }[]; generatedOn: string } => {
+    const val = (key: keyof OverviewDoc) => String(doc[key] ?? "").trim();
+    const rows = (pairs: [string, string][]) =>
+        pairs
+            .filter(([, v]) => v)
+            .map(([label, v]) => `${label}: ${v}`)
+            .join("\n");
+
+    const properties = doc.properties
+        .filter((p) => p.name.trim() || p.link.trim())
+        .map((p) => [p.name.trim() || "Unnamed property", p.link.trim()].filter(Boolean).join(" — "))
+        .join("\n");
+
+    const sections = [
+        ...OVERVIEW_SECTIONS.slice(0, 2).map((s) => ({ label: s.title, value: rows(s.fields.map((f) => [f.label, val(f.key)])) })),
+        { label: "Properties", value: properties },
+        ...OVERVIEW_SECTIONS.slice(2).map((s) => ({ label: s.title, value: rows(s.fields.map((f) => [f.label, val(f.key)])) })),
+        {
+            label: "Baseline (snapshot)",
+            value: rows([
+                ...OVERVIEW_BASELINE.map((f): [string, string] => [f.label, val(f.key)]),
+                ["Direct booking split", val("direct_booking_split")],
+                // The screenshot is a base64 data URL. Naming it beats pasting megabytes of it.
+                ["Instagram screenshot", doc.instagram_screenshot ? "Attached on the dashboard" : ""],
+            ]),
+        },
+    ];
+
+    const generatedOn = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+    const title = doc.business_name.trim() || doc.client_name.trim() || "Client";
+    const lines: string[] = [`# Client Overview — ${title}`, "", `Generated: ${generatedOn}`, ""];
+    sections.forEach((s, i) => lines.push(`## ${i + 1}. ${s.label}`, "", s.value || "_Not provided yet._", ""));
+
+    return { doc: lines.join("\n"), sections, generatedOn };
+};
+
 export const DEFAULT_OVERVIEW_DOC: OverviewDoc = {
     client_name: "",
     business_name: "",
