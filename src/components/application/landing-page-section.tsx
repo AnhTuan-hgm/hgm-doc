@@ -622,10 +622,6 @@ export const LandingPageSection = ({
                             <BadgeWithDot color="success" size="sm" type="pill-color">
                                 Live
                             </BadgeWithDot>
-                            <span className="text-sm text-tertiary">
-                                {tagOf(0)} · Published {shortDate(live.publishedAt)}
-                                {live.publishedBy ? ` by ${live.publishedBy}` : ""}
-                            </span>
                         </div>
                         <div className="flex items-center gap-1 rounded-lg bg-secondary p-1">
                             {(
