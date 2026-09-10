@@ -5,7 +5,7 @@ import {
     ArrowRight,
     Check,
     Home02,
-    InfoCircle,
+    Lock01,
     Mail01,
     Microphone01,
     Plus,
@@ -653,7 +653,7 @@ const TextQuestion = ({
 /** Reassurance shown under credential questions — clients are sharing real logins. */
 const SafeNote = () => (
     <div className="mt-6 flex max-w-xl items-start gap-2.5 rounded-xl bg-secondary px-4 py-3">
-        <InfoCircle className="mt-0.5 size-4 shrink-0 text-fg-quaternary" aria-hidden="true" />
+        <Lock01 className="mt-0.5 size-4 shrink-0 text-fg-quaternary" aria-hidden="true" />
         <p className="text-sm text-tertiary">
             <span className="font-semibold text-secondary">Your details are safe.</span> Everything you enter is sent over an encrypted connection, stored
             privately, and used only by your dedicated HiddenGem team to set up your accounts — never shared with anyone else. You're welcome to update or
