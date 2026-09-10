@@ -11,7 +11,9 @@ import { cx } from "@/utils/cx";
  * Marketing → Landing page — an AM uploads or pastes the finished HTML, the client reviews it live
  * in-frame and approves or asks for changes. Persists to landing_pages (see the
  * 20260910150000_landing_pages migration): one row per dashboard slug, holding every
- * published version (newest first) and the client's current review state.
+ * published version (newest first) and the client's current review state. The HTML
+ * itself lives in the `landing-pages` Storage bucket (20260910170000 migration), one
+ * immutable object per version; the row only carries its path.
  *
  * Team writes (publish / restore) go straight to Supabase under the team-only RLS policy.
  * The client is `anon` to Supabase, so Approve / Request changes go through
@@ -25,7 +27,14 @@ import { cx } from "@/utils/cx";
 
 interface LandingPageVersion {
     id: string;
-    html: string;
+    /** Object path in the `landing-pages` Storage bucket — every version published since
+     *  the 20260910170000 bucket migration. The row holds the path; the bytes live there. */
+    path?: string;
+    /** Size of the stored file, for the versions list (stat only). */
+    bytes?: number;
+    /** Legacy: the full HTML inline in the row, from before the bucket existed. Still
+     *  rendered and restorable; nothing new is written this way. */
+    html?: string;
     /** What changed, or the file's own <title> when nothing was typed — shown next to
      *  the version in the list, never required to publish. */
     note: string;
@@ -49,15 +58,20 @@ interface LandingPageData {
 
 const EMPTY_DATA: LandingPageData = { versions: [], review: { status: "pending" } };
 const ENDPOINT = "/.netlify/functions/landing-page-review";
-// A generous cap: real landing pages in this table run 15–25 KB. This just keeps one
-// pasted file from ballooning the jsonb row.
-const MAX_HTML_BYTES = 2_000_000;
+const BUCKET = "landing-pages";
+// Matches the bucket's file_size_limit. Exports with inline base64 images run 3–10 MB;
+// anything past this is almost always an un-optimised image, not a bigger page.
+const MAX_HTML_BYTES = 25 * 1024 * 1024;
+const TOO_LARGE = "That file is over 25 MB. Host the images at URLs instead of embedding them as base64, then upload again.";
 
 const looksLikeAPage = (html: string) => /<html[\s>]/i.test(html) || /<body[\s>]/i.test(html);
 /** Brandon exports a single self-contained file; an `.htm` from an older tool is the same
  *  thing. Anything else (a zip, a Next.js build folder) can't be pasted either. */
 const isHtmlFile = (file: File) => /\.html?$/i.test(file.name) || file.type === "text/html";
-const kb = (html: string) => (new Blob([html]).size / 1024).toFixed(1);
+const bytesOf = (html: string) => new Blob([html]).size;
+const fmtSize = (bytes: number) => (bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${(bytes / 1024).toFixed(1)} KB`);
+const sizeOf = (v: LandingPageVersion) => fmtSize(v.bytes ?? bytesOf(v.html ?? ""));
+const urlOf = (path: string) => supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
 const titleOf = (html: string) => html.match(/<title>([^<]*)<\/title>/i)?.[1]?.trim() ?? "";
 const shortDate = (iso?: string) => {
     if (!iso) return "";
@@ -72,6 +86,11 @@ const openInNewTab = (html: string) => {
     if (!w) return;
     w.document.write(html);
     w.document.close();
+};
+/** A stored version already has a URL; a legacy inline one still goes through the blank tab. */
+const openVersion = (v: LandingPageVersion) => {
+    if (v.path) window.open(urlOf(v.path), "_blank", "noopener");
+    else if (v.html) openInNewTab(v.html);
 };
 
 const inputCls =
@@ -145,7 +164,7 @@ export const LandingPageSection = ({
         }
         if (file.size > MAX_HTML_BYTES) {
             setDraftError(false);
-            setPublishErr("That file is too large — keep a single landing page under 2 MB.");
+            setPublishErr(TOO_LARGE);
             return;
         }
         try {
@@ -203,16 +222,38 @@ export const LandingPageSection = ({
             setPublishErr("");
             return;
         }
-        if (new Blob([draft]).size > MAX_HTML_BYTES) {
-            setPublishErr("That file is too large — keep a single landing page under 2 MB.");
+        const size = bytesOf(draft);
+        if (size > MAX_HTML_BYTES) {
+            setPublishErr(TOO_LARGE);
             return;
         }
+        if (!slug) return;
         setDraftError(false);
         setPublishErr("");
         setPublishing(true);
+
+        // Bytes to Storage first, path to the row second. The object is named by the
+        // version id under the slug, so it's immutable and a failed row write leaves at
+        // worst an orphan file, never a version pointing at nothing.
+        const id = uid();
+        const path = `${slug}/${id}.html`;
+        const { error: upErr } = await supabase.storage
+            .from(BUCKET)
+            .upload(path, new Blob([draft], { type: "text/html" }), { contentType: "text/html", cacheControl: "31536000" });
+        if (upErr) {
+            setPublishing(false);
+            setPublishErr(
+                /bucket/i.test(upErr.message)
+                    ? "Storage isn't set up for landing pages yet — apply the landing-pages bucket migration, then try again."
+                    : `Couldn't upload the file — ${upErr.message}`,
+            );
+            return;
+        }
+
         const version: LandingPageVersion = {
-            id: uid(),
-            html: draft,
+            id,
+            path,
+            bytes: size,
             note: titleOf(draft),
             publishedAt: new Date().toISOString(),
             publishedBy: teamName,
@@ -231,7 +272,17 @@ export const LandingPageSection = ({
 
     const restore = async (v: LandingPageVersion, tag: string) => {
         setRestoringId(v.id);
-        const version: LandingPageVersion = { id: uid(), html: v.html, note: `Restored ${tag}`, publishedAt: new Date().toISOString(), publishedBy: teamName };
+        // Points at the same stored object (or carries the same inline HTML) — nothing is
+        // copied, so a restore is a row write only.
+        const version: LandingPageVersion = {
+            id: uid(),
+            path: v.path,
+            bytes: v.bytes,
+            html: v.html,
+            note: `Restored ${tag}`,
+            publishedAt: new Date().toISOString(),
+            publishedBy: teamName,
+        };
         const next: LandingPageData = { versions: [version, ...versions], review: { status: "pending" } };
         const ok = await persist(next);
         setRestoringId(null);
@@ -264,7 +315,7 @@ export const LandingPageSection = ({
     };
 
     const subtitle = isTeam
-        ? "Paste the finished HTML and it renders here for the client. Every publish is kept as a version you can restore."
+        ? "Upload or paste the finished HTML and it renders here for the client. Every publish is kept as a version you can restore."
         : live
           ? "Your direct-booking page, ready for review. Try it on desktop and mobile, then let us know."
           : "The page that turns visitors into direct bookings.";
@@ -336,7 +387,9 @@ export const LandingPageSection = ({
                         {publishErr && !draftError && <p className="text-sm text-error-primary">{publishErr}</p>}
                         <div className="flex flex-wrap items-center justify-between gap-3">
                             <p className="text-sm text-quaternary">
-                                {draft.trim() ? `${kb(draft)} KB · ${titleOf(draft) ? `Title: ${titleOf(draft)}` : "No title tag found"}` : "Nothing added yet"}
+                                {draft.trim()
+                                    ? `${fmtSize(bytesOf(draft))} · ${titleOf(draft) ? `Title: ${titleOf(draft)}` : "No title tag found"}`
+                                    : "Nothing added yet"}
                             </p>
                             <div className="flex flex-wrap gap-3">
                                 {uploadButton}
@@ -401,7 +454,7 @@ export const LandingPageSection = ({
                                     Replace HTML
                                 </Button>
                             )}
-                            <Button color="secondary" size="sm" iconLeading={LinkExternal01} onClick={() => openInNewTab(live.html)}>
+                            <Button color="secondary" size="sm" iconLeading={LinkExternal01} onClick={() => openVersion(live)}>
                                 Open full page
                             </Button>
                         </div>
@@ -428,7 +481,7 @@ export const LandingPageSection = ({
                             )}
                             {publishErr && !draftError && <p className="text-sm text-error-primary">{publishErr}</p>}
                             <div className="flex items-center justify-between gap-3">
-                                <p className="text-sm text-quaternary">{draft.trim() ? `${kb(draft)} KB` : "Nothing added yet"}</p>
+                                <p className="text-sm text-quaternary">{draft.trim() ? fmtSize(bytesOf(draft)) : "Nothing added yet"}</p>
                                 <div className="flex flex-wrap gap-3">
                                     {uploadButton}
                                     <Button
@@ -458,7 +511,26 @@ export const LandingPageSection = ({
                             )}
                             style={{ width: device === "mobile" ? 390 : "100%", maxWidth: "100%", height: device === "mobile" ? 760 : 640 }}
                         >
-                            <iframe title="Landing page preview" srcDoc={live.html} sandbox="allow-same-origin" className="size-full border-0" />
+                            {/* Stored versions load by URL; legacy inline ones still render from the row.
+                                Keyed by version id so switching versions remounts the frame instead of
+                                leaving a stale document behind a changed src. */}
+                            {live.path ? (
+                                <iframe
+                                    key={live.id}
+                                    title="Landing page preview"
+                                    src={urlOf(live.path)}
+                                    sandbox="allow-same-origin"
+                                    className="size-full border-0"
+                                />
+                            ) : (
+                                <iframe
+                                    key={live.id}
+                                    title="Landing page preview"
+                                    srcDoc={live.html ?? ""}
+                                    sandbox="allow-same-origin"
+                                    className="size-full border-0"
+                                />
+                            )}
                         </div>
                     </div>
                 </div>
@@ -483,7 +555,7 @@ export const LandingPageSection = ({
                                     <p className="truncate text-sm font-medium text-primary">{v.note || "Landing page update"}</p>
                                     <p className="text-sm text-quaternary">
                                         {shortDate(v.publishedAt)}
-                                        {v.publishedBy ? ` · ${v.publishedBy}` : ""} · {kb(v.html)} KB
+                                        {v.publishedBy ? ` · ${v.publishedBy}` : ""} · {sizeOf(v)}
                                     </p>
                                 </div>
                                 {i === 0 ? (
