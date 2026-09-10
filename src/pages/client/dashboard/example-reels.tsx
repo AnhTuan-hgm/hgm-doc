@@ -53,9 +53,9 @@ const ReelSlot = ({ reel, isLocked, onChange }: { reel: ExampleReel; isLocked: b
     const description = reel.description.trim();
 
     return (
-        // Capped at 240px so three phones sit at roughly the /mockup row's scale instead of
-        // each taking a third of the content column (which made one reel a full viewport tall).
-        <figure className="flex w-[200px] shrink-0 snap-center flex-col items-center sm:w-full sm:max-w-[240px]">
+        // Each phone takes its third of the column, capped so an ultrawide window doesn't
+        // blow a single reel past a viewport in height. 240px read too small in review.
+        <figure className="flex w-[240px] shrink-0 snap-center flex-col items-center sm:w-full sm:max-w-[340px]">
             <PhoneFrame label={title || "Reel"} className="w-full">
                 {reel.url ? (
                     // The description is the footage's text alternative (WCAG 1.2.1).
@@ -147,7 +147,7 @@ export const ExampleReelsSection = ({
     }
 
     return (
-        <div className="-mx-4 mt-8 scrollbar-hide flex snap-x snap-mandatory gap-6 overflow-x-auto px-4 pb-4 sm:mx-0 sm:grid sm:grid-cols-3 sm:justify-items-center sm:gap-8 sm:overflow-visible sm:px-0 sm:pb-0">
+        <div className="-mx-4 mt-8 scrollbar-hide flex snap-x snap-mandatory gap-6 overflow-x-auto px-4 pb-4 sm:mx-0 sm:grid sm:grid-cols-3 sm:justify-items-center sm:gap-6 sm:overflow-visible sm:px-0 sm:pb-0">
             {shown.map((reel) => (
                 <ReelSlot key={reel.id} reel={reel} isLocked={isLocked} onChange={(patch) => onChange(reel.id, patch)} />
             ))}
