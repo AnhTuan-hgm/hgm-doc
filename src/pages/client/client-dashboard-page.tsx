@@ -40,7 +40,7 @@ import { ChartTooltipContent } from "@/components/application/charts/charts-base
 import { LandingPageSection } from "@/components/application/landing-page-section";
 import { PinnedStoriesSection } from "@/components/application/pinned-stories-section";
 import { VideoAttach, VideoEmbed } from "@/components/application/video-block";
-import { WelcomeFlowSection, stepLabel } from "@/components/application/welcome-flow";
+import { WelcomeFlowSection } from "@/components/application/welcome-flow";
 import { Badge, BadgeWithDot, BadgeWithIcon } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
 import { ProgressBarCircle } from "@/components/base/progress-indicators/progress-circles";
@@ -152,10 +152,10 @@ import {
 import { PinnedPostsSection, type PinnedProfileInputs, isPinnedKey } from "@/pages/client/dashboard/pinned-posts";
 import { SuggestionBox, SuggestionContext, fetchSuggestions, sendSuggestions, withdrawSuggestion } from "@/pages/client/dashboard/suggestions";
 import {
+    FLOW_FEEDBACK_KEY,
     type Suggestion,
     type SuggestionItem,
     applySuggestion,
-    flowFeedbackKey,
     isFlowFeedbackKey,
     labelForKey,
     valueForKey,
@@ -963,9 +963,12 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
        "welcomeFlow.{slot}" keys. The section renders; these do the reads and writes. */
     const flowFeedback = suggestions.filter((s) => isFlowFeedbackKey(s.field_key));
     const canFlowFeedback = !isTeam && !isTemplate && flowRevealed && !!suggestAuthor;
-    const sendFlowFeedback = async (slot: number, text: string, subjectNow: string) => {
+    /** One note per person for the whole flow, not one per email — see FLOW_FEEDBACK_KEY.
+     *  `currentValue` stays empty: there is no single subject line a combined note is
+     *  "written on", so there is nothing for the team's staleness check to compare. */
+    const sendFlowFeedback = async (text: string) => {
         if (!slug || !suggestAuthor) throw new Error("Sign in with your email to send feedback.");
-        const item = { fieldKey: flowFeedbackKey(slot), fieldLabel: `${stepLabel(slot)} · feedback`, currentValue: subjectNow, suggestedValue: text };
+        const item = { fieldKey: FLOW_FEEDBACK_KEY, fieldLabel: "Welcome emails · feedback", currentValue: "", suggestedValue: text };
         if (identityEmail) {
             await sendSuggestions(slug, identityEmail, [item]);
         } else {

@@ -559,8 +559,8 @@ export interface FlowFeedbackProps {
     items: Suggestion[];
     /** The address a new comment is stamped with; empty means the viewer can't send. */
     author: string;
-    /** Sends (or replaces) the author's comment on `slot`; `subject` is what they were looking at. */
-    send: (slot: number, text: string, subject: string) => Promise<void>;
+    /** Sends (or replaces) the author's one note on the flow. */
+    send: (text: string) => Promise<void>;
     withdraw: (s: Suggestion) => Promise<void>;
     /** "accepted" reads as done, "declined" as dismissed — nothing is applied anywhere. */
     resolve: (s: Suggestion, status: "accepted" | "declined") => Promise<void>;
@@ -890,40 +890,41 @@ export const WelcomeFlowSection = ({
     const hasContent = source !== "empty";
     /** Steps that hold a finished email (Pooja's or pasted) — the flow's real progress. */
     const finishedCount = FLOW_STEPS.filter((_, i) => !!customs[i] || !!dbEmails[i]).length;
+    /** Whether the flow holds anything a client could comment on — a finished email or one
+     *  of the built-in templates. Gates the feedback rail, which is flow-level and so can't
+     *  use `hasContent` (that one is about the tab in front of you). */
+    const flowHasAnything = finishedCount > 0 || flow.emails.length > 0;
     /** Inbox header — what the recipient sees before opening. */
     const subject = source === "pasted" ? htmlTitle(customs[tab]!) : source === "finished" ? dbEmail!.subject : (builtIn?.subject ?? "");
     const previewText = source === "finished" ? dbEmail!.preview : "";
 
-    /* ── Client feedback on this step ── */
+    /* ── Client feedback on the flow ──
+       One note per person for all nine emails, not one per tab, so none of this depends
+       on `tab` any more. Legacy per-email rows still arrive in `items` and still show in
+       the team's list below, labelled with the email they were written about. */
     const fb = feedback && feedback.mode !== "off" ? feedback : null;
-    const feedbackFor = (slot: number) => (fb?.items ?? []).filter((s) => flowFeedbackSlot(s.field_key) === slot);
-    const hasPendingFeedback = (slot: number) => feedbackFor(slot).some((s) => s.status === "pending");
-    const fbPending = feedbackFor(tab).filter((s) => s.status === "pending");
-    /** The viewer's own open comment on this step — the composer edits it in place. */
+    const fbPending = (fb?.items ?? []).filter((s) => s.status === "pending");
+    /** The viewer's own open note — the box edits it in place. */
     const fbMine = fb ? fbPending.find((s) => s.suggested_by === fb.author) : undefined;
-    /** The viewer's most recent closed comment here, for the "what happened" note. */
-    const fbResolved = fb ? feedbackFor(tab).find((s) => s.status !== "pending" && s.suggested_by === fb.author) : undefined;
+    /** The viewer's most recent closed note, for the "what happened" line. */
+    const fbResolved = fb ? fb.items.find((s) => s.status !== "pending" && s.suggested_by === fb.author) : undefined;
     const [fbText, setFbText] = useState("");
     const [fbState, setFbState] = useState<"idle" | "sending" | "sent" | "error">("idle");
     const [fbError, setFbError] = useState("");
-    // Switching steps clears the composer's status; the text tracks the open comment,
-    // which also changes right after a send (the refresh brings the new row back) — that
-    // must not wipe the "Sent" confirmation, so the two are separate effects.
-    useEffect(() => {
-        setFbState("idle");
-        setFbError("");
-    }, [tab]);
+    // The box tracks the viewer's open note, which changes right after a send (the
+    // refresh brings the new row back). Keyed on the row id alone so re-typing is never
+    // interrupted, and so the send's own refresh doesn't wipe the "Sent" confirmation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => {
         setFbText(fbMine?.suggested_value ?? "");
-    }, [tab, fbMine?.id]);
+    }, [fbMine?.id]);
     const sendFeedback = async () => {
         const text = fbText.trim();
         if (!fb || !text) return;
         setFbState("sending");
         setFbError("");
         try {
-            await fb.send(tab, text, subject);
+            await fb.send(text);
             setFbState("sent");
             window.setTimeout(() => setFbState((s) => (s === "sent" ? "idle" : s)), 6000);
         } catch (err) {
@@ -999,35 +1000,27 @@ export const WelcomeFlowSection = ({
         brandTimer.current = setTimeout(() => setRev((r) => r + 1), 500);
     };
 
-    /** Steps other than this one where the viewer has a note still awaiting review —
-     *  the rail names them, so the tab dots aren't the only record. */
-    const fbOtherOpen = !fb
-        ? []
-        : FLOW_STEPS.map((_, i) => i).filter((i) => i !== tab && feedbackFor(i).some((s) => s.status === "pending" && s.suggested_by === fb.author));
-
     /* ── The client's feedback rail ──
-       Sits beside the previews so a note can be written while the email is still on
-       screen; it used to sit underneath them, past two full-height previews. One open
-       comment per person per step — sending again replaces it — and the team reads it
-       in the review card above. Null for the team and for a viewer who can't send. */
+       Sits beside the previews so a note can be written while the emails are on screen,
+       and stays put as the tabs change: one note covers the whole flow, so a client who
+       has something to say about E2 and E6 writes it once and sends once. Sending again
+       replaces it, and the team reads it in the review card above. Null for the team and
+       for a viewer who can't send. */
     const fbRail =
-        fb?.mode === "client" ? (
+        fb?.mode === "client" && flowHasAnything ? (
             <aside className="w-full shrink-0 @min-[1012px]:sticky @min-[1012px]:top-4 @min-[1012px]:w-[340px]">
                 <div className="rounded-2xl bg-primary p-4 ring-1 ring-secondary md:p-5">
                     <div className="flex flex-wrap items-start justify-between gap-2">
-                        <p className="text-sm font-semibold text-primary">Your feedback on {stepLabel(tab)}</p>
+                        <p className="text-sm font-semibold text-primary">Your feedback</p>
                         {fbMine && (
                             <span className="rounded-full bg-warning-primary px-2.5 py-1 text-xs font-medium text-warning-primary">Awaiting review</span>
                         )}
                     </div>
-                    <p className="mt-1 text-sm text-tertiary">
-                        Anything you'd change — the wording, the offer, the photos, the timing. Your account manager reads every note.
-                    </p>
                     <textarea
-                        rows={5}
+                        rows={6}
                         value={fbText}
                         onChange={(e) => setFbText(e.target.value)}
-                        placeholder="e.g. The subject line feels too pushy for a first email — could we soften it?"
+                        placeholder="Your feedback on the welcome emails…"
                         className="mt-3 w-full resize-y rounded-lg border border-secondary bg-primary px-3 py-2 text-sm text-primary transition duration-100 ease-linear outline-none placeholder:text-placeholder focus:border-brand focus:ring-1 focus:ring-brand"
                     />
                     <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -1059,11 +1052,6 @@ export const WelcomeFlowSection = ({
                         <p className="mt-2.5 text-xs text-quaternary">
                             Your note from {shortDate(fbResolved.created_at)} was marked {fbResolved.status === "accepted" ? "done" : "closed"}
                             {fbResolved.resolved_at ? ` on ${shortDate(fbResolved.resolved_at)}` : ""}.
-                        </p>
-                    )}
-                    {fbOtherOpen.length > 0 && (
-                        <p className="mt-3 border-t border-secondary pt-3 text-xs text-quaternary">
-                            You also have an open note on {fbOtherOpen.map((i) => `E${i + 1}`).join(", ")}.
                         </p>
                     )}
                 </div>
@@ -1105,28 +1093,21 @@ export const WelcomeFlowSection = ({
                             )}
                         >
                             E{i + 1} {step.name}
-                            {hasPendingFeedback(i) && (
-                                <span
-                                    aria-label="has open feedback"
-                                    className={cx("ml-1.5 inline-block size-1.5 rounded-full align-middle", tab === i ? "bg-white" : "bg-warning-solid")}
-                                />
-                            )}
                         </button>
                     );
                 })}
                 <span className="ml-1 text-xs text-quaternary">{tab === 0 ? "sent when the lead signs up" : `sent in week ${tab + 1}`}</span>
             </div>
 
-            {/* Team review — the client's open comments on this step, read and closed here. */}
+            {/* Team review — every open client note on the flow, read and closed here. A note
+                written before the box was combined names the email it was about. */}
             {fb?.mode === "review" && fbPending.length > 0 && (
                 <div className="mt-4 flex flex-col gap-2">
                     {fbPending.map((s) => (
                         <div key={s.id} className="rounded-xl bg-brand-primary p-3.5 ring-1 ring-secondary">
                             <p className="text-xs font-medium text-secondary">
                                 Client feedback · {s.suggested_by} · {shortDate(s.created_at)}
-                                {s.current_value && s.current_value !== subject && (
-                                    <span className="text-warning-primary"> · written on an earlier version (“{s.current_value}”)</span>
-                                )}
+                                {Number.isInteger(flowFeedbackSlot(s.field_key)) && <span> · on {stepLabel(flowFeedbackSlot(s.field_key))}</span>}
                             </p>
                             <p className="mt-1 text-sm whitespace-pre-wrap text-primary">{s.suggested_value}</p>
                             <div className="mt-2.5 flex items-center gap-2">
@@ -1307,167 +1288,175 @@ export const WelcomeFlowSection = ({
             )}
 
             {/* ── Preview = the editor. Mobile and desktop side by side, mobile first;
-                   they wrap onto two rows when the column is too narrow for both. ── */}
-            {!hasContent ? (
-                <div className="mt-4 flex flex-col items-center rounded-2xl border border-dashed border-secondary bg-secondary px-6 py-14 text-center">
-                    <Mail01 className="size-6 text-fg-quaternary" aria-hidden="true" />
-                    <p className="mt-3 text-md font-semibold text-primary">{stepLabel(tab)} isn't ready yet</p>
-                    <p className="mt-1 max-w-md text-sm text-tertiary">
-                        {isLocked
-                            ? "This email is still being designed. It will show up here as soon as it's finished."
-                            : "The email designer fills this step automatically when the finished email lands. To place one now, upload the HTML file or paste the code."}
-                    </p>
-                    {!isLocked && (
-                        <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
-                            <label className="cursor-pointer rounded-lg bg-brand-solid px-3.5 py-2 text-sm font-semibold text-white transition duration-100 ease-linear hover:opacity-90">
-                                Upload HTML file
-                                <input type="file" accept=".html,.htm" className="hidden" onChange={onPickHtml(tab)} />
-                            </label>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setPasteText("");
-                                    setPasteFor(tab);
-                                }}
-                                className="rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-secondary ring-1 ring-secondary transition duration-100 ease-linear hover:bg-secondary_hover"
-                            >
-                                Paste HTML
-                            </button>
-                        </div>
-                    )}
-                </div>
-            ) : (
-                /* The previews and the client's feedback rail share a row as soon as there is
-                   width for both. The test is a container query, not a viewport breakpoint:
-                   the side menu is draggable, so only the column's real width can decide.
-                   Narrower than that and the rail drops under the previews, where the
-                   composer used to live. */
-                <div className="@container mt-4">
-                    <div className={cx("flex flex-col gap-4", fbRail && "@min-[1012px]:flex-row @min-[1012px]:items-start")}>
-                        <div className="flex min-w-0 flex-1 flex-col rounded-2xl ring-1 ring-secondary">
-                            <div className="flex flex-wrap items-center justify-between gap-2 rounded-t-2xl border-b border-secondary bg-primary px-3 py-2">
-                                <p className="px-1 text-xs text-tertiary">
-                                    <span className="font-semibold text-secondary">{stepLabel(tab)}</span>
-                                    {" · "}
-                                    {source === "pasted"
-                                        ? "pasted HTML"
-                                        : source === "finished"
-                                          ? "finished HTML from the email designer"
-                                          : "built-in template"}
+                   they wrap onto two rows when the column is too narrow for both.
+
+                   The previews and the client's feedback rail share a row as soon as there
+                   is width for both. The test is a container query, not a viewport
+                   breakpoint: the side menu is draggable, so only the column's real width
+                   can decide. Narrower than that and the rail drops underneath, where the
+                   composer used to live. The rail sits outside the ready/not-ready split
+                   so it stays put on every tab — one note covers the whole flow. ── */}
+            <div className="@container mt-4">
+                <div className={cx("flex flex-col gap-4", fbRail && "@min-[1012px]:flex-row @min-[1012px]:items-start")}>
+                    <div className="flex min-w-0 flex-1 flex-col">
+                        {!hasContent ? (
+                            <div className="flex flex-col items-center rounded-2xl border border-dashed border-secondary bg-secondary px-6 py-14 text-center">
+                                <Mail01 className="size-6 text-fg-quaternary" aria-hidden="true" />
+                                <p className="mt-3 text-md font-semibold text-primary">{stepLabel(tab)} isn't ready yet</p>
+                                <p className="mt-1 max-w-md text-sm text-tertiary">
+                                    {isLocked
+                                        ? "This email is still being designed. It will show up here as soon as it's finished."
+                                        : "The email designer fills this step automatically when the finished email lands. To place one now, upload the HTML file or paste the code."}
                                 </p>
-                                <button
-                                    type="button"
-                                    onClick={copyHtml}
-                                    className="flex items-center gap-1.5 rounded-lg bg-brand-solid px-3 py-1.5 text-xs font-semibold text-white transition duration-100 ease-linear hover:opacity-90"
-                                >
-                                    {copied ? <Check className="size-3.5" /> : <Copy01 className="size-3.5" />}
-                                    {copied ? "Copied!" : "Copy HTML for GHL"}
-                                </button>
-                            </div>
-
-                            <div
-                                ref={previewWrapRef}
-                                className="relative flex flex-wrap items-start justify-center gap-6 rounded-b-2xl bg-tertiary p-4 md:p-6"
-                                onClick={() => {
-                                    setBrandOpen(false);
-                                    setPenPop(null);
-                                }}
-                            >
-                                {DEVICES.map((d) => (
-                                    <figure key={d.id} className="flex max-w-full flex-col" style={{ width: d.width }}>
-                                        <figcaption className="mb-2 flex items-center gap-1.5 px-0.5 text-[11px] font-semibold tracking-wide text-quaternary uppercase">
-                                            <d.icon className="size-3.5" aria-hidden="true" />
-                                            {d.label}
-                                            <span className="font-normal tracking-normal normal-case">{d.width}px</span>
-                                        </figcaption>
-                                        {/* The "device" stays a light surface in both themes on purpose — the
-                                        email inside assumes one — so its inbox header uses fixed colours
-                                        rather than theme tokens, exactly like the white iframe below it. */}
-                                        <div className="overflow-hidden rounded-xl bg-white shadow-lg ring-1 ring-secondary">
-                                            <div className="border-b border-[#e9eaeb] bg-[#f7f7f8] px-5 py-4 text-left">
-                                                <p className="text-sm font-semibold text-[#181d27]">{subject || "No subject line yet"}</p>
-                                                {previewText && <p className="mt-0.5 text-sm text-[#535862]">{previewText}</p>}
-                                            </div>
-                                            <iframe
-                                                ref={d.id === "mobile" ? mobileRef : desktopRef}
-                                                title={`${stepLabel(tab)} — ${d.label} preview`}
-                                                srcDoc={previewHtml ?? ""}
-                                                sandbox={isLocked || custom ? "" : "allow-scripts"}
-                                                onLoad={restoreScroll}
-                                                className="block w-full bg-white"
-                                                style={{ height: isLocked ? 640 : 780, border: "0" }}
-                                            />
-                                        </div>
-                                    </figure>
-                                ))}
-
-                                {/* ✎ popover — change the name, attach a link, save */}
-                                <AnimatePresence>
-                                    {penPop && !isLocked && (
-                                        <motion.div
-                                            initial={{ opacity: 0, scale: 0.95, y: 4 }}
-                                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                                            exit={{ opacity: 0, scale: 0.97, y: 4 }}
-                                            transition={{ duration: 0.12 }}
-                                            className="absolute z-30 flex w-72 flex-col gap-2.5 rounded-xl bg-primary p-3.5 shadow-lg ring-1 ring-secondary"
-                                            style={{ left: penPop.x, top: penPop.y }}
-                                            onClick={(e) => e.stopPropagation()}
+                                {!isLocked && (
+                                    <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+                                        <label className="cursor-pointer rounded-lg bg-brand-solid px-3.5 py-2 text-sm font-semibold text-white transition duration-100 ease-linear hover:opacity-90">
+                                            Upload HTML file
+                                            <input type="file" accept=".html,.htm" className="hidden" onChange={onPickHtml(tab)} />
+                                        </label>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setPasteText("");
+                                                setPasteFor(tab);
+                                            }}
+                                            className="rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-secondary ring-1 ring-secondary transition duration-100 ease-linear hover:bg-secondary_hover"
                                         >
-                                            <div className="flex items-center justify-between">
-                                                <p className="text-xs font-bold tracking-wide text-quaternary uppercase">
-                                                    {penPop.kind === "btn" ? "Edit button" : penPop.kind === "logo" ? "Edit logo" : "Edit image"}
-                                                </p>
-                                                <button
-                                                    type="button"
-                                                    title="Close"
-                                                    onClick={() => setPenPop(null)}
-                                                    className="text-fg-quaternary hover:text-fg-secondary"
-                                                >
-                                                    <XClose className="size-4" aria-hidden="true" />
-                                                </button>
-                                            </div>
-                                            <Field
-                                                label={
-                                                    penPop.kind === "btn" ? "Name" : penPop.kind === "logo" ? "Logo image URL" : "Image URL (from GoHighLevel)"
-                                                }
-                                                value={penPop.a}
-                                                onChange={(v) => setPenPop((p) => (p ? { ...p, a: v } : p))}
-                                                placeholder={penPop.kind === "btn" ? "Button text" : "https://…"}
-                                            />
-                                            {penPop.hasLink && (
-                                                <Field
-                                                    label="Link"
-                                                    value={penPop.b}
-                                                    onChange={(v) => setPenPop((p) => (p ? { ...p, b: v } : p))}
-                                                    placeholder="https://…"
-                                                />
-                                            )}
-                                            {penPop.kind !== "btn" && !isTemplate && clientName.trim() && (
-                                                <button
-                                                    type="button"
-                                                    onClick={openGhlPicker}
-                                                    className="flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-secondary ring-1 ring-secondary transition duration-100 ease-linear hover:bg-secondary_hover"
-                                                >
-                                                    <Image01 className="size-4" aria-hidden="true" />
-                                                    Browse GoHighLevel images
-                                                </button>
-                                            )}
-                                            <button
-                                                type="button"
-                                                onClick={savePen}
-                                                className="mt-0.5 rounded-lg bg-brand-solid px-3 py-2 text-sm font-semibold text-white transition duration-100 ease-linear hover:opacity-90"
-                                            >
-                                                Save
-                                            </button>
-                                        </motion.div>
-                                    )}
-                                </AnimatePresence>
+                                            Paste HTML
+                                        </button>
+                                    </div>
+                                )}
                             </div>
-                        </div>
-                        {fbRail}
+                        ) : (
+                            <div className="flex flex-col rounded-2xl ring-1 ring-secondary">
+                                <div className="flex flex-wrap items-center justify-between gap-2 rounded-t-2xl border-b border-secondary bg-primary px-3 py-2">
+                                    <p className="px-1 text-xs text-tertiary">
+                                        <span className="font-semibold text-secondary">{stepLabel(tab)}</span>
+                                        {" · "}
+                                        {source === "pasted"
+                                            ? "pasted HTML"
+                                            : source === "finished"
+                                              ? "finished HTML from the email designer"
+                                              : "built-in template"}
+                                    </p>
+                                    <button
+                                        type="button"
+                                        onClick={copyHtml}
+                                        className="flex items-center gap-1.5 rounded-lg bg-brand-solid px-3 py-1.5 text-xs font-semibold text-white transition duration-100 ease-linear hover:opacity-90"
+                                    >
+                                        {copied ? <Check className="size-3.5" /> : <Copy01 className="size-3.5" />}
+                                        {copied ? "Copied!" : "Copy HTML for GHL"}
+                                    </button>
+                                </div>
+
+                                <div
+                                    ref={previewWrapRef}
+                                    className="relative flex flex-wrap items-start justify-center gap-6 rounded-b-2xl bg-tertiary p-4 md:p-6"
+                                    onClick={() => {
+                                        setBrandOpen(false);
+                                        setPenPop(null);
+                                    }}
+                                >
+                                    {DEVICES.map((d) => (
+                                        <figure key={d.id} className="flex max-w-full flex-col" style={{ width: d.width }}>
+                                            <figcaption className="mb-2 flex items-center gap-1.5 px-0.5 text-[11px] font-semibold tracking-wide text-quaternary uppercase">
+                                                <d.icon className="size-3.5" aria-hidden="true" />
+                                                {d.label}
+                                                <span className="font-normal tracking-normal normal-case">{d.width}px</span>
+                                            </figcaption>
+                                            {/* The "device" stays a light surface in both themes on purpose — the
+                                            email inside assumes one — so its inbox header uses fixed colours
+                                            rather than theme tokens, exactly like the white iframe below it. */}
+                                            <div className="overflow-hidden rounded-xl bg-white shadow-lg ring-1 ring-secondary">
+                                                <div className="border-b border-[#e9eaeb] bg-[#f7f7f8] px-5 py-4 text-left">
+                                                    <p className="text-sm font-semibold text-[#181d27]">{subject || "No subject line yet"}</p>
+                                                    {previewText && <p className="mt-0.5 text-sm text-[#535862]">{previewText}</p>}
+                                                </div>
+                                                <iframe
+                                                    ref={d.id === "mobile" ? mobileRef : desktopRef}
+                                                    title={`${stepLabel(tab)} — ${d.label} preview`}
+                                                    srcDoc={previewHtml ?? ""}
+                                                    sandbox={isLocked || custom ? "" : "allow-scripts"}
+                                                    onLoad={restoreScroll}
+                                                    className="block w-full bg-white"
+                                                    style={{ height: isLocked ? 640 : 780, border: "0" }}
+                                                />
+                                            </div>
+                                        </figure>
+                                    ))}
+
+                                    {/* ✎ popover — change the name, attach a link, save */}
+                                    <AnimatePresence>
+                                        {penPop && !isLocked && (
+                                            <motion.div
+                                                initial={{ opacity: 0, scale: 0.95, y: 4 }}
+                                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                                exit={{ opacity: 0, scale: 0.97, y: 4 }}
+                                                transition={{ duration: 0.12 }}
+                                                className="absolute z-30 flex w-72 flex-col gap-2.5 rounded-xl bg-primary p-3.5 shadow-lg ring-1 ring-secondary"
+                                                style={{ left: penPop.x, top: penPop.y }}
+                                                onClick={(e) => e.stopPropagation()}
+                                            >
+                                                <div className="flex items-center justify-between">
+                                                    <p className="text-xs font-bold tracking-wide text-quaternary uppercase">
+                                                        {penPop.kind === "btn" ? "Edit button" : penPop.kind === "logo" ? "Edit logo" : "Edit image"}
+                                                    </p>
+                                                    <button
+                                                        type="button"
+                                                        title="Close"
+                                                        onClick={() => setPenPop(null)}
+                                                        className="text-fg-quaternary hover:text-fg-secondary"
+                                                    >
+                                                        <XClose className="size-4" aria-hidden="true" />
+                                                    </button>
+                                                </div>
+                                                <Field
+                                                    label={
+                                                        penPop.kind === "btn"
+                                                            ? "Name"
+                                                            : penPop.kind === "logo"
+                                                              ? "Logo image URL"
+                                                              : "Image URL (from GoHighLevel)"
+                                                    }
+                                                    value={penPop.a}
+                                                    onChange={(v) => setPenPop((p) => (p ? { ...p, a: v } : p))}
+                                                    placeholder={penPop.kind === "btn" ? "Button text" : "https://…"}
+                                                />
+                                                {penPop.hasLink && (
+                                                    <Field
+                                                        label="Link"
+                                                        value={penPop.b}
+                                                        onChange={(v) => setPenPop((p) => (p ? { ...p, b: v } : p))}
+                                                        placeholder="https://…"
+                                                    />
+                                                )}
+                                                {penPop.kind !== "btn" && !isTemplate && clientName.trim() && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={openGhlPicker}
+                                                        className="flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-secondary ring-1 ring-secondary transition duration-100 ease-linear hover:bg-secondary_hover"
+                                                    >
+                                                        <Image01 className="size-4" aria-hidden="true" />
+                                                        Browse GoHighLevel images
+                                                    </button>
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    onClick={savePen}
+                                                    className="mt-0.5 rounded-lg bg-brand-solid px-3 py-2 text-sm font-semibold text-white transition duration-100 ease-linear hover:opacity-90"
+                                                >
+                                                    Save
+                                                </button>
+                                            </motion.div>
+                                        )}
+                                    </AnimatePresence>
+                                </div>
+                            </div>
+                        )}
                     </div>
+                    {fbRail}
                 </div>
-            )}
+            </div>
 
             {/* GHL Media Library picker — click a thumbnail to fill the pen popover's URL */}
             <AnimatePresence>
