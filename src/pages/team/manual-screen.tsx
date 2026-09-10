@@ -228,7 +228,10 @@ const DASHBOARD_GROUPS: { group: string; items: { label: string; note: string }[
     {
         group: "Your forms (client input)",
         items: [
-            { label: "Onboarding Form", note: `Property facts, links and the four account logins (Instagram, TikTok, PMS, Domain Host) — ${TOTAL_QUESTIONS} questions, ${ESTIMATE_LABEL}, autosaving as the client types.` },
+            {
+                label: "Onboarding Form",
+                note: `Property facts, links and the four account logins (Instagram, TikTok, PMS, Domain Host) — ${TOTAL_QUESTIONS} questions, ${ESTIMATE_LABEL}, autosaving as the client types.`,
+            },
             { label: "Brand Vision Form", note: "How the brand should look, sound and feel." },
         ],
     },
@@ -248,8 +251,12 @@ const DASHBOARD_GROUPS: { group: string; items: { label: string; note: string }[
                 note: "The welcome email sequence, previewed per email. Finished emails from the email pipeline load automatically by client name.",
             },
             {
-                label: "Landing Page / Repeat Booking Flow / Pinned Posts / Pinned Stories / Example Reels",
-                note: 'Placeholders marked "Soon" until each is built.',
+                label: "Pinned Stories",
+                note: "Paste the Canva link (or upload the exported pages), arrange pages into highlights, publish. The client plays them in a phone mockup and leaves notes per slide.",
+            },
+            {
+                label: "Landing Page / Repeat Booking Flow / Pinned Posts / Example Reels",
+                note: 'Landing Page is live; the others are placeholders marked "Soon" until each is built.',
             },
         ],
     },
@@ -277,6 +284,14 @@ const TABLES: { group: string; rows: { name: string; what: string }[] }[] = [
             {
                 name: "dashboard_suggestions",
                 what: "Client-proposed Master Brand edits, one row per suggested field — pending / accepted / declined. Quarantined: never touches the document until an AM accepts and saves.",
+            },
+            {
+                name: "landing_pages",
+                what: "Marketing → Landing Page: every published HTML version per client dashboard, newest first, plus the client's approve / request-changes state.",
+            },
+            {
+                name: "pinned_stories",
+                what: "Marketing → Pinned Stories: the team's draft (imported pages arranged into highlights) and every published version, each with the client's per-slide notes and approval.",
             },
             { name: "client_pages", what: "Meta Pixel setup pages ({client}-metapixel and any other suffix)." },
             { name: "leadcapture_pages", what: "Popup / lead-capture pages, incl. before-after images and form options." },
@@ -313,6 +328,7 @@ const TABLES: { group: string; rows: { name: string; what: string }[] }[] = [
             { name: "videos", what: "Uploaded video guides." },
             { name: "brandkits", what: "Brand-kit files (logos, fonts)." },
             { name: "recordings", what: "Call recordings for /log-script (private bucket)." },
+            { name: "stories", what: "Pinned Stories pages (JPG/WebP per page, MP4 for video slides) — team-only uploads, public read." },
         ],
     },
 ];
@@ -330,6 +346,15 @@ const FUNCTIONS: { name: string; what: string }[] = [
     {
         name: "dashboard-suggestions",
         what: "Client suggestion traffic: list / send / withdraw. Validates the client's email against that dashboard's allowlist on every call.",
+    },
+    { name: "landing-page-review", what: "The client's Approve / Request changes on the Landing Page — only ever writes the review state, never a version." },
+    {
+        name: "pinned-stories-review",
+        what: "The client's per-slide notes and approval on Pinned Stories — only ever writes the live version's review, never the highlights.",
+    },
+    {
+        name: "canva-import",
+        what: "Team-only. Exports a Canva design's pages through the Canva Connect API into the stories bucket, in three short steps (start / status / store). Needs CANVA_ACCESS_TOKEN in Netlify; without it the section falls back to uploading Canva's exported pages.",
     },
 ];
 
@@ -902,9 +927,7 @@ export const ManualScreen = () => {
                                 {/* Read from JOURNEY_STEPS rather than written out: this list was prose
                                     until the steps were reordered on 2026-09-02 and the prose silently
                                     became wrong. Reorder the steps and this follows. */}
-                                <p className="mb-3 text-md text-tertiary">
-                                    {JOURNEY_STEPS.map((s, i) => `${i + 1}. ${s.label}`).join(" · ")}
-                                </p>
+                                <p className="mb-3 text-md text-tertiary">{JOURNEY_STEPS.map((s, i) => `${i + 1}. ${s.label}`).join(" · ")}</p>
                                 <p className="mb-3 text-md text-tertiary">
                                     Completion is stored as step <em>ids</em> in <span className="font-mono text-sm">journey_done</span>, not positions, so
                                     reordering the journey never disturbs a client's recorded progress. The side menu itself is drag-resizable from its right

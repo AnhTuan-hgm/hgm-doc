@@ -106,6 +106,18 @@ rather than at the top of `client-dashboard-page.tsx`:
 | `dashboard-chrome.tsx` | Sign-in gate, section headings, side-menu row, search bar. |
 | `master-brand-fields.tsx` | `DocField` / `DocRail` / … the document's own inputs. |
 | `onboarding-answers.tsx` | Submitted form answers and recording summaries. |
+| `pinned-stories-model.ts` | Pinned Stories shapes (`pinned_stories.data`), Canva link parsing, arrange helpers, the North Star sample. No React. |
+
+Two Marketing sections render their own component instead of a block in the page body:
+`src/components/application/landing-page-section.tsx` (table `landing_pages`) and
+`pinned-stories-section.tsx` + `story-player.tsx` (table `pinned_stories`, bucket `stories`).
+Both follow the same access model: team writes go straight to Supabase under a
+team-only policy; the client's review goes through a Netlify function that checks their
+email against the dashboard's `allowed_emails` (`landing-page-review.mts`,
+`pinned-stories-review.mts`). `canva-import.mts` pulls a Canva design's pages into the
+`stories` bucket and needs `CANVA_ACCESS_TOKEN` (a Canva Connect API token) in the
+Netlify environment; without it the section falls back to uploading Canva's exported
+pages, which yields the same result.
 
 `client-dashboard-page.tsx` itself is still ~4,700 lines of one component. That
 body has not been split — doing so needs real prop-threading, so treat it as a

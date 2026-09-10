@@ -36,6 +36,7 @@ import { useNavigate, useSearchParams } from "react-router";
 import { Bar, BarChart, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, XAxis, YAxis } from "recharts";
 import { ChartTooltipContent } from "@/components/application/charts/charts-base";
 import { LandingPageSection } from "@/components/application/landing-page-section";
+import { PinnedStoriesSection } from "@/components/application/pinned-stories-section";
 import { VideoAttach, VideoEmbed } from "@/components/application/video-block";
 import { WelcomeFlowSection } from "@/components/application/welcome-flow";
 import { Badge, BadgeWithDot, BadgeWithIcon } from "@/components/base/badges/badges";
@@ -2795,8 +2796,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                                                     item.link &&
                                                                                                     isTeam && (
                                                                                                         <span className="text-xs text-warning-primary">
-                                                                                                            No link set — add it under
-                                                                                                            Onboarding links.
+                                                                                                            No link set — add it under Onboarding links.
                                                                                                         </span>
                                                                                                     )
                                                                                                 )}
@@ -2890,8 +2890,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                                 >
                                                                                     {isTeam
                                                                                         ? "No link set — add it under Onboarding links."
-                                                                                        : (step.pendingNote ??
-                                                                                          "Your Account Manager will send you this link.")}
+                                                                                        : (step.pendingNote ?? "Your Account Manager will send you this link.")}
                                                                                 </span>
                                                                             )}
                                                                             {/* AM tick, edit mode only. Auto steps get no tick:
@@ -2935,6 +2934,25 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                             <LandingPageSection
                                                                 slug={slug}
                                                                 clientName={clientName}
+                                                                isTeam={isTeam}
+                                                                isLocked={isLocked}
+                                                                isTemplate={isTemplate}
+                                                                teamName={user?.name ?? user?.email ?? ""}
+                                                                clientEmail={identityEmail}
+                                                            />
+                                                        </div>
+                                                    </>
+                                                )}
+
+                                                {activeSection === "pinnedstories" && (
+                                                    <>
+                                                        {/* Own component, own heading — same shape as Landing Page above. */}
+                                                        <SectionEyebrow section={activeSection} />
+                                                        <div className="mt-6">
+                                                            <PinnedStoriesSection
+                                                                slug={slug}
+                                                                clientName={clientName}
+                                                                logoUrl={content.logo_url}
                                                                 isTeam={isTeam}
                                                                 isLocked={isLocked}
                                                                 isTemplate={isTemplate}
@@ -2989,8 +3007,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                     <div className="mt-5 max-w-2xl rounded-xl bg-secondary px-4 py-3 ring-1 ring-secondary">
                                                                         <p className="text-sm text-secondary">
                                                                             <span className="font-semibold text-primary">Worth having on hand:</span> This form
-                                                                            asks for a few account logins so we can set things up for you —{" "}
-                                                                            {CREDENTIAL_LIST}.
+                                                                            asks for a few account logins so we can set things up for you — {CREDENTIAL_LIST}.
                                                                         </p>
                                                                     </div>
                                                                 )}
