@@ -3224,6 +3224,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                 clientName={clientName}
                                                                 isLocked={isLocked}
                                                                 isTemplate={isTemplate}
+                                                                isTeam={isTeam}
                                                                 feedback={{
                                                                     mode: isTeam ? "review" : canFlowFeedback ? "client" : "off",
                                                                     items: flowFeedback,

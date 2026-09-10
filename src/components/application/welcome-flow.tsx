@@ -606,12 +606,16 @@ export const WelcomeFlowSection = ({
     clientName,
     isLocked,
     isTemplate,
+    isTeam = false,
     feedback,
 }: {
     slug?: string;
     clientName: string;
     isLocked: boolean;
     isTemplate: boolean;
+    /** A signed-in team member is looking — shows the GoHighLevel toolbar and internal
+     *  wording. A client never sees "Copy HTML for GHL" or where an email came from. */
+    isTeam?: boolean;
     /** Client feedback wiring — omit (or mode "off") and the section shows no feedback UI. */
     feedback?: FlowFeedbackProps;
 }) => {
@@ -1005,13 +1009,16 @@ export const WelcomeFlowSection = ({
             <div>
                 <h2 className="text-display-xs font-semibold text-primary md:text-display-sm">Welcome Email Flow</h2>
                 <p className="mt-1.5 text-md text-tertiary">
-                    Nine emails, one a week from the day a lead signs up. Review each one, then copy it into GoHighLevel.
+                    Nine emails, one a week from the day a lead signs up.{" "}
+                    {isTeam ? "Review each one, then copy it into GoHighLevel." : "Have a look at each one and tell us what you think."}
                     {finishedCount > 0 && finishedCount < FLOW_STEPS.length && ` ${finishedCount} of ${FLOW_STEPS.length} are finished so far.`}
                 </p>
             </div>
 
-            {/* Step tabs — always all nine. A step with nothing in it yet is drawn dashed. */}
-            <div className="mt-6 flex flex-wrap items-center gap-2">
+            {/* Step tabs — always all nine, always on one line: the row scrolls sideways
+                rather than wrapping when the column is too narrow for all of them. A step
+                with nothing in it yet is drawn dashed. */}
+            <div className="-mx-1 mt-6 flex flex-nowrap items-center gap-1.5 overflow-x-auto px-1 pb-1">
                 {FLOW_STEPS.map((step, i) => {
                     const filled = !!customs[i] || !!dbEmails[i] || i < flow.emails.length;
                     return (
@@ -1025,7 +1032,7 @@ export const WelcomeFlowSection = ({
                                 setPenPop(null);
                             }}
                             className={cx(
-                                "rounded-lg border px-3.5 py-2 text-sm font-semibold transition duration-100 ease-linear",
+                                "shrink-0 rounded-lg border px-3 py-2 text-sm font-semibold whitespace-nowrap transition duration-100 ease-linear",
                                 tab === i
                                     ? "border-transparent bg-brand-solid text-white"
                                     : filled
@@ -1043,8 +1050,8 @@ export const WelcomeFlowSection = ({
                         </button>
                     );
                 })}
-                <span className="ml-1 text-xs text-quaternary">{tab === 0 ? "sent when the lead signs up" : `sent in week ${tab + 1}`}</span>
             </div>
+            <p className="mt-2 text-xs text-quaternary">{tab === 0 ? "Sent when the lead signs up" : `Sent in week ${tab + 1}`}</p>
 
             {/* Team review — the client's open comments on this step, read and closed here. */}
             {fb?.mode === "review" && fbPending.length > 0 && (
@@ -1267,25 +1274,32 @@ export const WelcomeFlowSection = ({
                 </div>
             ) : (
                 <div className="mt-4 flex flex-col rounded-2xl ring-1 ring-secondary">
-                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-t-2xl border-b border-secondary bg-primary px-3 py-2">
-                        <p className="px-1 text-xs text-tertiary">
-                            <span className="font-semibold text-secondary">{stepLabel(tab)}</span>
-                            {" · "}
-                            {source === "pasted" ? "pasted HTML" : source === "finished" ? "finished HTML from the email designer" : "built-in template"}
-                        </p>
-                        <button
-                            type="button"
-                            onClick={copyHtml}
-                            className="flex items-center gap-1.5 rounded-lg bg-brand-solid px-3 py-1.5 text-xs font-semibold text-white transition duration-100 ease-linear hover:opacity-90"
-                        >
-                            {copied ? <Check className="size-3.5" /> : <Copy01 className="size-3.5" />}
-                            {copied ? "Copied!" : "Copy HTML for GHL"}
-                        </button>
-                    </div>
+                    {/* Team toolbar — where this email came from and the GoHighLevel export.
+                        Clients get the previews alone; both are internal. */}
+                    {isTeam && (
+                        <div className="flex flex-wrap items-center justify-between gap-2 rounded-t-2xl border-b border-secondary bg-primary px-3 py-2">
+                            <p className="px-1 text-xs text-tertiary">
+                                <span className="font-semibold text-secondary">{stepLabel(tab)}</span>
+                                {" · "}
+                                {source === "pasted" ? "pasted HTML" : source === "finished" ? "finished HTML from the email designer" : "built-in template"}
+                            </p>
+                            <button
+                                type="button"
+                                onClick={copyHtml}
+                                className="flex items-center gap-1.5 rounded-lg bg-brand-solid px-3 py-1.5 text-xs font-semibold text-white transition duration-100 ease-linear hover:opacity-90"
+                            >
+                                {copied ? <Check className="size-3.5" /> : <Copy01 className="size-3.5" />}
+                                {copied ? "Copied!" : "Copy HTML for GHL"}
+                            </button>
+                        </div>
+                    )}
 
                     <div
                         ref={previewWrapRef}
-                        className="relative flex flex-wrap items-start justify-center gap-6 rounded-b-2xl bg-tertiary p-4 md:p-6"
+                        className={cx(
+                            "relative flex flex-wrap items-start justify-center gap-6 rounded-b-2xl bg-tertiary p-4 md:p-6",
+                            !isTeam && "rounded-t-2xl",
+                        )}
                         onClick={() => {
                             setBrandOpen(false);
                             setPenPop(null);
