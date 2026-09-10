@@ -17,9 +17,17 @@ import { NOT_CONFIGURED, callerEmail, isDashboardSlug, isTeamEmail, readAuthEnv 
  * STAGED, not one call: a 20-page export takes Canva several seconds and downloading +
  * re-uploading 20 files takes more, so the browser drives three short steps that each fit
  * comfortably inside Netlify's synchronous function timeout:
- *   { action: "start",  designId }                       → { jobId, title, pageCount }
+ *   { action: "start",  designId, width? }               → { jobId, title, pageCount }
  *   { action: "status", jobId }                          → { status: "in_progress" | "success", urls? }
  *   { action: "store",  slug, designId, urls, firstPage } → { pages: [{ page, url }] }   (≤ STORE_BATCH urls)
+ *   { action: "fetch",  urls }                           → { pages: [{ dataUrl }] }      (≤ STORE_BATCH urls)
+ *
+ * `store` is for Pinned Stories, which keeps pages in the `stories` bucket. `fetch` hands
+ * the same pages back to the browser as data URLs for Pinned Posts, which compresses them
+ * to WebP and keeps them in the dashboard row — Canva's download host sends no CORS
+ * headers, so the browser can't fetch them itself. Only the width is sent to Canva: the
+ * height then follows the design's own ratio (9:16 stories, 4:5 posts) instead of being
+ * forced.
  *
  * The Canva token comes from ../lib/canva.mts: the pair the team stored by pressing
  * "Connect Canva" (canva-auth.mts), refreshed there when it is near its 4-hour expiry.
@@ -34,10 +42,10 @@ import { NOT_CONFIGURED, callerEmail, isDashboardSlug, isTeamEmail, readAuthEnv 
 
 const STORE_BATCH = 5;
 const MAX_URLS = 60;
-// 1.5× the phone screen the client sees them on; a 1080-wide JPG would be ~3× heavier
-// for no visible gain inside a 402pt mockup.
-const EXPORT_WIDTH = 810;
-const EXPORT_HEIGHT = 1440;
+// Default width: 1.5× the phone screen the client sees a story on. Pinned Posts asks for
+// 1080 (Instagram's own) because it re-compresses in the browser anyway.
+const DEFAULT_WIDTH = 810;
+const MAX_WIDTH = 2160;
 
 const isDesignId = (s: string) => /^D[A-Za-z0-9_-]{10}$/.test(s);
 
@@ -101,9 +109,10 @@ export default async (req: Request) => {
         if (!meta.ok) return Response.json({ error: "Canva didn't answer — try again in a moment." }, { status: 502 });
         const design = (meta.json.design ?? {}) as { title?: string; page_count?: number };
 
+        const width = Math.min(MAX_WIDTH, Math.max(320, Math.round(Number(body.width) || DEFAULT_WIDTH)));
         const started = await canvaFetch(token, "/exports", {
             method: "POST",
-            body: JSON.stringify({ design_id: designId, format: { type: "jpg", quality: 85, width: EXPORT_WIDTH, height: EXPORT_HEIGHT } }),
+            body: JSON.stringify({ design_id: designId, format: { type: "jpg", quality: 85, width } }),
         });
         const job = (started.json.job ?? {}) as { id?: string; status?: string; urls?: string[] };
         if (!started.ok || !job.id) return Response.json({ error: "Canva refused to export this design." }, { status: 502 });
@@ -151,6 +160,22 @@ export default async (req: Request) => {
             const { error } = await admin.storage.from("stories").upload(path, bytes, { contentType: type, cacheControl: "31536000", upsert: true });
             if (error) return Response.json({ error: `Couldn't store page ${page}.` }, { status: 500 });
             pages.push({ page, url: admin.storage.from("stories").getPublicUrl(path).data.publicUrl });
+        }
+        return Response.json({ pages });
+    }
+
+    /* ── fetch: hand a batch of exported files back to the browser as data URLs ── */
+    if (action === "fetch") {
+        const urls = Array.isArray(body.urls) ? (body.urls as unknown[]).map(String) : [];
+        if (!urls.length || urls.length > STORE_BATCH) return Response.json({ error: "Bad batch." }, { status: 400 });
+        if (!urls.every((u) => /^https:\/\/export-download\.canva\.com\//.test(u))) return Response.json({ error: "Bad URL." }, { status: 400 });
+
+        const pages: { dataUrl: string }[] = [];
+        for (const u of urls) {
+            const dl = await fetch(u);
+            if (!dl.ok) return Response.json({ error: "Couldn't download a page from Canva." }, { status: 502 });
+            const type = dl.headers.get("content-type")?.split(";")[0] || "image/jpeg";
+            pages.push({ dataUrl: `data:${type};base64,${Buffer.from(await dl.arrayBuffer()).toString("base64")}` });
         }
         return Response.json({ pages });
     }

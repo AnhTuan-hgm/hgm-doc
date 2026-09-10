@@ -4,13 +4,13 @@
  *
  * THE WORKFLOW, end to end:
  *   1. The team designs the posts in Canva (one design, one page per slide) and pastes
- *      the design link here. The link is kept, never fetched by the browser — Canva does
- *      not let a web page pull renders off a share link.
- *   2. The pages are exported as images and uploaded here — by hand from Canva's own
- *      export, or by asking Claude with the Canva connector to export the design and
- *      hand the files over. Either way each slide goes through compressImageFile
- *      (capped at Instagram's own 1080px) and is stored as WebP in the dashboard row,
- *      the same place every other dashboard image lives.
+ *      the design link here. The browser never fetches the link itself; the pages come
+ *      through canva-import.mts, which holds the team's Canva token.
+ *   2. The pages come in either through the portal's Canva connection ("Import from
+ *      Canva" — see src/lib/canva-import.ts) or as files the AM exported by hand. Either
+ *      way each slide goes through compressImageFile (capped at Instagram's own 1080px)
+ *      and is stored as WebP in the dashboard row, the same place every other dashboard
+ *      image lives.
  *   3. The AM reveals the section with the eye toggle. The client sees their profile
  *      as a guest opens it, taps through each carousel, and either approves it or
  *      requests changes with a note. Both land in dashboard_suggestions through the
@@ -27,6 +27,8 @@ import {
     Check,
     ChevronLeft,
     ChevronRight,
+    Download01,
+    Link01,
     LinkExternal01,
     MessageTextSquare02,
     Plus,
@@ -40,6 +42,15 @@ import { Badge } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
 import { PhoneFrame } from "@/components/shared-assets/phone-frame";
 import { Reveal } from "@/components/shared-assets/reveal";
+import {
+    CanvaNotConnectedError,
+    type CanvaStatus,
+    exportCanvaDesign,
+    fetchCanvaPagesAsFiles,
+    fetchCanvaStatus,
+    readCanvaOutcome,
+    startCanvaConnect,
+} from "@/lib/canva-import";
 import { SectionEyebrow, SectionHeading, editInput } from "@/pages/client/dashboard/dashboard-chrome";
 import {
     MAX_PINNED_POSTS,
@@ -632,6 +643,70 @@ export const PinnedPostsSection = ({
     const [viewer, setViewer] = useState<{ post: PinnedPost; index: number } | null>(null);
     const canva = parseCanvaUrl(pinned.canva_url);
     const editing = isTeam && !isLocked;
+
+    /* ── Import from Canva ──
+       The portal's Canva connection (see src/lib/canva-import.ts) exports every page of the
+       pasted design and hands them back here, where each goes through compressImageFile
+       exactly as a hand-uploaded page would. They land in a tray — one design usually holds
+       all three carousels back to back — and the AM deals them out to posts. The tray is
+       session state on purpose: the pages aren't the client's until they're in a post and
+       saved, and a re-import is a few seconds. */
+    const [canvaStatus, setCanvaStatus] = useState<CanvaStatus | null>(null);
+    const [canvaBusy, setCanvaBusy] = useState(false);
+    const [canvaNote, setCanvaNote] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+    const [importing, setImporting] = useState<string | null>(null);
+    const [tray, setTray] = useState<{ id: string; page: number; url: string }[]>([]);
+
+    useEffect(() => {
+        if (!isTeam || isTemplate) return;
+        void fetchCanvaStatus().then(setCanvaStatus);
+        const outcome = readCanvaOutcome();
+        if (outcome) setCanvaNote(outcome);
+    }, [isTeam, isTemplate]);
+
+    const connectCanva = async () => {
+        setCanvaBusy(true);
+        setCanvaNote(null);
+        try {
+            window.location.assign(await startCanvaConnect(`${window.location.pathname}#pinnedposts`));
+        } catch (e) {
+            setCanvaNote({ kind: "err", text: e instanceof Error ? e.message : "Couldn't start the Canva connection." });
+            setCanvaBusy(false);
+        }
+    };
+
+    const importFromCanva = async () => {
+        if (!canva) return;
+        setCanvaNote(null);
+        try {
+            const { urls } = await exportCanvaDesign(canva.id, { width: SLIDE_MAX_DIM, onProgress: setImporting });
+            const files = await fetchCanvaPagesAsFiles(urls, setImporting);
+            setImporting("Compressing…");
+            const pages = await Promise.all(
+                files.map(async (f, i) => ({ id: uid(), page: i + 1, url: await compressImageFile(f, { maxDim: SLIDE_MAX_DIM }) })),
+            );
+            setTray((t) => [...t, ...pages]);
+        } catch (e) {
+            if (e instanceof CanvaNotConnectedError) void fetchCanvaStatus().then(setCanvaStatus);
+            setCanvaNote({ kind: "err", text: e instanceof Error ? e.message : "Couldn't import from Canva." });
+        } finally {
+            setImporting(null);
+        }
+    };
+
+    /** Move tray pages into a post — an existing one, or a new one when `postId` is "new". */
+    const dealPages = (pageIds: string[], postId: string) => {
+        const moving = tray.filter((p) => pageIds.includes(p.id));
+        if (!moving.length) return;
+        const slides = moving.map((p) => ({ id: p.id, url: p.url }));
+        if (postId === "new") {
+            if (posts.length >= MAX_PINNED_POSTS) return;
+            onPatch({ posts: [...posts, { ...emptyPinnedPost(), slides }] });
+        } else {
+            onPatch({ posts: posts.map((p) => (p.id === postId ? { ...p, slides: [...p.slides, ...slides] } : p)) });
+        }
+        setTray((t) => t.filter((p) => !pageIds.includes(p.id)));
+    };
     const igProfile = buildProfile({ ...profile, handle: pinned.handle.trim() || profile.handle }, posts);
 
     const updatePost = (id: string, patch: Partial<PinnedPost>) => onPatch({ posts: posts.map((p) => (p.id === id ? { ...p, ...patch } : p)) });
@@ -710,9 +785,31 @@ export const PinnedPostsSection = ({
                                         Open
                                     </Button>
                                 )}
+                                {canvaStatus && !canvaStatus.connected && canvaStatus.configured ? (
+                                    <Button size="sm" iconLeading={Link01} isLoading={canvaBusy} showTextWhileLoading onClick={() => void connectCanva()}>
+                                        Connect Canva
+                                    </Button>
+                                ) : (
+                                    <Button
+                                        size="sm"
+                                        iconLeading={Download01}
+                                        isDisabled={!canva || (!!canvaStatus && !canvaStatus.connected)}
+                                        isLoading={!!importing}
+                                        showTextWhileLoading
+                                        onClick={() => void importFromCanva()}
+                                    >
+                                        {importing ?? "Import from Canva"}
+                                    </Button>
+                                )}
                             </div>
                             {pinned.canva_url.trim() && !canva && (
                                 <span className="text-xs text-warning-primary">That doesn't look like a Canva design link.</span>
+                            )}
+                            {canvaNote && (
+                                <span className={cx("text-xs", canvaNote.kind === "ok" ? "text-success-primary" : "text-error-primary")}>{canvaNote.text}</span>
+                            )}
+                            {canvaStatus && !canvaStatus.configured && (
+                                <span className="text-xs text-quaternary">Canva isn't set up on the portal yet — export the pages yourself for now.</span>
                             )}
                         </label>
                         <label className="flex flex-col gap-1">
@@ -735,14 +832,80 @@ export const PinnedPostsSection = ({
                             above.
                         </li>
                         <li className="rounded-lg bg-primary px-3 py-2 ring-1 ring-secondary">
-                            <span className="font-semibold text-secondary">2 · Export the pages.</span> Canva → Share → Download as PNG or JPG, or ask Claude
-                            with the Canva connector to export the design for you.
+                            <span className="font-semibold text-secondary">2 · Import the pages.</span> Press Import from Canva and every page arrives below,
+                            ready to deal out to posts. Or export them yourself (Canva → Share → Download) and add them to each post.
                         </li>
                         <li className="rounded-lg bg-primary px-3 py-2 ring-1 ring-secondary">
-                            <span className="font-semibold text-secondary">3 · Upload and reveal.</span> Add each post's pages below, save, then reveal the
-                            section with the eye. The client approves or requests changes here.
+                            <span className="font-semibold text-secondary">3 · Save and reveal.</span> Title each post, save, then reveal the section with the
+                            eye. The client approves or requests changes here.
                         </li>
                     </ol>
+
+                    {/* ── Imported pages, waiting to be dealt into posts ── */}
+                    {tray.length > 0 && (
+                        <div className="mt-4 rounded-xl bg-primary p-3 ring-1 ring-secondary">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <p className="text-sm font-semibold text-primary">
+                                    Imported pages <span className="font-normal text-quaternary">· {tray.length} waiting</span>
+                                </p>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    {posts.length < MAX_PINNED_POSTS && (
+                                        <Button
+                                            size="sm"
+                                            color="secondary"
+                                            iconLeading={Plus}
+                                            onClick={() =>
+                                                dealPages(
+                                                    tray.map((p) => p.id),
+                                                    "new",
+                                                )
+                                            }
+                                        >
+                                            All into a new post
+                                        </Button>
+                                    )}
+                                    <Button size="sm" color="tertiary" onClick={() => setTray([])}>
+                                        Clear
+                                    </Button>
+                                </div>
+                            </div>
+                            <p className="mt-1 text-xs text-tertiary">
+                                One Canva design usually holds all three carousels back to back — pick where each page belongs. Pages stay here only until you
+                                place them; a re-import brings them back.
+                            </p>
+                            <div className="mt-3 scrollbar-hide flex gap-3 overflow-x-auto pb-1">
+                                {tray.map((p) => (
+                                    <div key={p.id} className="flex w-24 shrink-0 flex-col gap-1.5">
+                                        <div className="relative">
+                                            <img
+                                                src={p.url}
+                                                alt={`Page ${p.page}`}
+                                                className="block aspect-3/4 w-full rounded-lg object-cover ring-1 ring-secondary"
+                                                draggable={false}
+                                            />
+                                            <span className="absolute top-1 left-1 rounded-full bg-black/55 px-1.5 py-0.5 text-[10px] font-bold text-white tabular-nums">
+                                                p{p.page}
+                                            </span>
+                                        </div>
+                                        <select
+                                            aria-label={`Add page ${p.page} to a post`}
+                                            value=""
+                                            onChange={(e) => e.target.value && dealPages([p.id], e.target.value)}
+                                            className={editInput("px-1.5 py-1 text-xs")}
+                                        >
+                                            <option value="">Add to…</option>
+                                            {posts.map((post, i) => (
+                                                <option key={post.id} value={post.id}>
+                                                    {String(i + 1).padStart(2, "0")} {post.title.trim() || "Untitled post"}
+                                                </option>
+                                            ))}
+                                            {posts.length < MAX_PINNED_POSTS && <option value="new">New post</option>}
+                                        </select>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 

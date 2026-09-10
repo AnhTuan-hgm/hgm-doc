@@ -20,6 +20,16 @@ import { Badge, BadgeWithDot } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
 import { FeaturedIcon } from "@/components/foundations/featured-icon/featured-icon";
 import { PhoneFrame } from "@/components/shared-assets/phone-frame";
+import {
+    CanvaNotConnectedError,
+    type CanvaStatus,
+    disconnectCanva as disconnectCanvaRemote,
+    exportCanvaDesign,
+    fetchCanvaStatus,
+    readCanvaOutcome,
+    startCanvaConnect,
+    storeCanvaPages,
+} from "@/lib/canva-import";
 import { supabase } from "@/lib/supabase";
 import { type PinnedPost, parseCanvaUrl, uid } from "@/pages/client/dashboard/dashboard-model";
 import { type PinnedProfileInputs, buildProfile } from "@/pages/client/dashboard/pinned-posts";
@@ -65,33 +75,6 @@ import { cx } from "@/utils/cx";
  */
 
 const REVIEW_ENDPOINT = "/.netlify/functions/pinned-stories-review";
-const IMPORT_ENDPOINT = "/.netlify/functions/canva-import";
-const AUTH_ENDPOINT = "/.netlify/functions/canva-auth";
-
-/** What canva-auth.mts reports about the portal's Canva connection. */
-interface CanvaStatus {
-    /** Client id/secret present in Netlify — without them nothing can connect. */
-    configured: boolean;
-    connected: boolean;
-    connectedBy: string;
-    expiresAt: string | null;
-    redirectUri: string | null;
-}
-
-/** POST to a team-only function with the signed-in AM's Supabase token. */
-const teamCall = async (endpoint: string, body: Record<string, unknown>) => {
-    const { data: sessionData } = await supabase.auth.getSession();
-    const token = sessionData.session?.access_token;
-    if (!token) throw new Error("Your sign-in has expired — reload and sign in again.");
-    const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(body),
-    });
-    const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-    return { res, json };
-};
-const STORE_BATCH = 5;
 const MAX_VIDEO_BYTES = 50 * 1024 * 1024; // keep in sync with the bucket's file_size_limit
 
 const shortDate = (iso?: string) => {
@@ -171,39 +154,19 @@ export const PinnedStoriesSection = ({
        Asked once per mount; the answer decides whether the import button, Connect Canva,
        or "not set up" shows. The `?canva=` query is what canva-auth.mts sends the AM back
        with after the OAuth round-trip — read it, say what happened, and clean the URL. */
-    const refreshCanva = useCallback(async () => {
-        try {
-            const { res, json } = await teamCall(AUTH_ENDPOINT, { action: "status" });
-            if (res.ok) setCanva(json as unknown as CanvaStatus);
-        } catch {
-            /* Not signed in as team, or functions not served locally — the panel stays neutral. */
-        }
-    }, []);
+    const refreshCanva = useCallback(async () => setCanva(await fetchCanvaStatus()), []);
     useEffect(() => {
         if (!isTeam || isTemplate) return;
         void refreshCanva();
-        const params = new URLSearchParams(window.location.search);
-        const outcome = params.get("canva");
-        if (outcome) {
-            setCanvaNote(
-                outcome === "connected"
-                    ? { kind: "ok", text: "Canva is connected. Paste a design link to import it." }
-                    : { kind: "err", text: params.get("reason") || "Canva didn't connect." },
-            );
-            params.delete("canva");
-            params.delete("reason");
-            const q = params.toString();
-            window.history.replaceState(null, "", `${window.location.pathname}${q ? `?${q}` : ""}${window.location.hash}`);
-        }
+        const outcome = readCanvaOutcome();
+        if (outcome) setCanvaNote(outcome);
     }, [isTeam, isTemplate, refreshCanva]);
 
     const connectCanva = async () => {
         setCanvaBusy(true);
         setCanvaNote(null);
         try {
-            const { res, json } = await teamCall(AUTH_ENDPOINT, { action: "start", returnTo: `${window.location.pathname}#pinnedstories` });
-            if (!res.ok || typeof json.url !== "string") throw new Error(String(json.error ?? "Couldn't start the Canva connection."));
-            window.location.assign(json.url);
+            window.location.assign(await startCanvaConnect(`${window.location.pathname}#pinnedstories`));
         } catch (e) {
             setCanvaNote({ kind: "err", text: e instanceof Error ? e.message : "Couldn't start the Canva connection." });
             setCanvaBusy(false);
@@ -213,7 +176,7 @@ export const PinnedStoriesSection = ({
     const disconnectCanva = async () => {
         setCanvaBusy(true);
         try {
-            await teamCall(AUTH_ENDPOINT, { action: "disconnect" });
+            await disconnectCanvaRemote();
             await refreshCanva();
         } finally {
             setCanvaBusy(false);
@@ -350,47 +313,26 @@ export const PinnedStoriesSection = ({
         if (!slug) return;
         setImporting("Checking the design…");
         try {
-            const call = async (body: Record<string, unknown>) => {
-                const { res, json } = await teamCall(IMPORT_ENDPOINT, body);
-                if (res.status === 501 && json.code === "canva_not_configured") {
-                    // The stored token stopped working mid-way — re-read the status so the
-                    // panel swaps the import button for Connect Canva.
-                    void refreshCanva();
-                    throw new Error(String(json.error));
-                }
-                if (!res.ok) throw new Error(String(json.error ?? "Something went wrong."));
-                return json;
-            };
-
-            const started = (await call({ action: "start", designId })) as { jobId: string; title: string; status?: string; urls?: string[] };
-            let urls = started.status === "success" && started.urls ? started.urls : null;
-            for (let attempt = 0; !urls && attempt < 40; attempt++) {
-                setImporting(`Exporting from Canva… (${attempt + 1})`);
-                await new Promise((r) => setTimeout(r, 1500));
-                const st = (await call({ action: "status", jobId: started.jobId })) as { status?: string; urls?: string[] };
-                if (st.status === "success" && st.urls) urls = st.urls;
-            }
-            if (!urls) throw new Error("Canva is taking too long — try again in a minute.");
-
-            const batchId = `${Date.now()}`;
-            const pages: StorySlide[] = [];
-            for (let i = 0; i < urls.length; i += STORE_BATCH) {
-                setImporting(`Saving pages ${Math.min(i + STORE_BATCH, urls.length)} of ${urls.length}…`);
-                const stored = (await call({ action: "store", slug, designId, urls: urls.slice(i, i + STORE_BATCH), firstPage: i + 1, batchId })) as {
-                    pages: { page: number; url: string }[];
-                };
-                pages.push(...stored.pages.map((p) => ({ id: uid(), kind: "image" as const, url: p.url, page: p.page })));
-            }
+            const { title, urls } = await exportCanvaDesign(designId, { width: 810, onProgress: setImporting });
+            const pages: StorySlide[] = (await storeCanvaPages(slug, designId, urls, setImporting)).map((p) => ({
+                id: uid(),
+                kind: "image" as const,
+                url: p.url,
+                page: p.page,
+            }));
             startDraftWith(pages, {
                 via: "canva",
                 canvaUrl: canvaLink.trim(),
                 designId,
-                designTitle: started.title,
+                designTitle: title,
                 importedAt: new Date().toISOString(),
                 importedBy: teamName,
             });
             setCanvaLink("");
         } catch (e) {
+            // The stored token stopped working mid-way — re-read the status so the panel
+            // swaps the import button for Connect Canva.
+            if (e instanceof CanvaNotConnectedError) void refreshCanva();
             setImportErr(e instanceof Error ? e.message : "Something went wrong.");
         } finally {
             setImporting(null);
