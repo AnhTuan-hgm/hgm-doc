@@ -101,7 +101,9 @@ export const Toggle = ({ label, hint, className, size = "sm", slim, ...ariaSwitc
             {...ariaSwitchProps}
             className={(state) =>
                 cx(
-                    "flex w-max items-start",
+                    // `relative` anchors React Aria's visually-hidden <input>; otherwise it is
+                    // positioned against <body> and stretches the page past any scroll container.
+                    "relative flex w-max items-start",
                     state.isDisabled && "cursor-not-allowed",
                     styles[size].root,
                     typeof className === "function" ? className(state) : className,

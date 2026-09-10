@@ -72,7 +72,9 @@ export const RadioButton = ({ label, hint, className, size = "sm", ...ariaRadioP
             {...ariaRadioProps}
             className={(state) =>
                 cx(
-                    "flex items-start",
+                    // `relative` anchors React Aria's visually-hidden <input>; otherwise it is
+                    // positioned against <body> and stretches the page past any scroll container.
+                    "relative flex items-start",
                     state.isDisabled && "cursor-not-allowed",
                     sizes[size].root,
                     typeof className === "function" ? className(state) : className,
