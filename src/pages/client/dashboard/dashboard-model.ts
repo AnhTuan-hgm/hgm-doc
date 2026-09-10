@@ -227,12 +227,13 @@ export type SectionId =
     | "chatwidget"
     | "ghl"
     | "revenue"
-    // Menu entries added with the client-facing side-menu rework. The first four have
+    // Menu entries added with the client-facing side-menu rework. The first five have
     // no section body yet and render with the existing "Soon" treatment; the last two
     // are links out rather than sections.
     | "landing"
     | "repeatflow"
     | "pinnedposts"
+    | "pinnedstories"
     | "reels"
     | "contentfolder"
     | "ownerguide";
