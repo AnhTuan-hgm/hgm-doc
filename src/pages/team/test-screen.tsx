@@ -1,4 +1,6 @@
+import { WelcomeFlowSection } from "@/components/application/welcome-flow";
 import { Aurora, Halftone, RakingLight, Ridgeline, Weave } from "@/components/shared-assets/backdrops";
+
 /**
  * `/test` — three iPhone bezels holding real captures of our own client-facing pages.
  *
@@ -106,11 +108,31 @@ const DeviceMockup = (m: Mockup) => (
  * `-z-10` — without it they would sit behind the page instead of behind the tile.
  */
 const BACKDROPS: { name: string; note: string; render: () => React.ReactNode }[] = [
-    { name: "Aurora", note: "Three wide radial blooms, one brand and two neutral. No texture, no edges — depth rather than pattern. The quietest of the five, and the one that sits under dense copy without competing.", render: () => <Aurora /> },
-    { name: "Weave", note: "The grid at a 5px pitch, so it stops being a grid and reads as woven cloth. Uses a border token, not a surface one: at this density the surface tokens are too close to the canvas to register.", render: () => <Weave /> },
-    { name: "Halftone", note: "A dot screen fading out, print-derived. Strong enough to be a picture, so it wants space rather than paragraphs on top of it.", render: () => <Halftone /> },
-    { name: "Ridgeline", note: "Layered contour bands. The most illustrative of the set — a backdrop for a short heading, not a wall of text.", render: () => <Ridgeline /> },
-    { name: "RakingLight", note: "A single low-angle sweep, like light across a surface. Directional, so it pairs with content anchored to one side.", render: () => <RakingLight /> },
+    {
+        name: "Aurora",
+        note: "Three wide radial blooms, one brand and two neutral. No texture, no edges — depth rather than pattern. The quietest of the five, and the one that sits under dense copy without competing.",
+        render: () => <Aurora />,
+    },
+    {
+        name: "Weave",
+        note: "The grid at a 5px pitch, so it stops being a grid and reads as woven cloth. Uses a border token, not a surface one: at this density the surface tokens are too close to the canvas to register.",
+        render: () => <Weave />,
+    },
+    {
+        name: "Halftone",
+        note: "A dot screen fading out, print-derived. Strong enough to be a picture, so it wants space rather than paragraphs on top of it.",
+        render: () => <Halftone />,
+    },
+    {
+        name: "Ridgeline",
+        note: "Layered contour bands. The most illustrative of the set — a backdrop for a short heading, not a wall of text.",
+        render: () => <Ridgeline />,
+    },
+    {
+        name: "RakingLight",
+        note: "A single low-angle sweep, like light across a surface. Directional, so it pairs with content anchored to one side.",
+        render: () => <RakingLight />,
+    },
 ];
 
 export const TestScreen = () => (
@@ -129,6 +151,43 @@ export const TestScreen = () => (
                     <DeviceMockup key={m.bezel} {...m} />
                 ))}
             </ul>
+        </section>
+
+        {/* ── Welcome Flow, as a client sees it ──
+            Here so the client-facing feedback rail can be looked at without a client
+            dashboard, its share password, or a welcome_flows row: no `slug` is passed, so
+            the section renders its built-in template and neither reads nor writes anything.
+            `send` is a no-op that resolves — the box shows its "Sent" confirmation, but
+            nothing leaves the page, which is the point of previewing it here.
+
+            Its own column, not the max-w-5xl one above: the rail joins the previews at
+            1012px of available width, and max-w-5xl is under that, so this section would
+            otherwise show the stacked layout and misrepresent the design. 1240px matches
+            the real dashboard's content column. */}
+        <section className="mx-auto w-full max-w-[1240px] px-4 pb-16 sm:px-6 lg:px-10 lg:pb-24">
+            <header className="max-w-2xl">
+                <h2 className="text-display-xs font-semibold text-primary">Welcome Flow — client feedback</h2>
+                <p className="mt-3 text-md text-pretty text-tertiary">
+                    The client&rsquo;s view of the Welcome Email Flow, with the feedback box beside the previews. One note covers all nine emails, so it stays
+                    put as you change tabs &mdash; including on the tabs whose email isn&rsquo;t designed yet. Sending is not wired up on this page.
+                </p>
+            </header>
+
+            <div className="mt-10">
+                <WelcomeFlowSection
+                    clientName="Lagom Retreat"
+                    isLocked
+                    isTemplate={false}
+                    feedback={{
+                        mode: "client",
+                        items: [],
+                        author: "preview@hgmportal.com",
+                        send: async () => undefined,
+                        withdraw: async () => undefined,
+                        resolve: async () => undefined,
+                    }}
+                />
+            </div>
         </section>
 
         <section className="mx-auto w-full max-w-5xl px-4 pb-16 sm:px-6 lg:pb-24">
