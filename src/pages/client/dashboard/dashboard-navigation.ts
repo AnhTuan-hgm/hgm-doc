@@ -130,11 +130,11 @@ export const JOURNEY_STEPS: {
         hrefLabel: "Open chat",
         helpHref: GOOGLE_CHAT_GUIDE,
         helpLabel: "Need help joining?",
-        pendingNote: "Your Account Manager will add the link shortly — please continue to the next step and fill in the Onboarding form.",
+        pendingNote: "Your Account Manager will add the link shortly — please continue to the next step and fill in the Onboarding Form.",
     },
     {
         id: "form",
-        label: "Fill in the Onboarding form",
+        label: "Fill in the Onboarding Form",
         detail: "Your business details and the logins we need.",
         icon: ClipboardCheck,
         to: "intake",
@@ -152,7 +152,7 @@ export const JOURNEY_STEPS: {
         href: KICKOFF_CALENDLY,
         hrefLabel: "Book your call",
         requires: "form",
-        blockedNote: "Available once Onboarding form is complete",
+        blockedNote: "Available once the Onboarding Form is complete",
     },
     {
         id: "vision",
@@ -179,8 +179,8 @@ export const JOURNEY_STEPS: {
                 // Brand assets share the content folder rather than sitting in an item of their
                 // own: a second item would carry a second "Open your folder" button to the very
                 // same URL, and the client would have to guess which one to press.
-                label: "Upload your photos, video and brand assets",
-                note: "Please upload your photos and videos, including listing photos, drone footage, and any other assets. Add any brand material you already have too — fonts, graphics, logos and colours. Our team will enhance them from there.",
+                label: "Upload your photos, videos and brand assets",
+                note: "Please upload your photos and videos, including listing photos, drone footage, and any other assets. Add any brand material you already have too — fonts, graphics, logos and colours. Our team will take it from there.",
                 link: "folder",
                 action: "Open your folder",
             },
@@ -189,7 +189,7 @@ export const JOURNEY_STEPS: {
     {
         id: "call",
         label: "Onboarding Call",
-        detail: "Book your onboarding call using the form below. Please join with good wifi, and keep your phone and email handy so you can grab verification codes and approve access as your account manager walks you through it.",
+        detail: "Book your onboarding call using the link below. Please join with a good Wi-Fi connection, and keep your phone and email handy so you can grab verification codes and approve access as your account manager walks you through it.",
         icon: Users01,
         hrefFrom: "onboarding_call",
         hrefLabel: "Book your onboarding call",
@@ -207,18 +207,21 @@ export const JOURNEY_STEPS: {
             },
             { label: "TikTok", note: "Logged in, if you use it." },
             { label: "Domain", note: "Logged in wherever your domain is registered." },
-            { label: "Credit card", note: "We set up your Facebook Ad account during the call." },
+            {
+                label: "Credit card",
+                note: "Have it on hand — we set up your Facebook ad account during the call and Meta requires a payment method.",
+            },
             {
                 label: "Netlify",
-                note: "We walk you through creating an account on the call. Your landing page is hosted there, which is what lets us set up proper tracking on it.",
+                note: "We'll walk you through creating an account on the call. Your landing page will be hosted there, which lets us set up proper tracking.",
             },
-            { label: "Zoom", note: "Installed on your computer, so we can ask to share your screen." },
+            { label: "Zoom", note: "Installed on your computer, so we can ask you to share your screen." },
         ],
     },
     {
         id: "masterdoc",
         label: "Review the Master Brand",
-        detail: "Hosts, personas, properties and brand voice — what everything else reads from.",
+        detail: "Hosts, personas, properties and brand voice — the foundation everything else is built on.",
         icon: FileCheck02,
         to: "foundation",
     },
@@ -234,12 +237,12 @@ export const JOURNEY_STEPS: {
             { label: "Landing Page" },
             { label: "Welcome Flow" },
             { label: "Repeat Booking Flow" },
-            { label: "Pinned Post" },
+            { label: "Pinned Posts" },
             { label: "Pinned Stories" },
             { label: "Example Reels" },
         ],
     },
-    { id: "website", label: "Set up the website", detail: "If a website is in scope for you.", icon: Globe01, to: "ownerguide" },
+    { id: "website", label: "Set up the website", detail: "Only applies if we are setting up your website.", icon: Globe01, to: "ownerguide" },
 ];
 
 /** Sits above the funnel groups — not a funnel stage itself, just "home" (hero + the funnel explainer). */
@@ -284,7 +287,7 @@ export const NAV_GROUPS: {
         phase: "input",
         icon: ClipboardCheck,
         items: [
-            { id: "intake", label: "Onboarding form", icon: ClipboardCheck },
+            { id: "intake", label: "Onboarding Form", icon: ClipboardCheck },
             { id: "onboarding", label: "Brand Vision Form", icon: FileCheck02 },
         ],
     },
@@ -303,9 +306,9 @@ export const NAV_GROUPS: {
         phase: "marketing",
         icon: Announcement02,
         items: [
-            { id: "landing", label: "Landing page", icon: Globe01, soon: true },
+            { id: "landing", label: "Landing Page", icon: Globe01, soon: true },
             { id: "flow", label: "Welcome Flow", icon: Mail01 },
-            { id: "repeatflow", label: "Repeat Flow", icon: Repeat01, soon: true },
+            { id: "repeatflow", label: "Repeat Booking Flow", icon: Repeat01, soon: true },
             { id: "pinnedposts", label: "Pinned Posts", icon: Camera01, soon: true },
             { id: "pinnedstories", label: "Pinned Stories", icon: Image03, soon: true },
             { id: "reels", label: "Example Reels", icon: PlayCircle, soon: true },

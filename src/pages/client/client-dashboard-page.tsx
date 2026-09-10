@@ -2368,7 +2368,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                     className="flex shrink-0 items-center gap-1.5 rounded-lg bg-brand-solid px-3.5 py-2 text-[13px] font-semibold text-white transition hover:opacity-90"
                                                 >
                                                     <Plus className="size-4" aria-hidden="true" />
-                                                    Create dashboard for the client
+                                                    Create dashboard for a client
                                                 </button>
                                             </div>
                                         )}
@@ -2765,7 +2765,8 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                                                     item.link &&
                                                                                                     isTeam && (
                                                                                                         <span className="text-xs text-warning-primary">
-                                                                                                            No link set yet
+                                                                                                            No link set — add it under
+                                                                                                            Onboarding links.
                                                                                                         </span>
                                                                                                     )
                                                                                                 )}
@@ -6002,7 +6003,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                             <h2 className="text-display-xs font-semibold text-primary">Questions about your dashboard?</h2>
                                                             <h3 className="mt-3 text-sm font-semibold text-brand-secondary">Contact us</h3>
                                                             <p className="mt-1.5 max-w-xl text-sm text-tertiary">
-                                                                Our team is here to help. Reach out to HiddenGem about your brand, setup, or results anytime.
+                                                                Our team is here to help. Reach out to HiddenGem about your brand, setup or results anytime.
                                                             </p>
                                                             <div className="mt-5">
                                                                 <Button href={CONTACT_MAILTO} size="lg" color="primary" iconTrailing={ArrowRight}>
