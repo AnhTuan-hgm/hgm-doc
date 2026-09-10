@@ -13,6 +13,7 @@ export type GhlItem = DashboardContent["ghl"]["items"][number];
 export type RevenueMonth = DashboardContent["revenue"]["months"][number];
 export type QuickLink = DashboardContent["links"][number];
 export type VideoGuide = NonNullable<DashboardContent["videos"]>[number];
+export type ExampleReel = NonNullable<DashboardContent["reels"]>[number];
 export type Foundation = NonNullable<DashboardContent["foundation"]>;
 export type Persona = Foundation["personas"][number];
 export type FocusProperty = Foundation["focusProperties"][number];
@@ -99,6 +100,21 @@ export const emptyFocusProperty = (): FocusProperty => ({
 });
 
 export const emptyFavorite = (): LocalFavorite => ({ id: uid(), name: "", description: "" });
+
+/**
+ * Example Reels is exactly three phones, so the row reads as one deliverable rather than a
+ * growing list. Slots are fixed — the team fills, replaces or clears them, never adds a
+ * fourth — and each starts with a numbered placeholder title an AM overwrites.
+ */
+export const REEL_SLOTS = 3;
+export const emptyReel = (n: number): ExampleReel => ({ id: uid(), title: `Example ${n}`, description: "", url: "" });
+/** Pad whatever a row stored up to the three slots; a row written with more keeps them. */
+export const normalizeReels = (reels?: ExampleReel[] | null): ExampleReel[] => {
+    const out = [...(reels ?? [])];
+    while (out.length < REEL_SLOTS) out.push(emptyReel(out.length + 1));
+    return out;
+};
+
 export const emptyWebsiteLink = (page = ""): WebsiteLink => ({ id: uid(), page, url: "" });
 
 export const filled = (v: string | undefined) => Boolean(v && v.trim());
@@ -151,6 +167,7 @@ export const TEMPLATE_CONTENT: DashboardContent = {
     },
     links: defaultLinks("yourclient"),
     videos: [],
+    reels: normalizeReels(),
     foundation: DEFAULT_FOUNDATION,
 };
 
@@ -196,6 +213,7 @@ export const createDefaultContent = (base: string): DashboardContent => ({
         websiteLinks: [emptyWebsiteLink("Home"), emptyWebsiteLink(), emptyWebsiteLink()],
     },
     videos: [],
+    reels: normalizeReels(),
     client_visible: [...DEFAULT_CLIENT_VISIBLE],
 });
 
@@ -209,6 +227,7 @@ export const mergeContent = (partial?: Partial<DashboardContent> | null): Dashbo
     revenue: { ...TEMPLATE_CONTENT.revenue, ...partial?.revenue },
     links: partial?.links ?? TEMPLATE_CONTENT.links,
     videos: partial?.videos ?? [],
+    reels: normalizeReels(partial?.reels),
     resources: partial?.resources ?? [],
     // Arrays are spread-hostile: `...partial.foundation` would hand back `undefined` for
     // every list an older row predates, and the section renderers all call .map on them.
@@ -251,9 +270,9 @@ export type SectionId =
     | "chatwidget"
     | "ghl"
     | "revenue"
-    // Menu entries added with the client-facing side-menu rework. The first five have
-    // no section body yet and render with the existing "Soon" treatment; the last two
-    // are links out rather than sections.
+    // Menu entries added with the client-facing side-menu rework. Landing and Example
+    // Reels have section bodies; the middle three have none yet and render with the
+    // existing "Soon" treatment; the last two are links out rather than sections.
     | "landing"
     | "repeatflow"
     | "pinnedposts"

@@ -254,7 +254,15 @@ const DASHBOARD_GROUPS: { group: string; items: { label: string; note: string }[
                 note: "The welcome email sequence, previewed per email. Finished emails from the email pipeline load automatically by client name.",
             },
             {
-                label: "Landing Page / Repeat Booking Flow / Pinned Posts / Pinned Stories / Example Reels",
+                label: "Landing Page",
+                note: "The AM pastes the finished HTML; the client reviews it in-frame and approves or asks for changes.",
+            },
+            {
+                label: "Example Reels",
+                note: "Three iPhone mockups. In edit mode the team uploads a 9:16 mp4 into each (videos bucket, 50 MB cap) and writes the title and one-line description under it; the client sees only filled slots.",
+            },
+            {
+                label: "Repeat Booking Flow / Pinned Posts / Pinned Stories",
                 note: 'Placeholders marked "Soon" until each is built.',
             },
         ],

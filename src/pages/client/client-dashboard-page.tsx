@@ -85,6 +85,7 @@ import {
     type BrandColor,
     DEFAULT_CLIENT_VISIBLE,
     DEFAULT_FOUNDATION,
+    type ExampleReel,
     type FocusProperty,
     type Foundation,
     type GhlItem,
@@ -92,6 +93,7 @@ import {
     type LocalFavorite,
     type Persona,
     type QuickLink,
+    REEL_SLOTS,
     type RevenueMonth,
     STATUS_OPTIONS,
     type SectionId,
@@ -111,6 +113,7 @@ import {
     statusColor,
     uid,
 } from "@/pages/client/dashboard/dashboard-model";
+import { ExampleReelsSection } from "@/pages/client/dashboard/example-reels";
 import {
     JOURNEY_STEPS,
     type JourneyLink,
@@ -1175,6 +1178,10 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     const removeResource = (id: string) => setContent((c) => ({ ...c, resources: (c.resources ?? []).filter((r) => r.id !== id) }));
     const updateVideo = (i: number, patch: Partial<VideoGuide>) =>
         setContent((c) => ({ ...c, videos: (c.videos ?? []).map((v, j) => (j === i ? { ...v, ...patch } : v)) }));
+    // By id: the three slots are fixed (mergeContent pads them), so nothing is ever added
+    // or removed here — a slot is filled, replaced, or cleared, and keeps its caption.
+    const updateReel = (id: string, patch: Partial<ExampleReel>) =>
+        setContent((c) => ({ ...c, reels: (c.reels ?? []).map((r) => (r.id === id ? { ...r, ...patch } : r)) }));
 
     /* ── Derived metrics ── */
     const months = content.revenue.months;
@@ -1799,6 +1806,10 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
         if (id === "videos") {
             const n = content.videos?.length ?? 0;
             return n ? pill(String(n), "muted") : null;
+        }
+        if (id === "reels") {
+            const n = (content.reels ?? []).filter((r) => r.url).length;
+            return n ? pill(`${n}/${REEL_SLOTS}`, "muted") : null;
         }
         return null;
     };
@@ -2973,6 +2984,20 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                             />
                                                         </div>
                                                     </>
+                                                )}
+
+                                                {/* ── Example Reels — three phones, the team's reels playing inside ── */}
+                                                {activeSection === "reels" && (
+                                                    <Reveal>
+                                                        <SectionEyebrow section={activeSection} />
+                                                        <SectionHeading>Example Reels</SectionHeading>
+                                                        <p className="mt-3 text-md text-tertiary">
+                                                            {isLocked
+                                                                ? "Three reels made for your property, shown the way they play on a phone."
+                                                                : "Upload up to three 9:16 reels. The title and line under each phone are what the client reads — and what stands in for the footage when motion is off."}
+                                                        </p>
+                                                        <ExampleReelsSection reels={content.reels ?? []} isLocked={isLocked} onChange={updateReel} />
+                                                    </Reveal>
                                                 )}
 
                                                 {activeSection === "flow" && (
