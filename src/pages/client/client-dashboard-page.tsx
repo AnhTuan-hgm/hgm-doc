@@ -50,6 +50,7 @@ import { useEditShortcuts } from "@/hooks/use-edit-shortcuts";
 import { type DashboardContent, type HostOnboardingData, type OverviewDoc, supabase } from "@/lib/supabase";
 import {
     CREDENTIAL_LABELS,
+    CREDENTIAL_LIST,
     type ClientOnboardingData,
     ClientOnboardingFormPage,
     ESTIMATE_LABEL,
@@ -2937,9 +2938,9 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                 {CREDENTIAL_LABELS.length > 0 && (
                                                                     <div className="mt-5 max-w-2xl rounded-xl bg-secondary px-4 py-3 ring-1 ring-secondary">
                                                                         <p className="text-sm text-secondary">
-                                                                            <span className="font-semibold text-primary">Worth having to hand:</span> this form
+                                                                            <span className="font-semibold text-primary">Worth having on hand:</span> This form
                                                                             asks for a few account logins so we can set things up for you —{" "}
-                                                                            {CREDENTIAL_LABELS.join(", ")}.
+                                                                            {CREDENTIAL_LIST}.
                                                                         </p>
                                                                     </div>
                                                                 )}
@@ -2971,7 +2972,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                         </p>
                                                                         <p className="mt-0.5 text-sm text-tertiary" aria-live="polite">
                                                                             {isTemplate ? (
-                                                                                "Preview of the form every client fills in first."
+                                                                                "Preview of the form every client completes during onboarding."
                                                                             ) : intakeStatus === "error" ? (
                                                                                 "Check your connection and try again."
                                                                             ) : !intakeReady ? (
