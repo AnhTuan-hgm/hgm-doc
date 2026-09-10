@@ -10,6 +10,7 @@ import {
     LinkExternal01,
     MessageChatCircle,
     Plus,
+    RefreshCw01,
     Star01,
     Trash01,
     XClose,
@@ -272,6 +273,28 @@ export const PinnedStoriesSection = ({
     };
 
     const discardDraft = () => void persist({ ...data, draft: null }).then(() => setView("live"));
+
+    /**
+     * Back to stage 0: no draft, no versions, so the section shows the import panel again
+     * (Canva link, Connect Canva if needed). Two clicks on purpose — it removes every
+     * published version and the client's notes on them. The pages themselves stay in the
+     * `stories` bucket (uploads are immutable there); only the row forgets them. The Canva
+     * connection is portal-wide and is deliberately NOT touched: that has its own Disconnect.
+     */
+    const [resetArmed, setResetArmed] = useState(false);
+    const [resetting, setResetting] = useState(false);
+    const startOver = async () => {
+        setResetting(true);
+        const ok = await persist(EMPTY_PINNED_STORIES);
+        setResetting(false);
+        setResetArmed(false);
+        if (ok) {
+            setView("live");
+            setPosition(PROFILE);
+            setShowImport(false);
+            setCanvaLink("");
+        }
+    };
 
     /** Start a draft from the live set, so titles and order can change without a re-import. */
     const editLive = () => {
@@ -768,7 +791,40 @@ export const PinnedStoriesSection = ({
                                             </Button>
                                         </>
                                     )}
+                                    {canEdit && !resetArmed && (
+                                        <Button color="tertiary-destructive" size="sm" iconLeading={RefreshCw01} onClick={() => setResetArmed(true)}>
+                                            Start over
+                                        </Button>
+                                    )}
                                 </div>
+                                {canEdit && resetArmed && (
+                                    <div className="flex w-full flex-wrap items-center justify-between gap-3 rounded-xl bg-error-primary px-4 py-3 ring-1 ring-error_subtle">
+                                        <p className="text-sm text-pretty text-primary">
+                                            Start over? This removes{" "}
+                                            {data.versions.length
+                                                ? `${data.versions.length} published version${data.versions.length === 1 ? "" : "s"}`
+                                                : "the draft"}
+                                            {review.comments.length
+                                                ? ` and ${review.comments.length} client note${review.comments.length === 1 ? "" : "s"}`
+                                                : ""}{" "}
+                                            for this client and brings back the import panel. The Canva connection stays.
+                                        </p>
+                                        <div className="flex gap-2">
+                                            <Button color="tertiary" size="sm" onClick={() => setResetArmed(false)}>
+                                                Keep everything
+                                            </Button>
+                                            <Button
+                                                color="primary-destructive"
+                                                size="sm"
+                                                isLoading={resetting}
+                                                showTextWhileLoading
+                                                onClick={() => void startOver()}
+                                            >
+                                                {resetting ? "Resetting…" : "Yes, start over"}
+                                            </Button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
 
