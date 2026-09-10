@@ -87,10 +87,33 @@ const openInNewTab = (html: string) => {
     w.document.write(html);
     w.document.close();
 };
-/** A stored version already has a URL; a legacy inline one still goes through the blank tab. */
-const openVersion = (v: LandingPageVersion) => {
-    if (v.path) window.open(urlOf(v.path), "_blank", "noopener");
-    else if (v.html) openInNewTab(v.html);
+/**
+ * Read a version's HTML. Storage deliberately serves HTML objects as `text/plain` (so nobody
+ * can host a phishing page on a project's bucket), which means the public URL can't be an
+ * iframe `src` or a tab on its own — it shows source, and without a charset the browser
+ * mangles every non-ASCII character. So the bytes are fetched here and rendered via
+ * `srcDoc` / `document.write`, exactly like the legacy inline versions. Public bucket +
+ * `access-control-allow-origin: *` is what makes the cross-origin fetch possible.
+ */
+const fetchHtml = async (v: LandingPageVersion): Promise<string> => {
+    if (v.html) return v.html;
+    if (!v.path) return "";
+    const res = await fetch(urlOf(v.path));
+    if (!res.ok) throw new Error(`Storage returned ${res.status}`);
+    return res.text();
+};
+/** Open the tab synchronously (popup blockers), then fill it once the HTML arrives. */
+const openVersion = async (v: LandingPageVersion) => {
+    const w = window.open("about:blank");
+    if (!w) return;
+    try {
+        const html = await fetchHtml(v);
+        w.document.write(html);
+        w.document.close();
+    } catch {
+        w.document.write("<p style='font:14px system-ui;padding:24px'>Couldn't load this version — close the tab and try again.</p>");
+        w.document.close();
+    }
 };
 
 const inputCls =
@@ -148,6 +171,30 @@ export const LandingPageSection = ({
     const live = versions[0];
     const canEdit = isTeam && !isLocked && !isTemplate;
     const tagOf = (i: number) => `v${versions.length - i}`;
+
+    // The live version's HTML for the preview frame — fetched from Storage (see fetchHtml).
+    // Re-fetched only when the live version changes; a 7 MB file is not something to
+    // re-download on every render.
+    const [liveHtml, setLiveHtml] = useState<string | null>(null);
+    const [liveErr, setLiveErr] = useState(false);
+    const liveId = live?.id;
+    useEffect(() => {
+        if (!live) return;
+        let cancelled = false;
+        setLiveHtml(null);
+        setLiveErr(false);
+        fetchHtml(live)
+            .then((html) => {
+                if (!cancelled) setLiveHtml(html);
+            })
+            .catch(() => {
+                if (!cancelled) setLiveErr(true);
+            });
+        return () => {
+            cancelled = true;
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [liveId]);
 
     /**
      * Upload is a second way to fill the same draft, not a second pipeline: the file's
@@ -454,7 +501,7 @@ export const LandingPageSection = ({
                                     Replace HTML
                                 </Button>
                             )}
-                            <Button color="secondary" size="sm" iconLeading={LinkExternal01} onClick={() => openVersion(live)}>
+                            <Button color="secondary" size="sm" iconLeading={LinkExternal01} onClick={() => void openVersion(live)}>
                                 Open full page
                             </Button>
                         </div>
@@ -511,25 +558,37 @@ export const LandingPageSection = ({
                             )}
                             style={{ width: device === "mobile" ? 390 : "100%", maxWidth: "100%", height: device === "mobile" ? 760 : 640 }}
                         >
-                            {/* Stored versions load by URL; legacy inline ones still render from the row.
-                                Keyed by version id so switching versions remounts the frame instead of
-                                leaving a stale document behind a changed src. */}
-                            {live.path ? (
+                            {/* Always srcDoc, never the Storage URL as src — see fetchHtml. Keyed by
+                                version id so a new version remounts the frame rather than leaving a
+                                stale document behind a changed srcDoc. */}
+                            {liveHtml !== null ? (
                                 <iframe
                                     key={live.id}
                                     title="Landing page preview"
-                                    src={urlOf(live.path)}
+                                    srcDoc={liveHtml}
                                     sandbox="allow-same-origin"
                                     className="size-full border-0"
                                 />
                             ) : (
-                                <iframe
-                                    key={live.id}
-                                    title="Landing page preview"
-                                    srcDoc={live.html ?? ""}
-                                    sandbox="allow-same-origin"
-                                    className="size-full border-0"
-                                />
+                                <div className="flex size-full flex-col items-center justify-center gap-2 text-center">
+                                    {liveErr ? (
+                                        <>
+                                            <AlertCircle className="size-5 text-fg-error-secondary" aria-hidden="true" />
+                                            <p className="text-sm font-medium text-primary">Couldn't load the preview</p>
+                                            <p className="max-w-xs text-sm text-tertiary">
+                                                Check your connection and reload the page. The published file itself is safe.
+                                            </p>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <div
+                                                className="size-5 animate-spin rounded-full border-2 border-secondary border-t-fg-brand-primary"
+                                                aria-hidden="true"
+                                            />
+                                            <p className="text-sm text-tertiary">Loading {sizeOf(live)}…</p>
+                                        </>
+                                    )}
+                                </div>
                             )}
                         </div>
                     </div>
