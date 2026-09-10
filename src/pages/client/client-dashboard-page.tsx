@@ -134,6 +134,8 @@ import {
 } from "@/pages/client/dashboard/overview-doc";
 import { SuggestionBox, SuggestionContext, fetchSuggestions, sendSuggestions, withdrawSuggestion } from "@/pages/client/dashboard/suggestions";
 import { type Suggestion, applySuggestion, labelForKey, valueForKey } from "@/pages/client/dashboard/suggestions-model";
+import { type WebsiteSetup, mergeWebsiteSetup, saveWebsiteSetup, websiteSetupProgress } from "@/pages/client/dashboard/website-setup";
+import { type WebsiteSetupSaveState, WebsiteSetupSection } from "@/pages/client/dashboard/website-setup-section";
 import { HostOnboardingFormPage, ensureHostOnboardingForm, hostOnboardingAnswers, hostOnboardingProgress } from "@/pages/client/host-onboarding-form-page";
 import { useSuppressFloatingThemeToggle, useTheme } from "@/providers/theme-provider";
 import { compressImageFile } from "@/utils/compress-image";
@@ -929,10 +931,12 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
         }
     };
 
-    /* ── Resources group: this client's own owner guide ──
+    /* ── Website Setup Guide: this client's own owner guide ──
        Resolved by name from owner_guides rather than linked to the bare /owner-guide
        route, which is the SHARED MASTER TEMPLATE — sending a client there is how the
-       2026-07-09 content incident happened. No match ⇒ the nav row stays "Soon". */
+       2026-07-09 content incident happened. The section offers the guide as the place to
+       hand over logins; no match ⇒ it tells the client the link is coming and the team to
+       go and create one. */
     const [ownerGuideSlug, setOwnerGuideSlug] = useState("");
     useEffect(() => {
         const name = clientName.trim();
@@ -956,7 +960,36 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     }, [clientName]);
 
     /** True when a link-type nav row has nowhere to go yet — shown as "Soon". */
-    const navTargetMissing = (id: SectionId) => (id === "contentfolder" && !content.brand.folder_link.trim()) || (id === "ownerguide" && !ownerGuideSlug);
+    const navTargetMissing = (id: SectionId) => id === "contentfolder" && !content.brand.folder_link.trim();
+
+    /* ── Website Setup Guide answers ──
+       Always merged, so the section and the badge never see a missing block. The team's
+       edits ride along in `content` and land with the ordinary Save. A CLIENT can't write
+       the row (anon has no UPDATE grant), so their edits also go to the website-setup
+       function, debounced, which writes this one key server-side. Local state is updated
+       first either way, so the page never waits on the network to reflect a tick. */
+    const websiteSetup = useMemo(() => mergeWebsiteSetup(content.website_setup), [content.website_setup]);
+    const [setupSave, setSetupSave] = useState<WebsiteSetupSaveState>("idle");
+    const [setupSaveError, setSetupSaveError] = useState("");
+    const setupSaveTimer = useRef<number | null>(null);
+    const updateWebsiteSetup = (patch: Partial<WebsiteSetup>) => {
+        const next = { ...websiteSetup, ...patch };
+        setContent((c) => ({ ...c, website_setup: { ...mergeWebsiteSetup(c.website_setup), ...patch } }));
+        if (isTeam || !slug || isTemplate) return;
+        if (setupSaveTimer.current) window.clearTimeout(setupSaveTimer.current);
+        setSetupSave("saving");
+        setupSaveTimer.current = window.setTimeout(() => {
+            saveWebsiteSetup(slug, identityEmail, next)
+                .then(() => {
+                    setSetupSave("saved");
+                    setSetupSaveError("");
+                })
+                .catch((err: unknown) => {
+                    setSetupSave("error");
+                    setSetupSaveError(err instanceof Error ? err.message : "please try again.");
+                });
+        }, 800);
+    };
 
     /* ── Per-client section visibility ──
        Two separate ideas, deliberately not conflated:
@@ -1101,15 +1134,11 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     /** True when the open section lives in this group — drives the group row's chip. */
     const groupHoldsActive = (phase: string) => (NAV_GROUPS.find((g) => g.phase === phase)?.items ?? []).some((s) => s.id === activeSection);
 
-    /** Nav rows are mostly section switches; the two Resources rows are links out. */
+    /** Nav rows are section switches, bar Folder of Content, which is a link out. */
     const openNavItem = (id: SectionId) => {
         if (id === "contentfolder") {
             const url = content.brand.folder_link.trim();
             if (url) window.open(url, "_blank", "noopener,noreferrer");
-            return;
-        }
-        if (id === "ownerguide") {
-            if (ownerGuideSlug) navigate(`/owner-guide/${ownerGuideSlug}`);
             return;
         }
         setActiveSection(id);
@@ -1626,9 +1655,24 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                           : step.detail,
                 };
             }
+            if (step.id === "website") {
+                const p = websiteSetupProgress(websiteSetup);
+                return {
+                    ...resolved,
+                    done: p.complete,
+                    progress: { value: p.done, total: p.total },
+                    detail: p.complete
+                        ? websiteSetup.ai_website === "yes"
+                            ? "Netlify and every website account confirmed — over to our web team."
+                            : "Netlify account confirmed — thank you."
+                        : websiteSetup.ai_website === "yes"
+                          ? `${p.done} of ${p.total} accounts confirmed.`
+                          : step.detail,
+                };
+            }
             return { ...resolved, done: journeyDone.includes(step.id), progress: null };
         });
-    }, [intakeSubmitted, onboardingSubmitted, intakeInfo, onboardingInfo, journeyDone, chatLink, folderLink, onboardingCallUrl]);
+    }, [intakeSubmitted, onboardingSubmitted, intakeInfo, onboardingInfo, journeyDone, chatLink, folderLink, onboardingCallUrl, websiteSetup]);
 
     const journeyDoneCount = journeySteps.filter((s) => s.done).length;
     /** First unfinished step — highlighted so a client can see what's next at a glance. */
@@ -1737,6 +1781,10 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
         if (id === "videos") {
             const n = content.videos?.length ?? 0;
             return n ? pill(String(n), "muted") : null;
+        }
+        if (id === "ownerguide") {
+            const p = websiteSetupProgress(websiteSetup);
+            return p.complete ? pill("Done", "done") : pill(`${p.done}/${p.total}`, "todo");
         }
         return null;
     };
@@ -2845,7 +2893,9 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                                 isTeam &&
                                                                                 (step.auto ? (
                                                                                     <span className="text-xs text-quaternary">
-                                                                                        Tracked from the form itself
+                                                                                        {step.id === "website"
+                                                                                            ? "Tracked from the Website Setup Guide"
+                                                                                            : "Tracked from the form itself"}
                                                                                     </span>
                                                                                 ) : (
                                                                                     <Button
@@ -5696,6 +5746,25 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                 )}
                                                             </>
                                                         )}
+                                                    </Reveal>
+                                                )}
+
+                                                {/* ── Website Setup Guide — the required Netlify account and the AI website opt-in ── */}
+                                                {activeSection === "ownerguide" && (
+                                                    <Reveal>
+                                                        <SectionEyebrow section={activeSection} />
+                                                        <SectionHeading>Website Setup Guide</SectionHeading>
+                                                        <WebsiteSetupSection
+                                                            setup={websiteSetup}
+                                                            onChange={updateWebsiteSetup}
+                                                            // A client types straight in; the team types only in edit mode, so a
+                                                            // locked dashboard reads the same to both — answers, not boxes.
+                                                            editable={!isTeam || !isLocked}
+                                                            isTeam={isTeam}
+                                                            ownerGuideSlug={ownerGuideSlug}
+                                                            saveState={setupSave}
+                                                            saveError={setupSaveError}
+                                                        />
                                                     </Reveal>
                                                 )}
 

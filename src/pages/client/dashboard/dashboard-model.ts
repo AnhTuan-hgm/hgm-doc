@@ -6,6 +6,7 @@
  * No JSX and no React, so a test or a script can import it without pulling in the UI.
  */
 import type { DashboardContent } from "@/lib/supabase";
+import { mergeWebsiteSetup } from "@/pages/client/dashboard/website-setup";
 
 export type BrandColor = DashboardContent["brand"]["colors"][number];
 export type Highlight = DashboardContent["instagram"]["highlights"][number];
@@ -203,9 +204,10 @@ export const mergeContent = (partial?: Partial<DashboardContent> | null): Dashbo
         // never erases answers a client gave against the old one.
         faqs: partial?.foundation?.faqs ?? [],
     },
-    // Absent ⇒ the intake-forms-only default. An AM who hides everything stores an empty
-    // array, which is meaningfully different from "never set" and must survive as [].
+    // Absent ⇒ the day-one default. An AM who hides everything stores an empty array,
+    // which is meaningfully different from "never set" and must survive as [].
     client_visible: partial?.client_visible ?? [...DEFAULT_CLIENT_VISIBLE],
+    website_setup: mergeWebsiteSetup(partial?.website_setup),
 });
 
 /** Side-menu taxonomy — mirrors the funnel Dustin walks every client through on the
@@ -228,27 +230,33 @@ export type SectionId =
     | "ghl"
     | "revenue"
     // Menu entries added with the client-facing side-menu rework. The first four have
-    // no section body yet and render with the existing "Soon" treatment; the last two
-    // are links out rather than sections.
+    // no section body yet and render with the existing "Soon" treatment; Folder of
+    // Content is a link out rather than a section.
     | "landing"
     | "repeatflow"
     | "pinnedposts"
     | "reels"
     | "contentfolder"
+    // The Website Setup Guide section: the required Netlify account and the AI website
+    // opt-in. Kept as "ownerguide" so older #hash links and journey steps still land.
     | "ownerguide";
 
 /**
  * What a client can see before an AM reveals anything.
  *
- * The two intake forms only. They're what we need FROM the client on day one, so a
- * brand-new dashboard is still actionable — everything else would otherwise present
- * unfinished work as though it were delivered. An AM reveals each remaining section per
- * client with the eye toggle in edit mode, as it actually ships.
+ * The two intake forms and the Website Setup Guide. They're what we need FROM the client
+ * on day one, so a brand-new dashboard is still actionable — everything else would
+ * otherwise present unfinished work as though it were delivered. An AM reveals each
+ * remaining section per client with the eye toggle in edit mode, as it actually ships.
+ *
+ * The Website Setup Guide is in the default because its first card (a Netlify account in
+ * the client's own name) is mandatory for every client, opted in to a website or not.
+ * Rows that already store their own list are unaffected: an AM reveals the row there.
  *
  * Stored as an ALLOWLIST rather than a hidden-list on purpose: a section added later
  * defaults to invisible to clients instead of leaking the moment it lands.
  */
-export const DEFAULT_CLIENT_VISIBLE: SectionId[] = ["intake", "onboarding"];
+export const DEFAULT_CLIENT_VISIBLE: SectionId[] = ["intake", "onboarding", "ownerguide"];
 
 /* ── Merging a drafted Master Document ───────────────────────────────────── */
 

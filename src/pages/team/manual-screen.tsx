@@ -228,7 +228,10 @@ const DASHBOARD_GROUPS: { group: string; items: { label: string; note: string }[
     {
         group: "Your forms (client input)",
         items: [
-            { label: "Onboarding form", note: `Property facts, links and the four account logins (Instagram, TikTok, PMS, Domain Host) — ${TOTAL_QUESTIONS} questions, ${ESTIMATE_LABEL}, autosaving as the client types.` },
+            {
+                label: "Onboarding form",
+                note: `Property facts, links and the four account logins (Instagram, TikTok, PMS, Domain Host) — ${TOTAL_QUESTIONS} questions, ${ESTIMATE_LABEL}, autosaving as the client types.`,
+            },
             { label: "Brand Vision Form", note: "How the brand should look, sound and feel." },
         ],
     },
@@ -254,7 +257,10 @@ const DASHBOARD_GROUPS: { group: string; items: { label: string; note: string }[
         group: "Resources",
         items: [
             { label: "Folder of Content", note: "Opens the client's content drive — the link lives in Brand Kit's folder field." },
-            { label: "Website Setup Guide", note: "Opens that client's own owner guide (never the shared template)." },
+            {
+                label: "Website Setup Guide",
+                note: "Asks every client for a Netlify account in their own name (required), then offers the AI-built booking website. A yes reveals the accounts it needs — Supabase, Resend, Stripe, PMS, registrar, Cloudflare — as account emails only; logins are handed over in that client's own owner guide, which the section links to once it exists. Shown to clients by default.",
+            },
             {
                 label: "Custom links",
                 note: "AMs add any link here in edit mode (e.g. a Claude project). New links start Hidden; the eye toggle reveals them to the client.",
@@ -899,9 +905,7 @@ export const ManualScreen = () => {
                                 {/* Read from JOURNEY_STEPS rather than written out: this list was prose
                                     until the steps were reordered on 2026-09-02 and the prose silently
                                     became wrong. Reorder the steps and this follows. */}
-                                <p className="mb-3 text-md text-tertiary">
-                                    {JOURNEY_STEPS.map((s, i) => `${i + 1}. ${s.label}`).join(" · ")}
-                                </p>
+                                <p className="mb-3 text-md text-tertiary">{JOURNEY_STEPS.map((s, i) => `${i + 1}. ${s.label}`).join(" · ")}</p>
                                 <p className="mb-3 text-md text-tertiary">
                                     Completion is stored as step <em>ids</em> in <span className="font-mono text-sm">journey_done</span>, not positions, so
                                     reordering the journey never disturbs a client's recorded progress. The side menu itself is drag-resizable from its right
