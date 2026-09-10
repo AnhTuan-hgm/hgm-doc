@@ -303,7 +303,7 @@ export const NAV_GROUPS: {
         phase: "marketing",
         icon: Announcement02,
         items: [
-            { id: "landing", label: "Landing page", icon: Globe01, soon: true },
+            { id: "landing", label: "Landing page", icon: Globe01 },
             { id: "flow", label: "Welcome Flow", icon: Mail01 },
             { id: "repeatflow", label: "Repeat Flow", icon: Repeat01, soon: true },
             { id: "pinnedposts", label: "Pinned Posts", icon: Camera01, soon: true },

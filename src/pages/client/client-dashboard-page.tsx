@@ -35,6 +35,7 @@ import { motion } from "motion/react";
 import { useNavigate, useSearchParams } from "react-router";
 import { Bar, BarChart, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, XAxis, YAxis } from "recharts";
 import { ChartTooltipContent } from "@/components/application/charts/charts-base";
+import { LandingPageSection } from "@/components/application/landing-page-section";
 import { VideoAttach, VideoEmbed } from "@/components/application/video-block";
 import { WelcomeFlowSection } from "@/components/application/welcome-flow";
 import { Badge, BadgeWithDot, BadgeWithIcon } from "@/components/base/badges/badges";
@@ -2894,6 +2895,25 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                         {/* ── Section content (driven by the side menu) ── */}
                                         <div className="mt-10">
                                             <div className="min-w-0">
+                                                {activeSection === "landing" && (
+                                                    <>
+                                                        {/* Renders its own component (own heading included), same reasoning
+                                                            as Welcome Flow just below it. */}
+                                                        <SectionEyebrow section={activeSection} />
+                                                        <div className="mt-6">
+                                                            <LandingPageSection
+                                                                slug={slug}
+                                                                clientName={clientName}
+                                                                isTeam={isTeam}
+                                                                isLocked={isLocked}
+                                                                isTemplate={isTemplate}
+                                                                teamName={user?.name ?? user?.email ?? ""}
+                                                                clientEmail={identityEmail}
+                                                            />
+                                                        </div>
+                                                    </>
+                                                )}
+
                                                 {activeSection === "flow" && (
                                                     <>
                                                         {/* This section renders its own component, so it was the one
