@@ -1997,8 +1997,9 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
             // Open change requests need the team; everything else is just a count.
             const open = pinnedFeedback.filter((s) => s.status === "pending" && s.field_key.endsWith(".feedback")).length;
             if (isTeam && open) return pill(String(open), "todo");
-            const n = pinnedPosts.posts.length;
-            return n ? pill(String(n), "muted") : null;
+            // Three slots always exist; only the filled ones count.
+            const n = pinnedPosts.posts.filter((p) => p.slides.length > 0).length;
+            return n ? pill(`${n}/3`, "muted") : null;
         }
         return null;
     };

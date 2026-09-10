@@ -128,6 +128,21 @@ export const MAX_PINNED_POSTS = 3;
 
 export const emptyPinnedPost = (): PinnedPost => ({ id: uid(), title: "", caption: "", slides: [] });
 
+/**
+ * The three pinned slots always exist, like Example Reels' three phones: the AM drags
+ * imported pages into slot 01, 02 or 03 rather than creating posts. Pads a stored list up
+ * to three and never drops a stored post — a row written with more keeps them, so nothing a
+ * client already approved can vanish on load.
+ */
+export const normalizePinnedPosts = (posts?: PinnedPost[] | null): PinnedPost[] => {
+    const out = (posts ?? []).map((p) => ({ ...p, caption: p.caption ?? "", slides: p.slides ?? [] }));
+    while (out.length < MAX_PINNED_POSTS) out.push(emptyPinnedPost());
+    return out;
+};
+
+/** A slot with no slides is a placeholder: the client never sees it and the phone leaves its tile empty. */
+export const filledPinnedPosts = (posts: PinnedPost[]) => posts.filter((p) => p.slides.length > 0);
+
 export const EMPTY_PINNED_POSTS: PinnedPosts = { canva_url: "", handle: "", posts: [] };
 
 /**
@@ -287,7 +302,7 @@ export const createDefaultContent = (base: string): DashboardContent => ({
     },
     videos: [],
     reels: normalizeReels(),
-    pinned_posts: { ...EMPTY_PINNED_POSTS, posts: [] },
+    pinned_posts: { ...EMPTY_PINNED_POSTS, posts: normalizePinnedPosts() },
     client_visible: [...DEFAULT_CLIENT_VISIBLE],
 });
 
@@ -308,7 +323,7 @@ export const mergeContent = (partial?: Partial<DashboardContent> | null): Dashbo
         ? {
               ...EMPTY_PINNED_POSTS,
               ...partial.pinned_posts,
-              posts: (partial.pinned_posts?.posts ?? []).map((p) => ({ ...p, caption: p.caption ?? "", slides: p.slides ?? [] })),
+              posts: normalizePinnedPosts(partial.pinned_posts?.posts),
           }
         : TEMPLATE_CONTENT.pinned_posts,
     resources: partial?.resources ?? [],
