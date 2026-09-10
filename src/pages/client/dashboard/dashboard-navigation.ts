@@ -242,7 +242,16 @@ export const JOURNEY_STEPS: {
             { label: "Example Reels" },
         ],
     },
-    { id: "website", label: "Set up the website", detail: "Only applies if we are setting up your website.", icon: Globe01, to: "ownerguide" },
+    {
+        // Derived from the Website Setup Guide section: done once the Netlify account is
+        // confirmed and, if the client opted in to the AI website, every account it needs.
+        id: "website",
+        label: "Set up the website",
+        detail: "Create your Netlify hosting account, and tell us if you'd like an AI-built booking website.",
+        icon: Globe01,
+        to: "ownerguide",
+        auto: true,
+    },
 ];
 
 /** Sits above the funnel groups — not a funnel stage itself, just "home" (hero + the funnel explainer). */
@@ -309,8 +318,8 @@ export const NAV_GROUPS: {
             { id: "landing", label: "Landing Page", icon: Globe01 },
             { id: "flow", label: "Welcome Flow", icon: Mail01 },
             { id: "repeatflow", label: "Repeat Booking Flow", icon: Repeat01, soon: true },
-            { id: "pinnedposts", label: "Pinned Posts", icon: Camera01, soon: true },
-            { id: "pinnedstories", label: "Pinned Stories", icon: Image03, soon: true },
+            { id: "pinnedposts", label: "Pinned Posts", icon: Camera01 },
+            { id: "pinnedstories", label: "Pinned Stories", icon: Image03 },
             { id: "reels", label: "Example Reels", icon: PlayCircle },
         ],
     },
@@ -319,11 +328,13 @@ export const NAV_GROUPS: {
         phase: "resources",
         icon: Folder,
         items: [
-            // Both are links, not sections: the folder opens the client's own content
-            // drive, the owner guide opens THAT client's guide (never the shared
-            // template). Each falls back to "Soon" until its target exists.
+            // A link, not a section: opens the client's own content drive, and falls
+            // back to "Soon" until the folder link exists.
             { id: "contentfolder", label: "Folder of Content", icon: Folder },
-            // Shortened from "Website Setup — Owner guide": that truncated to
+            // A real section since 2026-09: the required Netlify account plus the AI
+            // website opt-in (website-setup-section.tsx). It used to be a link straight
+            // to the client's owner guide; the section now links there itself, once one
+            // exists. Shortened from "Website Setup — Owner guide": that truncated to
             // "Website Setup — Ow…" at the 276px sidebar width.
             { id: "ownerguide", label: "Website Setup Guide", icon: BookOpen01 },
         ],

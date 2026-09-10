@@ -106,6 +106,24 @@ rather than at the top of `client-dashboard-page.tsx`:
 | `dashboard-chrome.tsx` | Sign-in gate, section headings, side-menu row, search bar. |
 | `master-brand-fields.tsx` | `DocField` / `DocRail` / … the document's own inputs. |
 | `onboarding-answers.tsx` | Submitted form answers and recording summaries. |
+| `pinned-stories-model.ts` | Pinned Stories shapes (`pinned_stories.data`), Canva link parsing, arrange helpers, the North Star sample. No React. |
+
+Two Marketing sections render their own component instead of a block in the page body:
+`src/components/application/landing-page-section.tsx` (table `landing_pages`) and
+`pinned-stories-section.tsx` + `story-player.tsx` (table `pinned_stories`, bucket `stories`).
+Pinned Posts and Pinned Stories render the same Instagram profile surface from
+`src/pages/team/mockup-ig/` (`IgProfileScreen`, fed by `buildProfile` in `pinned-posts.tsx`
+and the page's one `igProfileInputs`), so the two phones always show one account.
+Both follow the same access model: team writes go straight to Supabase under a
+team-only policy; the client's review goes through a Netlify function that checks their
+email against the dashboard's `allowed_emails` (`landing-page-review.mts`,
+`pinned-stories-review.mts`). `canva-import.mts` pulls a Canva design's pages into the
+`stories` bucket using the token pair `canva-auth.mts` stores in `canva_connection` (a
+service-role-only table, like `ghl_integrations`) when a team member presses Connect
+Canva; `netlify/lib/canva.mts` refreshes it before its 4-hour expiry. Netlify needs
+`CANVA_CLIENT_ID` / `CANVA_CLIENT_SECRET` from the Canva Developer Portal integration,
+whose redirect URL is `https://hgmportal.com/.netlify/functions/canva-auth`. Without a
+connection the section falls back to uploading Canva's exported pages, same result.
 
 `client-dashboard-page.tsx` itself is still ~4,700 lines of one component. That
 body has not been split — doing so needs real prop-threading, so treat it as a

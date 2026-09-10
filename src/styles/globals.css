@@ -233,6 +233,26 @@ input[type="search"]::-webkit-search-cancel-button {
     }
 }
 
+/*
+ * Story progress (application/story-player.tsx) — the filling segment above an
+ * Instagram story. One animation per image slide; the player advances on its
+ * `animationend`, so the bar and the slide change can never drift apart. Video
+ * slides don't use it: their segment tracks the video's own currentTime.
+ *
+ * transform, not width, so the fill never triggers layout. No reduced-motion
+ * override here on purpose: under reduced motion the player never starts the
+ * animation at all (slides then advance only by tap), which is the same signal
+ * expressed once, in the component.
+ */
+@keyframes story-progress {
+    from {
+        transform: scaleX(0);
+    }
+    to {
+        transform: scaleX(1);
+    }
+}
+
 /* -------------------------------------------------------------------------- */
 /* Native dialog entrance (/animation section 19)                              */
 /* -------------------------------------------------------------------------- */

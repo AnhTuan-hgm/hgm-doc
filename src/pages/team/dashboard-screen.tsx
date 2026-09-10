@@ -18,7 +18,9 @@ import { compressImageFile } from "@/utils/compress-image";
 import { teamPhoto } from "@/utils/team-photos";
 import { cx } from "@/utils/cx";
 
-const PASSWORDS = ["ANHTUAN", "HGTEAM"];
+// Shared team passwords for the sign-in gate — any one of them unlocks viewing.
+// They carry no identity, so they never grant OWNER_EMAIL edit rights below.
+const PASSWORDS = ["ANHTUAN", "HGTEAM", "Zingdema07<3"];
 const ALLOWED_DOMAIN = "hiddengem.media";
 // Only this account can UNLOCK edit mode (add/edit/delete cards & clients). Everyone
 // else can view. Requires a real Supabase session — the password bypass has no user.

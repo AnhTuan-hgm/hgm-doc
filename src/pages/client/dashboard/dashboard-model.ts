@@ -6,6 +6,7 @@
  * No JSX and no React, so a test or a script can import it without pulling in the UI.
  */
 import type { DashboardContent } from "@/lib/supabase";
+import { mergeWebsiteSetup } from "@/pages/client/dashboard/website-setup";
 
 export type BrandColor = DashboardContent["brand"]["colors"][number];
 export type Highlight = DashboardContent["instagram"]["highlights"][number];
@@ -14,6 +15,9 @@ export type RevenueMonth = DashboardContent["revenue"]["months"][number];
 export type QuickLink = DashboardContent["links"][number];
 export type VideoGuide = NonNullable<DashboardContent["videos"]>[number];
 export type ExampleReel = NonNullable<DashboardContent["reels"]>[number];
+export type PinnedPosts = NonNullable<DashboardContent["pinned_posts"]>;
+export type PinnedPost = PinnedPosts["posts"][number];
+export type PinnedSlide = PinnedPost["slides"][number];
 export type Foundation = NonNullable<DashboardContent["foundation"]>;
 export type Persona = Foundation["personas"][number];
 export type FocusProperty = Foundation["focusProperties"][number];
@@ -117,6 +121,74 @@ export const normalizeReels = (reels?: ExampleReel[] | null): ExampleReel[] => {
 
 export const emptyWebsiteLink = (page = ""): WebsiteLink => ({ id: uid(), page, url: "" });
 
+/* ── Pinned Posts ─────────────────────────────────────────────────────────── */
+
+/** Instagram pins at most three posts to the top of a profile grid. */
+export const MAX_PINNED_POSTS = 3;
+
+export const emptyPinnedPost = (): PinnedPost => ({ id: uid(), title: "", caption: "", slides: [] });
+
+export const EMPTY_PINNED_POSTS: PinnedPosts = { canva_url: "", handle: "", posts: [] };
+
+/**
+ * The sample set the template shows — the three carousels HiddenGem designed for Selah
+ * Place, exported from Canva and committed under public/pinned-posts-sample/. Sample content
+ * on the template follows the revenue precedent above: the template demonstrates the
+ * section, and createDefaultContent strips it so no client copy starts with another host's
+ * posts. Also what "Load the sample set" drops into a test client in edit mode.
+ */
+const samplePost = (title: string, caption: string, file: string, count: number): PinnedPost => ({
+    id: `sample-${file}`,
+    title,
+    caption,
+    slides: Array.from({ length: count }, (_, i) => ({
+        id: `sample-${file}-${i + 1}`,
+        url: `/pinned-posts-sample/${file}-${String(i + 1).padStart(2, "0")}.webp`,
+    })),
+});
+
+export const SAMPLE_PINNED_POSTS: PinnedPosts = {
+    canva_url: "https://www.canva.com/design/DAHLEcUFy7U/pP-I3g5lrEe4dC_mAg7OTg/edit",
+    handle: "selah.place",
+    posts: [
+        samplePost(
+            "Follow us to win a free stay",
+            "Each year, several lucky followers will be selected to win a free stay. Follow @selah.place, engage on recent posts, and the winner is announced on our story.",
+            "win-a-free-stay",
+            6,
+        ),
+        samplePost(
+            "Sign up for 10% off your stay",
+            "Click the link in our bio and sign up for our email list. Your exclusive 10% off code lands in your inbox — use it on stays of two nights or more.",
+            "10-percent-off",
+            5,
+        ),
+        samplePost(
+            "Book direct, save on fees",
+            "The perfect destination for couples and small families, one hour from Dallas. Skip the third-party fees and save 7–10% booking direct on selah.place.",
+            "book-direct",
+            7,
+        ),
+    ],
+};
+
+/** Best guess at the handle from the Instagram profile URL an AM already entered. */
+export const handleFromProfileUrl = (url: string): string => {
+    const m = /instagram\.com\/([A-Za-z0-9._]+)/i.exec(url.trim());
+    return m ? m[1].replace(/\/+$/, "") : "";
+};
+
+/**
+ * Canva share/edit links all carry the design id as the segment after /design/. Anything
+ * that isn't a Canva design link returns null, so a stray URL never gets an "Open in Canva"
+ * button.
+ */
+export const parseCanvaUrl = (raw: string): { id: string; url: string } | null => {
+    const url = raw.trim();
+    const m = /^https:\/\/(?:www\.)?canva\.com\/design\/(D[A-Za-z0-9_-]{6,})(?:\/|$)/i.exec(url);
+    return m ? { id: m[1], url } : null;
+};
+
 export const filled = (v: string | undefined) => Boolean(v && v.trim());
 
 export const DEFAULT_GHL_ITEMS: GhlItem[] = [
@@ -168,6 +240,7 @@ export const TEMPLATE_CONTENT: DashboardContent = {
     links: defaultLinks("yourclient"),
     videos: [],
     reels: normalizeReels(),
+    pinned_posts: SAMPLE_PINNED_POSTS,
     foundation: DEFAULT_FOUNDATION,
 };
 
@@ -214,6 +287,7 @@ export const createDefaultContent = (base: string): DashboardContent => ({
     },
     videos: [],
     reels: normalizeReels(),
+    pinned_posts: { ...EMPTY_PINNED_POSTS, posts: [] },
     client_visible: [...DEFAULT_CLIENT_VISIBLE],
 });
 
@@ -228,6 +302,15 @@ export const mergeContent = (partial?: Partial<DashboardContent> | null): Dashbo
     links: partial?.links ?? TEMPLATE_CONTENT.links,
     videos: partial?.videos ?? [],
     reels: normalizeReels(partial?.reels),
+    // No row at all (the template page) shows the sample set; a real row from before the
+    // section existed gets the empty shape, never another host's posts.
+    pinned_posts: partial
+        ? {
+              ...EMPTY_PINNED_POSTS,
+              ...partial.pinned_posts,
+              posts: (partial.pinned_posts?.posts ?? []).map((p) => ({ ...p, caption: p.caption ?? "", slides: p.slides ?? [] })),
+          }
+        : TEMPLATE_CONTENT.pinned_posts,
     resources: partial?.resources ?? [],
     // Arrays are spread-hostile: `...partial.foundation` would hand back `undefined` for
     // every list an older row predates, and the section renderers all call .map on them.
@@ -246,9 +329,10 @@ export const mergeContent = (partial?: Partial<DashboardContent> | null): Dashbo
         // never erases answers a client gave against the old one.
         faqs: partial?.foundation?.faqs ?? [],
     },
-    // Absent ⇒ the intake-forms-only default. An AM who hides everything stores an empty
-    // array, which is meaningfully different from "never set" and must survive as [].
+    // Absent ⇒ the day-one default. An AM who hides everything stores an empty array,
+    // which is meaningfully different from "never set" and must survive as [].
     client_visible: partial?.client_visible ?? [...DEFAULT_CLIENT_VISIBLE],
+    website_setup: mergeWebsiteSetup(partial?.website_setup),
 });
 
 /** Side-menu taxonomy — mirrors the funnel Dustin walks every client through on the
@@ -270,29 +354,36 @@ export type SectionId =
     | "chatwidget"
     | "ghl"
     | "revenue"
-    // Menu entries added with the client-facing side-menu rework. Landing and Example
-    // Reels have section bodies; the middle three have none yet and render with the
-    // existing "Soon" treatment; the last two are links out rather than sections.
+    // Menu entries added with the client-facing side-menu rework. Landing, Pinned Posts and
+    // Example Reels have section bodies; Repeat Flow and Pinned Stories have none yet and
+    // render with the existing "Soon" treatment; Folder of Content is a link out rather
+    // than a section.
     | "landing"
     | "repeatflow"
     | "pinnedposts"
     | "pinnedstories"
     | "reels"
     | "contentfolder"
+    // The Website Setup Guide section: the required Netlify account and the AI website
+    // opt-in. Kept as "ownerguide" so older #hash links and journey steps still land.
     | "ownerguide";
 
 /**
  * What a client can see before an AM reveals anything.
  *
- * The two intake forms only. They're what we need FROM the client on day one, so a
- * brand-new dashboard is still actionable — everything else would otherwise present
- * unfinished work as though it were delivered. An AM reveals each remaining section per
- * client with the eye toggle in edit mode, as it actually ships.
+ * The two intake forms and the Website Setup Guide. They're what we need FROM the client
+ * on day one, so a brand-new dashboard is still actionable — everything else would
+ * otherwise present unfinished work as though it were delivered. An AM reveals each
+ * remaining section per client with the eye toggle in edit mode, as it actually ships.
+ *
+ * The Website Setup Guide is in the default because its first card (a Netlify account in
+ * the client's own name) is mandatory for every client, opted in to a website or not.
+ * Rows that already store their own list are unaffected: an AM reveals the row there.
  *
  * Stored as an ALLOWLIST rather than a hidden-list on purpose: a section added later
  * defaults to invisible to clients instead of leaking the moment it lands.
  */
-export const DEFAULT_CLIENT_VISIBLE: SectionId[] = ["intake", "onboarding"];
+export const DEFAULT_CLIENT_VISIBLE: SectionId[] = ["intake", "onboarding", "ownerguide"];
 
 /* ── Merging a drafted Master Document ───────────────────────────────────── */
 

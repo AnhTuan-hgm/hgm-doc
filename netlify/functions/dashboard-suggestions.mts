@@ -88,13 +88,16 @@ export default async (req: Request) => {
 
     if (action === "create") {
         // Suggesting requires the section the key belongs to be shared with the client:
-        // feedback on a welcome email ("welcomeFlow.3") needs the flow shared, everything
-        // else is a Master Brand Document edit and needs the foundation shared.
+        // feedback on a welcome email ("welcomeFlow.3") needs the flow shared, feedback or an
+        // approval on a pinned post ("pinnedposts.{postId}.feedback|approve") needs Pinned
+        // Posts shared, everything else is a Master Brand Document edit and needs the
+        // foundation shared.
         const visible = Array.isArray(data.client_visible) ? (data.client_visible as unknown[]) : [];
-        const sectionFor = (key: string) => (key.startsWith("welcomeFlow.") ? "flow" : "foundation");
+        const sectionFor = (key: string) => (key.startsWith("welcomeFlow.") ? "flow" : key.startsWith("pinnedposts.") ? "pinnedposts" : "foundation");
 
         const items = Array.isArray(body.items) ? (body.items as Record<string, unknown>[]) : [];
         if (items.length === 0 || items.length > MAX_ITEMS) return Response.json({ error: "Bad items." }, { status: 400 });
+
         const clean = items.map((i) => ({
             slug,
             field_key: String(i.fieldKey ?? ""),

@@ -258,12 +258,20 @@ const DASHBOARD_GROUPS: { group: string; items: { label: string; note: string }[
                 note: "The AM pastes the finished HTML; the client reviews it in-frame and approves or asks for changes.",
             },
             {
+                label: "Pinned Posts",
+                note: "The three Canva carousels pinned to the top of the client's grid, previewed on a phone. Paste the Canva link, upload the exported pages, reveal it; the client approves or requests changes per post.",
+            },
+            {
                 label: "Example Reels",
                 note: "Three iPhone mockups. In edit mode the team uploads a 9:16 mp4 into each (videos bucket, 50 MB cap) and writes the title and one-line description under it; the client sees only filled slots.",
             },
             {
-                label: "Repeat Booking Flow / Pinned Posts / Pinned Stories",
-                note: 'Placeholders marked "Soon" until each is built.',
+                label: "Pinned Stories",
+                note: "The Canva story highlights for the top of the client's profile. Paste the Canva link (or upload the exported pages), arrange pages into highlights, publish; the client plays them in the phone and leaves notes slide by slide.",
+            },
+            {
+                label: "Repeat Booking Flow",
+                note: 'Placeholder marked "Soon" until it is built.',
             },
         ],
     },
@@ -271,7 +279,10 @@ const DASHBOARD_GROUPS: { group: string; items: { label: string; note: string }[
         group: "Resources",
         items: [
             { label: "Folder of Content", note: "Opens the client's content drive — the link lives in Brand Kit's folder field." },
-            { label: "Website Setup Guide", note: "Opens that client's own owner guide (never the shared template)." },
+            {
+                label: "Website Setup Guide",
+                note: "Asks every client for a Netlify account in their own name (required), then offers the AI-built booking website. A yes reveals the accounts it needs — Supabase, Resend, Stripe, PMS, registrar, Cloudflare — as account emails only; logins are handed over in that client's own owner guide, which the section links to once it exists. Shown to clients by default.",
+            },
             {
                 label: "Custom links",
                 note: "AMs add any link here in edit mode (e.g. a Claude project). New links start Hidden; the eye toggle reveals them to the client.",
@@ -291,6 +302,14 @@ const TABLES: { group: string; rows: { name: string; what: string }[] }[] = [
             {
                 name: "dashboard_suggestions",
                 what: "Client-proposed Master Brand edits, one row per suggested field — pending / accepted / declined. Quarantined: never touches the document until an AM accepts and saves.",
+            },
+            {
+                name: "landing_pages",
+                what: "Marketing → Landing Page: every published HTML version per client dashboard, newest first, plus the client's approve / request-changes state.",
+            },
+            {
+                name: "pinned_stories",
+                what: "Marketing → Pinned Stories: the team's draft (imported pages arranged into highlights) and every published version, each with the client's per-slide notes and approval.",
             },
             { name: "client_pages", what: "Meta Pixel setup pages ({client}-metapixel and any other suffix)." },
             { name: "leadcapture_pages", what: "Popup / lead-capture pages, incl. before-after images and form options." },
@@ -319,6 +338,10 @@ const TABLES: { group: string; rows: { name: string; what: string }[] }[] = [
                 what: "The /dashboard hub's cards and tabs, document templates, and the prompt library.",
             },
             { name: "ghl_integrations", what: "GHL private tokens — server-only: no browser role can read or write it." },
+            {
+                name: "canva_connection / canva_oauth_states",
+                what: "The portal's Canva Connect API token pair (4-hour access token, rotating refresh token) and in-flight OAuth handshakes — server-only, like ghl_integrations.",
+            },
         ],
     },
     {
@@ -327,6 +350,7 @@ const TABLES: { group: string; rows: { name: string; what: string }[] }[] = [
             { name: "videos", what: "Uploaded video guides." },
             { name: "brandkits", what: "Brand-kit files (logos, fonts)." },
             { name: "recordings", what: "Call recordings for /log-script (private bucket)." },
+            { name: "stories", what: "Pinned Stories pages (JPG/WebP per page, MP4 for video slides) — team-only uploads, public read." },
         ],
     },
 ];
@@ -344,6 +368,19 @@ const FUNCTIONS: { name: string; what: string }[] = [
     {
         name: "dashboard-suggestions",
         what: "Client suggestion traffic: list / send / withdraw. Validates the client's email against that dashboard's allowlist on every call.",
+    },
+    { name: "landing-page-review", what: "The client's Approve / Request changes on the Landing Page — only ever writes the review state, never a version." },
+    {
+        name: "pinned-stories-review",
+        what: "The client's per-slide notes and approval on Pinned Stories — only ever writes the live version's review, never the highlights.",
+    },
+    {
+        name: "canva-import",
+        what: "Team-only. Exports a Canva design's pages through the Canva Connect API into the stories bucket, in three short steps (start / status / store), spending the token canva-auth stored and refreshing it when it nears expiry.",
+    },
+    {
+        name: "canva-auth",
+        what: "Connect Canva: the one-time OAuth handshake (PKCE) that stores the team's Canva token pair in canva_connection, plus status / disconnect. Needs CANVA_CLIENT_ID and CANVA_CLIENT_SECRET in Netlify and the callback URL registered on the Canva integration.",
     },
 ];
 
