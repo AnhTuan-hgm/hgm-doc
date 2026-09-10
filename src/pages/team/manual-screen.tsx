@@ -258,11 +258,15 @@ const DASHBOARD_GROUPS: { group: string; items: { label: string; note: string }[
                 note: "The AM pastes the finished HTML; the client reviews it in-frame and approves or asks for changes.",
             },
             {
+                label: "Pinned Posts",
+                note: "The three Canva carousels pinned to the top of the client's grid, previewed on a phone. Paste the Canva link, upload the exported pages, reveal it; the client approves or requests changes per post.",
+            },
+            {
                 label: "Example Reels",
                 note: "Three iPhone mockups. In edit mode the team uploads a 9:16 mp4 into each (videos bucket, 50 MB cap) and writes the title and one-line description under it; the client sees only filled slots.",
             },
             {
-                label: "Repeat Booking Flow / Pinned Posts / Pinned Stories",
+                label: "Repeat Booking Flow / Pinned Stories",
                 note: 'Placeholders marked "Soon" until each is built.',
             },
         ],

@@ -303,9 +303,13 @@ const IgEmptyTab = ({ icon, title, body }: { icon: React.ReactNode; title: strin
 const tabContent = (tab: IgProfileTab, items: IgGridItem[]) => {
     if (tab === "reels") return <IgGrid items={items} />;
 
-    // Same cells, stripped back to photo placeholders: no src, no view count, no
+    // Reel cells are stripped back to photo placeholders: no src, no view count, no
     // pin — those three belong to the reel that occupied the cell, not to the cell.
-    if (tab === "grid") return <IgGrid items={items.map((item) => ({ alt: `${item.alt} — photo slot`, kind: "photo" as const }))} />;
+    // Photo and carousel cells render as they are: the client dashboard's Pinned Posts
+    // section feeds this tab real carousel covers, and the main grid is where
+    // Instagram shows them.
+    if (tab === "grid")
+        return <IgGrid items={items.map((item) => (item.kind === "reel" ? { alt: `${item.alt} — photo slot`, kind: "photo" as const } : item))} />;
 
     if (tab === "repost") return <IgEmptyTab icon={<Repeat01 strokeWidth={1.6} />} title="No Reposts Yet" body="When you repost, it will appear here." />;
 

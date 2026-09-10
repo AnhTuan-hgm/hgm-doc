@@ -1,0 +1,876 @@
+/**
+ * Pinned Posts — the three carousels HiddenGem designs for the top of a client's
+ * Instagram grid, previewed on a phone, reviewed by the client.
+ *
+ * THE WORKFLOW, end to end:
+ *   1. The team designs the posts in Canva (one design, one page per slide) and pastes
+ *      the design link here. The link is kept, never fetched by the browser — Canva does
+ *      not let a web page pull renders off a share link.
+ *   2. The pages are exported as images and uploaded here — by hand from Canva's own
+ *      export, or by asking Claude with the Canva connector to export the design and
+ *      hand the files over. Either way each slide goes through compressImageFile
+ *      (capped at Instagram's own 1080px) and is stored as WebP in the dashboard row,
+ *      the same place every other dashboard image lives.
+ *   3. The AM reveals the section with the eye toggle. The client sees their profile
+ *      as a guest opens it, taps through each carousel, and either approves it or
+ *      requests changes with a note. Both land in dashboard_suggestions through the
+ *      same Netlify function the Master Brand Document uses, so a client never writes
+ *      the row — see the `pinnedposts.{postId}.*` keys below.
+ *
+ * The phone is the existing Instagram profile surface from /mockup-ig, fed this client's
+ * handle, logo, highlights and covers. It is a picture (role="img"); the cards beside it
+ * are where a client actually opens a post.
+ */
+import { type ChangeEvent, type ReactNode, useEffect, useState } from "react";
+import {
+    Camera01,
+    Check,
+    ChevronLeft,
+    ChevronRight,
+    LinkExternal01,
+    MessageTextSquare02,
+    Plus,
+    ThumbsUp,
+    Trash01,
+    UploadCloud02,
+    XClose,
+} from "@untitledui-pro/icons/line";
+import { AnimatePresence, motion } from "motion/react";
+import { Badge } from "@/components/base/badges/badges";
+import { Button } from "@/components/base/buttons/button";
+import { PhoneFrame } from "@/components/shared-assets/phone-frame";
+import { Reveal } from "@/components/shared-assets/reveal";
+import { SectionEyebrow, SectionHeading, editInput } from "@/pages/client/dashboard/dashboard-chrome";
+import {
+    MAX_PINNED_POSTS,
+    type PinnedPost,
+    type PinnedPosts,
+    SAMPLE_PINNED_POSTS,
+    emptyPinnedPost,
+    parseCanvaUrl,
+    uid,
+} from "@/pages/client/dashboard/dashboard-model";
+import type { Suggestion, SuggestionItem } from "@/pages/client/dashboard/suggestions-model";
+import { IgScreen } from "@/pages/team/mockup-ig/ig-chrome";
+import { IgProfileScreen } from "@/pages/team/mockup-ig/ig-profile";
+import type { IgGridItem, IgProfile } from "@/pages/team/mockup-ig/instagram-data";
+import { compressImageFile } from "@/utils/compress-image";
+import { cx } from "@/utils/cx";
+
+/* ── Feedback keys ─────────────────────────────────────────────────────────
+   Client input on a post rides the dashboard_suggestions table under a namespaced key,
+   so the Master Brand Document's own suggestion model never sees it (its whitelist
+   rejects the prefix) and the Netlify function can gate it on the section being revealed. */
+
+const KEY_PREFIX = "pinnedposts.";
+export const isPinnedKey = (fieldKey: string) => fieldKey.startsWith(KEY_PREFIX);
+const feedbackKey = (postId: string) => `${KEY_PREFIX}${postId}.feedback`;
+const approveKey = (postId: string) => `${KEY_PREFIX}${postId}.approve`;
+const APPROVED_VALUE = "Approved";
+
+/** Instagram serves slides at 1080 wide; storing more is weight the row carries for nothing. */
+const SLIDE_MAX_DIM = 1080;
+
+const shortDate = (iso: string | null) => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+};
+
+/* ── Per-post review state ───────────────────────────────────────────────── */
+
+type PostReview = {
+    /** Latest pending "request changes" note from anyone. */
+    openNote: Suggestion | null;
+    /** Every pending note, newest first — several clients on one dashboard can each leave one. */
+    openNotes: Suggestion[];
+    /** The approval in force, if any. */
+    approval: Suggestion | null;
+    /** The most recent note the team has marked addressed. */
+    lastAddressed: Suggestion | null;
+};
+
+const reviewFor = (postId: string, feedback: Suggestion[]): PostReview => {
+    const notes = feedback.filter((s) => s.field_key === feedbackKey(postId));
+    const approvals = feedback.filter((s) => s.field_key === approveKey(postId) && s.status !== "declined");
+    const openNotes = notes.filter((s) => s.status === "pending");
+    const lastAddressed = notes.find((s) => s.status === "accepted") ?? null;
+    // An approval only counts while nothing newer asks for a change.
+    const approval = approvals.find((a) => !openNotes.some((n) => n.created_at > a.created_at)) ?? null;
+    return { openNote: openNotes[0] ?? null, openNotes, approval, lastAddressed };
+};
+
+const StatusBadge = ({ review, forTeam }: { review: PostReview; forTeam: boolean }) => {
+    if (review.openNote) return <Badge color="warning">Changes requested</Badge>;
+    if (review.approval) return <Badge color="success">Approved</Badge>;
+    if (review.lastAddressed) return <Badge color="brand">{forTeam ? "Updated — awaiting client" : "Updated for you"}</Badge>;
+    return <Badge color="gray">{forTeam ? "Awaiting client review" : "Ready for your review"}</Badge>;
+};
+
+/* ── The phone ───────────────────────────────────────────────────────────── */
+
+export interface PinnedProfileInputs {
+    handle: string;
+    displayName: string;
+    avatar: string;
+    bio: string[];
+    linkLabel: string;
+    highlights: { label: string; src?: string }[];
+}
+
+/**
+ * The Instagram profile object the mockup renders, built from what the dashboard already
+ * knows about the client. Follower counts are not ours to invent, so they read "—".
+ */
+const buildProfile = (inputs: PinnedProfileInputs, posts: PinnedPost[]): IgProfile => {
+    const pinnedTiles: IgGridItem[] = posts.slice(0, MAX_PINNED_POSTS).map((p) => ({
+        src: p.slides[0]?.url,
+        alt: p.title || "Pinned post",
+        kind: "carousel",
+        pinned: true,
+    }));
+    const filler: IgGridItem[] = Array.from({ length: Math.max(0, 9 - pinnedTiles.length) }, (_, i) => ({ alt: `Grid post ${i + 1}`, kind: "photo" }));
+    return {
+        handle: inputs.handle || "yourhandle",
+        displayName: inputs.displayName || "Your brand",
+        category: "Vacation Home Rental",
+        verified: false,
+        avatar: inputs.avatar,
+        stats: { posts: String(posts.length || "—"), followers: "—", following: "—" },
+        bio: inputs.bio.length ? inputs.bio : ["Your bio goes here"],
+        link: { label: inputs.linkLabel || "Link in bio", href: "#" },
+        highlights: inputs.highlights,
+        grid: [...pinnedTiles, ...filler],
+    };
+};
+
+const PinnedPhone = ({ profile }: { profile: IgProfile }) => (
+    <PhoneFrame label={`Instagram profile preview for @${profile.handle}`} className="w-[248px] sm:w-[280px]">
+        <IgScreen
+            label={`Instagram profile mockup for @${profile.handle} — the three pinned posts sit at the top of the grid`}
+            className="size-full max-w-none"
+        >
+            <IgProfileScreen profile={profile} avatar={profile.avatar} tab="grid" />
+        </IgScreen>
+    </PhoneFrame>
+);
+
+/* ── Slide viewer ────────────────────────────────────────────────────────── */
+
+/**
+ * Tap-through carousel, the way the client will meet it on their phone: one 4:5 slide at a
+ * time, arrows and dots, arrow keys and Escape. The caption sits under the slide as it does
+ * on Instagram.
+ */
+const SlideViewer = ({ post, index: initial, onClose }: { post: PinnedPost | null; index: number; onClose: () => void }) => {
+    const [index, setIndex] = useState(initial);
+    const count = post?.slides.length ?? 0;
+
+    useEffect(() => setIndex(initial), [initial, post?.id]);
+    useEffect(() => {
+        if (!post) return;
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === "Escape") onClose();
+            if (e.key === "ArrowRight") setIndex((i) => Math.min(count - 1, i + 1));
+            if (e.key === "ArrowLeft") setIndex((i) => Math.max(0, i - 1));
+        };
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, [post, count, onClose]);
+
+    const slide = post?.slides[Math.min(index, Math.max(0, count - 1))];
+
+    return (
+        <AnimatePresence>
+            {post && slide && (
+                <motion.div
+                    className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm sm:p-8"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.2, ease: "easeOut" }}
+                    onClick={onClose}
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label={`${post.title || "Pinned post"} — slide ${index + 1} of ${count}`}
+                >
+                    <motion.div
+                        className="flex w-full max-w-[420px] flex-col gap-3"
+                        onClick={(e) => e.stopPropagation()}
+                        initial={{ scale: 0.96, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        exit={{ scale: 0.97, opacity: 0 }}
+                        transition={{ type: "spring", stiffness: 300, damping: 26 }}
+                    >
+                        <div className="relative overflow-hidden rounded-2xl bg-primary-solid ring-1 ring-white/10">
+                            <img
+                                key={slide.id}
+                                src={slide.url}
+                                alt={`${post.title || "Pinned post"} — slide ${index + 1}`}
+                                className="block aspect-3/4 w-full object-cover"
+                                draggable={false}
+                            />
+                            {count > 1 && (
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIndex((i) => Math.max(0, i - 1))}
+                                        disabled={index === 0}
+                                        aria-label="Previous slide"
+                                        className="absolute top-1/2 left-2 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 text-white transition duration-100 ease-linear hover:bg-black/65 disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                        <ChevronLeft className="size-5" aria-hidden="true" />
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIndex((i) => Math.min(count - 1, i + 1))}
+                                        disabled={index === count - 1}
+                                        aria-label="Next slide"
+                                        className="absolute top-1/2 right-2 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 text-white transition duration-100 ease-linear hover:bg-black/65 disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                        <ChevronRight className="size-5" aria-hidden="true" />
+                                    </button>
+                                    <span className="absolute top-3 right-3 rounded-full bg-black/55 px-2 py-0.5 text-xs font-semibold text-white tabular-nums">
+                                        {index + 1}/{count}
+                                    </span>
+                                </>
+                            )}
+                        </div>
+                        {count > 1 && (
+                            <div className="flex items-center justify-center gap-1.5" aria-hidden="true">
+                                {post.slides.map((s, i) => (
+                                    <button
+                                        key={s.id}
+                                        type="button"
+                                        onClick={() => setIndex(i)}
+                                        className={cx(
+                                            "size-1.5 rounded-full transition duration-100 ease-linear",
+                                            i === index ? "bg-white" : "bg-white/35 hover:bg-white/60",
+                                        )}
+                                    />
+                                ))}
+                            </div>
+                        )}
+                        <div className="text-white">
+                            <p className="text-sm font-semibold">{post.title || "Pinned post"}</p>
+                            {post.caption.trim() && <p className="mt-1 text-sm whitespace-pre-wrap text-white/75">{post.caption}</p>}
+                        </div>
+                    </motion.div>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        title="Close"
+                        className="absolute top-5 right-5 flex size-10 items-center justify-center rounded-xl bg-white/10 text-white backdrop-blur-sm transition duration-100 ease-linear hover:bg-white/20"
+                    >
+                        <XClose className="size-5" aria-hidden="true" />
+                    </button>
+                </motion.div>
+            )}
+        </AnimatePresence>
+    );
+};
+
+/* ── Feedback panel ──────────────────────────────────────────────────────── */
+
+interface FeedbackProps {
+    post: PinnedPost;
+    ordinal: number;
+    review: PostReview;
+    isTeam: boolean;
+    /** The client (or a team member previewing as one) may approve / request changes. */
+    canReview: boolean;
+    reviewerEmail: string;
+    onSend: (items: SuggestionItem[]) => Promise<void>;
+    onWithdraw: (s: Suggestion) => void;
+    onResolve: (s: Suggestion) => void;
+}
+
+const FeedbackPanel = ({ post, ordinal, review, isTeam, canReview, reviewerEmail, onSend, onWithdraw, onResolve }: FeedbackProps) => {
+    const [writing, setWriting] = useState(false);
+    const [note, setNote] = useState("");
+    const [state, setState] = useState<"idle" | "sending" | "error">("idle");
+    const [error, setError] = useState("");
+    const label = `Pinned post ${ordinal}${post.title.trim() ? ` · ${post.title.trim()}` : ""}`;
+    const mine = (s: Suggestion | null) => !!s && !!reviewerEmail && s.suggested_by === reviewerEmail;
+    const myNote = review.openNotes.find((n) => mine(n)) ?? null;
+
+    const send = async (items: SuggestionItem[], after?: () => void) => {
+        setState("sending");
+        setError("");
+        try {
+            await onSend(items);
+            after?.();
+            setState("idle");
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Something went wrong. Nothing was sent.");
+            setState("error");
+        }
+    };
+
+    const approve = () =>
+        send([{ fieldKey: approveKey(post.id), fieldLabel: `${label} · approved`, currentValue: "", suggestedValue: APPROVED_VALUE }], () => {
+            // Approving supersedes the reviewer's own open note — the two are one opinion.
+            if (myNote) onWithdraw(myNote);
+        });
+
+    const requestChanges = () => {
+        const text = note.trim();
+        if (!text) return;
+        void send([{ fieldKey: feedbackKey(post.id), fieldLabel: label, currentValue: "", suggestedValue: text }], () => {
+            if (mine(review.approval) && review.approval?.status === "pending") onWithdraw(review.approval);
+            setNote("");
+            setWriting(false);
+        });
+    };
+
+    return (
+        <div className="mt-4 flex flex-col gap-3 border-t border-secondary pt-4">
+            {/* Open notes — the team sees who asked and marks them addressed; a client sees their own with Withdraw. */}
+            {review.openNotes.map((n) => (
+                <div key={n.id} className="rounded-xl bg-warning-primary p-3 ring-1 ring-secondary">
+                    <p className="text-xs font-medium text-secondary">
+                        {mine(n) ? "You asked" : isTeam ? `${n.suggested_by} asked` : "Requested"} · {shortDate(n.created_at)}
+                    </p>
+                    <p className="mt-1 text-sm whitespace-pre-wrap text-primary">{n.suggested_value}</p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                        {isTeam && (
+                            <Button size="sm" color="primary" iconLeading={Check} onClick={() => onResolve(n)}>
+                                Mark as addressed
+                            </Button>
+                        )}
+                        {!isTeam && mine(n) && (
+                            <button
+                                type="button"
+                                onClick={() => onWithdraw(n)}
+                                className="text-xs font-semibold text-tertiary transition duration-100 ease-linear hover:text-error-primary"
+                            >
+                                Withdraw
+                            </button>
+                        )}
+                    </div>
+                </div>
+            ))}
+
+            {review.approval && (
+                <p className="flex items-center gap-1.5 text-xs text-success-primary">
+                    <ThumbsUp className="size-3.5" aria-hidden="true" />
+                    Approved{isTeam || !mine(review.approval) ? ` by ${review.approval.suggested_by}` : ""} · {shortDate(review.approval.created_at)}
+                    {!isTeam && mine(review.approval) && review.approval.status === "pending" && (
+                        <button
+                            type="button"
+                            onClick={() => onWithdraw(review.approval!)}
+                            className="ml-1 font-semibold text-tertiary transition duration-100 ease-linear hover:text-error-primary"
+                        >
+                            Undo
+                        </button>
+                    )}
+                </p>
+            )}
+
+            {!review.openNote && !review.approval && review.lastAddressed && (
+                <p className="text-xs text-quaternary">
+                    Your note from {shortDate(review.lastAddressed.created_at)} was addressed
+                    {review.lastAddressed.resolved_at ? ` on ${shortDate(review.lastAddressed.resolved_at)}` : ""}. Have another look and approve when it's
+                    right.
+                </p>
+            )}
+
+            {canReview && (
+                <div className="flex flex-col gap-2">
+                    {!writing ? (
+                        <div className="flex flex-wrap items-center gap-2">
+                            {!review.approval && (
+                                <Button size="sm" color="primary" iconLeading={ThumbsUp} onClick={approve} isLoading={state === "sending"} showTextWhileLoading>
+                                    Approve this post
+                                </Button>
+                            )}
+                            <Button size="sm" color="secondary" iconLeading={MessageTextSquare02} onClick={() => setWriting(true)}>
+                                {myNote ? "Update my note" : "Request changes"}
+                            </Button>
+                        </div>
+                    ) : (
+                        <div className="flex flex-col gap-2">
+                            <textarea
+                                autoFocus
+                                rows={3}
+                                value={note}
+                                onChange={(e) => setNote(e.target.value)}
+                                placeholder="What should change? Name the slide if it helps — “slide 3, the dates are wrong”."
+                                className={editInput("resize-y")}
+                            />
+                            <div className="flex flex-wrap items-center gap-2">
+                                <Button
+                                    size="sm"
+                                    color="primary"
+                                    onClick={requestChanges}
+                                    isDisabled={!note.trim()}
+                                    isLoading={state === "sending"}
+                                    showTextWhileLoading
+                                >
+                                    Send to your Account Manager
+                                </Button>
+                                <Button size="sm" color="tertiary" onClick={() => setWriting(false)}>
+                                    Cancel
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+                    {state === "error" && <p className="text-xs text-error-primary">{error}</p>}
+                </div>
+            )}
+        </div>
+    );
+};
+
+/* ── Post cards (review mode) ────────────────────────────────────────────── */
+
+const CoverThumb = ({ post, onOpen }: { post: PinnedPost; onOpen: () => void }) => {
+    const cover = post.slides[0];
+    return (
+        <button
+            type="button"
+            onClick={onOpen}
+            disabled={!cover}
+            aria-label={`Open ${post.title || "pinned post"}`}
+            className="relative block w-24 shrink-0 overflow-hidden rounded-xl bg-secondary ring-1 ring-secondary transition duration-100 ease-linear hover:ring-brand disabled:cursor-not-allowed disabled:opacity-50 sm:w-28"
+        >
+            {cover ? (
+                <img src={cover.url} alt="" className="block aspect-3/4 w-full object-cover" draggable={false} />
+            ) : (
+                <span className="flex aspect-3/4 w-full items-center justify-center">
+                    <Camera01 className="size-6 text-fg-quaternary" aria-hidden="true" />
+                </span>
+            )}
+            {post.slides.length > 1 && (
+                <span className="absolute top-1.5 right-1.5 rounded-full bg-black/55 px-1.5 py-0.5 text-[10px] font-semibold text-white tabular-nums">
+                    {post.slides.length}
+                </span>
+            )}
+        </button>
+    );
+};
+
+/* ── Editor (team, unlocked) ─────────────────────────────────────────────── */
+
+const PostEditor = ({
+    post,
+    ordinal,
+    onChange,
+    onRemove,
+    children,
+}: {
+    post: PinnedPost;
+    ordinal: number;
+    onChange: (patch: Partial<PinnedPost>) => void;
+    onRemove: () => void;
+    children?: ReactNode;
+}) => {
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState("");
+
+    const addSlides = async (e: ChangeEvent<HTMLInputElement>) => {
+        // Canva exports as 0001.jpg, 0002.jpg… and a multi-select arrives in whatever order
+        // the OS felt like, so sort by name to keep the carousel in page order.
+        const files = [...(e.target.files ?? [])].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+        e.target.value = "";
+        if (!files.length) return;
+        setBusy(true);
+        setError("");
+        try {
+            const added = await Promise.all(files.map(async (f) => ({ id: uid(), url: await compressImageFile(f, { maxDim: SLIDE_MAX_DIM }) })));
+            onChange({ slides: [...post.slides, ...added] });
+        } catch {
+            setError("Couldn't read one of those images — try exporting the pages again as PNG or JPG.");
+        } finally {
+            setBusy(false);
+        }
+    };
+    const move = (from: number, to: number) => {
+        if (to < 0 || to >= post.slides.length) return;
+        const next = [...post.slides];
+        const [s] = next.splice(from, 1);
+        next.splice(to, 0, s);
+        onChange({ slides: next });
+    };
+
+    return (
+        <div className="rounded-2xl bg-primary p-4 ring-1 ring-secondary">
+            <div className="flex items-start gap-3">
+                <span className="mt-2 shrink-0 font-mono text-xs text-quaternary tabular-nums">{String(ordinal).padStart(2, "0")}</span>
+                <div className="flex min-w-0 flex-1 flex-col gap-2">
+                    <input
+                        type="text"
+                        value={post.title}
+                        onChange={(e) => onChange({ title: e.target.value })}
+                        placeholder="Post title — what this carousel is for"
+                        className={editInput("font-semibold")}
+                    />
+                    <textarea
+                        rows={2}
+                        value={post.caption}
+                        onChange={(e) => onChange({ caption: e.target.value })}
+                        placeholder="Caption the client will see under the slides (optional)"
+                        className={editInput("resize-y")}
+                    />
+                </div>
+                <button
+                    type="button"
+                    title="Remove post"
+                    onClick={onRemove}
+                    className="flex size-8 shrink-0 items-center justify-center rounded-lg text-fg-quaternary transition duration-100 ease-linear hover:bg-error-primary hover:text-fg-error-primary"
+                >
+                    <Trash01 className="size-4" aria-hidden="true" />
+                </button>
+            </div>
+
+            {/* Slides in carousel order. The first is the grid tile — the cover. */}
+            <div className="mt-4 scrollbar-hide flex gap-2 overflow-x-auto pb-1">
+                {post.slides.map((s, i) => (
+                    <div key={s.id} className="group relative w-20 shrink-0">
+                        <img
+                            src={s.url}
+                            alt={`Slide ${i + 1}`}
+                            className="block aspect-3/4 w-full rounded-lg object-cover ring-1 ring-secondary"
+                            draggable={false}
+                        />
+                        <span
+                            className={cx(
+                                "absolute top-1 left-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums",
+                                i === 0 ? "bg-brand-solid text-white" : "bg-black/55 text-white",
+                            )}
+                        >
+                            {i === 0 ? "Cover" : i + 1}
+                        </span>
+                        <div className="absolute inset-x-1 bottom-1 flex justify-between opacity-0 transition duration-100 ease-linear group-focus-within:opacity-100 group-hover:opacity-100">
+                            <button
+                                type="button"
+                                aria-label="Move slide left"
+                                onClick={() => move(i, i - 1)}
+                                disabled={i === 0}
+                                className="flex size-6 items-center justify-center rounded-md bg-black/60 text-white disabled:opacity-30"
+                            >
+                                <ChevronLeft className="size-3.5" aria-hidden="true" />
+                            </button>
+                            <button
+                                type="button"
+                                aria-label="Remove slide"
+                                onClick={() => onChange({ slides: post.slides.filter((x) => x.id !== s.id) })}
+                                className="flex size-6 items-center justify-center rounded-md bg-black/60 text-white hover:bg-error-solid"
+                            >
+                                <XClose className="size-3.5" aria-hidden="true" />
+                            </button>
+                            <button
+                                type="button"
+                                aria-label="Move slide right"
+                                onClick={() => move(i, i + 1)}
+                                disabled={i === post.slides.length - 1}
+                                className="flex size-6 items-center justify-center rounded-md bg-black/60 text-white disabled:opacity-30"
+                            >
+                                <ChevronRight className="size-3.5" aria-hidden="true" />
+                            </button>
+                        </div>
+                    </div>
+                ))}
+                <label
+                    className={cx(
+                        "flex aspect-3/4 w-20 shrink-0 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-secondary text-center text-[11px] font-medium text-tertiary transition duration-100 ease-linear hover:border-brand hover:text-brand-secondary",
+                        busy && "pointer-events-none opacity-50",
+                    )}
+                >
+                    <input type="file" accept="image/*" multiple className="hidden" onChange={addSlides} disabled={busy} />
+                    <UploadCloud02 className={cx("size-4", busy && "animate-pulse")} aria-hidden="true" />
+                    {busy ? "Adding…" : "Add slides"}
+                </label>
+            </div>
+            <p className="mt-2 text-[11px] text-quaternary">
+                {post.slides.length ? `${post.slides.length} slide${post.slides.length === 1 ? "" : "s"} · ` : ""}Select all the exported pages of this post at
+                once — they sort into page order. Resized to 1080px WebP on the way in.
+            </p>
+            {error && <p className="mt-1 text-xs text-error-primary">{error}</p>}
+            {children}
+        </div>
+    );
+};
+
+/* ── The section ─────────────────────────────────────────────────────────── */
+
+export interface PinnedPostsSectionProps {
+    pinned: PinnedPosts;
+    onPatch: (patch: Partial<PinnedPosts>) => void;
+    isLocked: boolean;
+    isTeam: boolean;
+    isTemplate: boolean;
+    profile: PinnedProfileInputs;
+    /** Every dashboard_suggestions row under the pinnedposts.* keys, pending and resolved. */
+    feedback: Suggestion[];
+    canReview: boolean;
+    reviewerEmail: string;
+    onSendFeedback: (items: SuggestionItem[]) => Promise<void>;
+    onWithdrawFeedback: (s: Suggestion) => void;
+    onResolveFeedback: (s: Suggestion) => void;
+}
+
+export const PinnedPostsSection = ({
+    pinned,
+    onPatch,
+    isLocked,
+    isTeam,
+    isTemplate,
+    profile,
+    feedback,
+    canReview,
+    reviewerEmail,
+    onSendFeedback,
+    onWithdrawFeedback,
+    onResolveFeedback,
+}: PinnedPostsSectionProps) => {
+    const posts = pinned.posts;
+    const [viewer, setViewer] = useState<{ post: PinnedPost; index: number } | null>(null);
+    const canva = parseCanvaUrl(pinned.canva_url);
+    const editing = isTeam && !isLocked;
+    const igProfile = buildProfile({ ...profile, handle: pinned.handle.trim() || profile.handle }, posts);
+
+    const updatePost = (id: string, patch: Partial<PinnedPost>) => onPatch({ posts: posts.map((p) => (p.id === id ? { ...p, ...patch } : p)) });
+    const removePost = (id: string) => onPatch({ posts: posts.filter((p) => p.id !== id) });
+    const addPost = () => posts.length < MAX_PINNED_POSTS && onPatch({ posts: [...posts, emptyPinnedPost()] });
+    const loadSample = () =>
+        onPatch({
+            // Fresh ids, so a test client's sample rows never share feedback keys with the template's.
+            posts: SAMPLE_PINNED_POSTS.posts.map((p) => ({
+                ...emptyPinnedPost(),
+                title: p.title,
+                caption: p.caption,
+                slides: p.slides.map((s) => ({ id: uid(), url: s.url })),
+            })),
+            handle: pinned.handle || SAMPLE_PINNED_POSTS.handle,
+            canva_url: pinned.canva_url || SAMPLE_PINNED_POSTS.canva_url,
+        });
+
+    const openCount = posts.filter((p) => reviewFor(p.id, feedback).openNote).length;
+    const approvedCount = posts.filter((p) => reviewFor(p.id, feedback).approval).length;
+
+    return (
+        <Reveal>
+            <div className="flex flex-wrap items-center gap-3">
+                <div className="min-w-0 flex-1">
+                    <SectionEyebrow section="pinnedposts" />
+                </div>
+                {isTeam && openCount > 0 && (
+                    <Badge color="warning" size="md" type="pill-color">
+                        {openCount} change request{openCount === 1 ? "" : "s"}
+                    </Badge>
+                )}
+                {posts.length > 0 && approvedCount === posts.length && (
+                    <Badge color="success" size="md" type="pill-color">
+                        All approved
+                    </Badge>
+                )}
+            </div>
+            <div className="flex flex-wrap items-end justify-between gap-3">
+                <SectionHeading>Pinned Posts</SectionHeading>
+                {isTeam && canva && isLocked && (
+                    <Button href={canva.url} target="_blank" rel="noopener noreferrer" color="link-color" size="md" iconTrailing={LinkExternal01}>
+                        Open in Canva
+                    </Button>
+                )}
+            </div>
+            <p className="mt-3 max-w-2xl text-md text-tertiary">
+                Three posts pinned to the top of your Instagram grid, so every guest who lands on your profile meets them first: follow to win a stay, sign up
+                for the discount, book direct. Tap through each one below.
+                {canReview && " Approve it when it's right, or tell us what to change."}
+            </p>
+
+            {/* ── Team settings: the Canva source and the handle on the phone ── */}
+            {editing && (
+                <div className="mt-6 rounded-2xl bg-secondary p-4 ring-1 ring-secondary">
+                    <div className="grid gap-3 sm:grid-cols-[1fr_220px]">
+                        <label className="flex flex-col gap-1">
+                            <span className="text-xs font-medium text-secondary">Canva design link</span>
+                            <div className="flex items-center gap-2">
+                                <input
+                                    type="url"
+                                    value={pinned.canva_url}
+                                    onChange={(e) => onPatch({ canva_url: e.target.value })}
+                                    placeholder="https://www.canva.com/design/…/edit"
+                                    className={editInput()}
+                                />
+                                {canva && (
+                                    <Button
+                                        href={canva.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        color="secondary"
+                                        size="sm"
+                                        iconTrailing={LinkExternal01}
+                                    >
+                                        Open
+                                    </Button>
+                                )}
+                            </div>
+                            {pinned.canva_url.trim() && !canva && (
+                                <span className="text-xs text-warning-primary">That doesn't look like a Canva design link.</span>
+                            )}
+                        </label>
+                        <label className="flex flex-col gap-1">
+                            <span className="text-xs font-medium text-secondary">Instagram handle</span>
+                            <div className="relative">
+                                <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-sm text-quaternary">@</span>
+                                <input
+                                    type="text"
+                                    value={pinned.handle}
+                                    onChange={(e) => onPatch({ handle: e.target.value.replace(/^@/, "") })}
+                                    placeholder={profile.handle || "yourhandle"}
+                                    className={editInput("pl-6")}
+                                />
+                            </div>
+                        </label>
+                    </div>
+                    <ol className="mt-4 grid gap-2 text-xs text-tertiary sm:grid-cols-3">
+                        <li className="rounded-lg bg-primary px-3 py-2 ring-1 ring-secondary">
+                            <span className="font-semibold text-secondary">1 · Design in Canva.</span> One design, one page per slide, 4:5. Paste its link
+                            above.
+                        </li>
+                        <li className="rounded-lg bg-primary px-3 py-2 ring-1 ring-secondary">
+                            <span className="font-semibold text-secondary">2 · Export the pages.</span> Canva → Share → Download as PNG or JPG, or ask Claude
+                            with the Canva connector to export the design for you.
+                        </li>
+                        <li className="rounded-lg bg-primary px-3 py-2 ring-1 ring-secondary">
+                            <span className="font-semibold text-secondary">3 · Upload and reveal.</span> Add each post's pages below, save, then reveal the
+                            section with the eye. The client approves or requests changes here.
+                        </li>
+                    </ol>
+                </div>
+            )}
+
+            <div className="mt-8 grid gap-10 lg:grid-cols-[280px_minmax(0,1fr)] lg:gap-12">
+                {/* ── The phone: how the profile opens for a guest ── */}
+                <div className="flex flex-col items-center lg:sticky lg:top-8 lg:self-start">
+                    <PinnedPhone profile={igProfile} />
+                    <p className="mt-4 max-w-[260px] text-center text-xs text-quaternary">
+                        How <span className="font-medium text-tertiary">@{igProfile.handle}</span> opens for a guest — the pinned posts are the first three
+                        tiles.
+                    </p>
+                </div>
+
+                {/* ── The posts ── */}
+                <div className="flex flex-col gap-4">
+                    {posts.length === 0 && !editing && (
+                        <div className="flex items-center gap-3 rounded-xl bg-secondary px-4 py-5">
+                            <Camera01 className="size-5 shrink-0 text-fg-quaternary" aria-hidden="true" />
+                            <p className="text-sm text-tertiary">
+                                {isTeam
+                                    ? "No posts yet — unlock to paste the Canva link and upload the exported pages."
+                                    : "Your pinned posts are on the way — the HiddenGem team will add them here."}
+                            </p>
+                        </div>
+                    )}
+
+                    {posts.map((post, i) =>
+                        editing ? (
+                            <PostEditor
+                                key={post.id}
+                                post={post}
+                                ordinal={i + 1}
+                                onChange={(patch) => updatePost(post.id, patch)}
+                                onRemove={() => removePost(post.id)}
+                            >
+                                {feedback.some((s) => s.field_key.startsWith(`${KEY_PREFIX}${post.id}.`)) && (
+                                    <FeedbackPanel
+                                        post={post}
+                                        ordinal={i + 1}
+                                        review={reviewFor(post.id, feedback)}
+                                        isTeam
+                                        canReview={false}
+                                        reviewerEmail={reviewerEmail}
+                                        onSend={onSendFeedback}
+                                        onWithdraw={onWithdrawFeedback}
+                                        onResolve={onResolveFeedback}
+                                    />
+                                )}
+                            </PostEditor>
+                        ) : (
+                            <article key={post.id} className="rounded-2xl bg-primary p-4 ring-1 ring-secondary sm:p-5">
+                                <div className="flex gap-4">
+                                    <CoverThumb post={post} onOpen={() => setViewer({ post, index: 0 })} />
+                                    <div className="flex min-w-0 flex-1 flex-col">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <span className="font-mono text-xs text-quaternary tabular-nums">{String(i + 1).padStart(2, "0")}</span>
+                                            <StatusBadge review={reviewFor(post.id, feedback)} forTeam={isTeam} />
+                                        </div>
+                                        <h3 className="mt-1.5 text-md font-semibold text-primary">{post.title.trim() || "Untitled post"}</h3>
+                                        {post.caption.trim() && <p className="mt-1 line-clamp-3 text-sm text-tertiary">{post.caption}</p>}
+                                        <div className="mt-auto flex flex-wrap items-center gap-2 pt-3">
+                                            <Button
+                                                size="sm"
+                                                color="secondary"
+                                                iconTrailing={ChevronRight}
+                                                onClick={() => setViewer({ post, index: 0 })}
+                                                isDisabled={!post.slides.length}
+                                            >
+                                                {post.slides.length > 1 ? `View all ${post.slides.length} slides` : "View post"}
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </div>
+                                {/* Slide strip — every page at a glance, each opening the viewer at itself. */}
+                                {post.slides.length > 1 && (
+                                    <div className="mt-4 scrollbar-hide flex gap-1.5 overflow-x-auto">
+                                        {post.slides.map((s, si) => (
+                                            <button
+                                                key={s.id}
+                                                type="button"
+                                                onClick={() => setViewer({ post, index: si })}
+                                                aria-label={`Slide ${si + 1}`}
+                                                className="w-14 shrink-0 overflow-hidden rounded-md ring-1 ring-secondary transition duration-100 ease-linear hover:ring-brand"
+                                            >
+                                                <img src={s.url} alt="" className="block aspect-3/4 w-full object-cover" draggable={false} loading="lazy" />
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                                {(canReview || isTeam || feedback.some((s) => s.field_key.startsWith(`${KEY_PREFIX}${post.id}.`))) && (
+                                    <FeedbackPanel
+                                        post={post}
+                                        ordinal={i + 1}
+                                        review={reviewFor(post.id, feedback)}
+                                        isTeam={isTeam}
+                                        canReview={canReview}
+                                        reviewerEmail={reviewerEmail}
+                                        onSend={onSendFeedback}
+                                        onWithdraw={onWithdrawFeedback}
+                                        onResolve={onResolveFeedback}
+                                    />
+                                )}
+                            </article>
+                        ),
+                    )}
+
+                    {editing && (
+                        <div className="flex flex-wrap items-center gap-3">
+                            {posts.length < MAX_PINNED_POSTS && (
+                                <button
+                                    type="button"
+                                    onClick={addPost}
+                                    className="flex min-h-20 flex-1 items-center justify-center gap-1.5 rounded-xl border border-dashed border-secondary text-sm font-medium text-tertiary transition duration-100 ease-linear hover:border-brand hover:text-brand-secondary"
+                                >
+                                    <Plus className="size-5" aria-hidden="true" />
+                                    Add post{posts.length ? ` (${posts.length}/${MAX_PINNED_POSTS})` : ""}
+                                </button>
+                            )}
+                            {posts.length === 0 && !isTemplate && (
+                                <Button size="sm" color="tertiary" onClick={loadSample}>
+                                    Load the sample set to try it
+                                </Button>
+                            )}
+                        </div>
+                    )}
+                    {editing && posts.length >= MAX_PINNED_POSTS && (
+                        <p className="text-xs text-quaternary">Instagram pins three posts at most — that's the set.</p>
+                    )}
+                </div>
+            </div>
+
+            <SlideViewer post={viewer?.post ?? null} index={viewer?.index ?? 0} onClose={() => setViewer(null)} />
+        </Reveal>
+    );
+};

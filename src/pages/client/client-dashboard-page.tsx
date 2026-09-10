@@ -85,6 +85,7 @@ import {
     type BrandColor,
     DEFAULT_CLIENT_VISIBLE,
     DEFAULT_FOUNDATION,
+    EMPTY_PINNED_POSTS,
     type ExampleReel,
     type FocusProperty,
     type Foundation,
@@ -92,6 +93,7 @@ import {
     type Highlight,
     type LocalFavorite,
     type Persona,
+    type PinnedPosts,
     type QuickLink,
     REEL_SLOTS,
     type RevenueMonth,
@@ -104,6 +106,7 @@ import {
     emptyPersona,
     emptyWebsiteLink,
     filled,
+    handleFromProfileUrl,
     isTemplatePalette,
     isUntouchedBrandKit,
     mergeContent,
@@ -113,7 +116,6 @@ import {
     statusColor,
     uid,
 } from "@/pages/client/dashboard/dashboard-model";
-import { ExampleReelsSection } from "@/pages/client/dashboard/example-reels";
 import {
     JOURNEY_STEPS,
     type JourneyLink,
@@ -127,6 +129,7 @@ import {
     TEAM_ONLY_SECTIONS,
     phaseOfSection,
 } from "@/pages/client/dashboard/dashboard-navigation";
+import { ExampleReelsSection } from "@/pages/client/dashboard/example-reels";
 import {
     FOUNDATION_SECTIONS,
     LEGACY_FOUNDATION_FIELDS,
@@ -145,8 +148,17 @@ import {
     compileOverviewDocument,
     overviewSectionNumber,
 } from "@/pages/client/dashboard/overview-doc";
+import { PinnedPostsSection, isPinnedKey } from "@/pages/client/dashboard/pinned-posts";
 import { SuggestionBox, SuggestionContext, fetchSuggestions, sendSuggestions, withdrawSuggestion } from "@/pages/client/dashboard/suggestions";
-import { type Suggestion, applySuggestion, flowFeedbackKey, isFlowFeedbackKey, labelForKey, valueForKey } from "@/pages/client/dashboard/suggestions-model";
+import {
+    type Suggestion,
+    type SuggestionItem,
+    applySuggestion,
+    flowFeedbackKey,
+    isFlowFeedbackKey,
+    labelForKey,
+    valueForKey,
+} from "@/pages/client/dashboard/suggestions-model";
 import { HostOnboardingFormPage, ensureHostOnboardingForm, hostOnboardingAnswers, hostOnboardingProgress } from "@/pages/client/host-onboarding-form-page";
 import { useSuppressFloatingThemeToggle, useTheme } from "@/providers/theme-provider";
 import { compressImageFile } from "@/utils/compress-image";
@@ -754,6 +766,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     const foundationRevealed = (content.client_visible ?? DEFAULT_CLIENT_VISIBLE).includes("foundation");
     /** The Welcome Email Flow shares the table: a client comments on emails the same way. */
     const flowRevealed = (content.client_visible ?? DEFAULT_CLIENT_VISIBLE).includes("flow");
+    const pinnedRevealed = (content.client_visible ?? DEFAULT_CLIENT_VISIBLE).includes("pinnedposts");
 
     const refreshSuggestions = useCallback(async () => {
         if (!slug || isTemplate) return;
@@ -764,18 +777,22 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
             if (signedInAsTeam) {
                 const { data, error } = await supabase.from("dashboard_suggestions").select("*").eq("slug", slug).order("created_at", { ascending: false });
                 if (!error && data) setSuggestions(data as Suggestion[]);
-            } else if (identityEmail && (foundationRevealed || flowRevealed)) {
+            } else if (identityEmail && (foundationRevealed || flowRevealed || pinnedRevealed)) {
                 setSuggestions(await fetchSuggestions(slug, identityEmail));
             }
         } catch {
             /* the section just shows no suggestions — nothing is lost, they're server-side */
         }
-    }, [slug, isTemplate, signedInAsTeam, identityEmail, foundationRevealed, flowRevealed]);
+    }, [slug, isTemplate, signedInAsTeam, identityEmail, foundationRevealed, flowRevealed, pinnedRevealed]);
     useEffect(() => {
         void refreshSuggestions();
     }, [refreshSuggestions]);
 
-    const pendingSuggestions = suggestions.filter((s) => s.status === "pending");
+    /* The table carries three kinds of row: Master Brand Document edits, welcome-email
+       feedback under `welcomeFlow.*`, and Pinned Posts feedback under `pinnedposts.*`. Split
+       them here so no section counts, lists or orphans another's. */
+    const pinnedFeedback = suggestions.filter((s) => isPinnedKey(s.field_key));
+    const pendingSuggestions = suggestions.filter((s) => s.status === "pending" && !isPinnedKey(s.field_key) && !isFlowFeedbackKey(s.field_key));
     const pendingByKey = new Map<string, Suggestion[]>();
     for (const s of pendingSuggestions) pendingByKey.set(s.field_key, [...(pendingByKey.get(s.field_key) ?? []), s]);
     const resolvedByKey = new Map<string, Suggestion>();
@@ -834,23 +851,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
         setSendState("sending");
         setSendError("");
         try {
-            if (identityEmail) {
-                await sendSuggestions(slug, identityEmail, items);
-            } else {
-                // Team member previewing: write as themselves. Their JWT satisfies the
-                // team-insert policy, so the row is stamped with their real address.
-                const { error } = await supabase.from("dashboard_suggestions").insert(
-                    items.map((i) => ({
-                        slug,
-                        field_key: i.fieldKey,
-                        field_label: i.fieldLabel,
-                        current_value: i.currentValue,
-                        suggested_value: i.suggestedValue,
-                        suggested_by: suggestAuthor,
-                    })),
-                );
-                if (error) throw new Error(error.message);
-            }
+            await fileSuggestions(items);
             await refreshSuggestions();
             // The drafts are only cleared once the server has them — a failed send keeps
             // everything typed so the client can just press Send again.
@@ -874,6 +875,67 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     /** The address a suggestion sent from this view would carry. */
     const suggestAuthor = identityEmail || (suggestAsTeam ? viewerEmail : "");
     const canSuggest = !isTeam && !isTemplate && foundationRevealed && !!suggestAuthor;
+    /** Same two identities, for approving or requesting changes on a pinned post. */
+    const canReviewPinned = !isTeam && !isTemplate && pinnedRevealed && !!suggestAuthor;
+
+    /**
+     * Write suggestion rows by whichever route this viewer has: a client through the
+     * Netlify function (which re-checks their address against the allowlist), a team member
+     * previewing directly as themselves — their JWT satisfies the team-insert policy, so the
+     * row is stamped with their real address. Shared by the Master Brand Document's Send and
+     * the Pinned Posts feedback buttons; callers refresh afterwards.
+     */
+    const fileSuggestions = async (items: SuggestionItem[]) => {
+        if (!slug) throw new Error("This dashboard isn't saved yet.");
+        if (identityEmail) {
+            await sendSuggestions(slug, identityEmail, items);
+            return;
+        }
+        if (!suggestAuthor) throw new Error("Sign in to send feedback.");
+        // The function replaces the author's own pending row for a re-filed key; do the same
+        // here so a team member's test rows don't pile up.
+        await supabase
+            .from("dashboard_suggestions")
+            .delete()
+            .eq("slug", slug)
+            .eq("suggested_by", suggestAuthor)
+            .eq("status", "pending")
+            .in(
+                "field_key",
+                items.map((i) => i.fieldKey),
+            );
+        const { error } = await supabase.from("dashboard_suggestions").insert(
+            items.map((i) => ({
+                slug,
+                field_key: i.fieldKey,
+                field_label: i.fieldLabel,
+                current_value: i.currentValue,
+                suggested_value: i.suggestedValue,
+                suggested_by: suggestAuthor,
+            })),
+        );
+        if (error) throw new Error(error.message);
+    };
+    /** Pinned Posts feedback: file, then refresh so the card shows it at once. */
+    const sendPinnedFeedback = async (items: SuggestionItem[]) => {
+        await fileSuggestions(items);
+        await refreshSuggestions();
+    };
+    /** The team marks a change request addressed. Nothing to apply to the row — the fix is
+     *  the re-uploaded slides — so the status flips straight in the table. */
+    const resolvePinnedFeedback = (s: Suggestion) => {
+        void supabase
+            .from("dashboard_suggestions")
+            .update({ status: "accepted", resolved_by: user?.email ?? "", resolved_at: new Date().toISOString() })
+            .eq("id", s.id)
+            .eq("status", "pending")
+            .then(() => void refreshSuggestions());
+    };
+
+    /* ── Pinned Posts ── */
+    const pinnedPosts: PinnedPosts = content.pinned_posts ?? EMPTY_PINNED_POSTS;
+    const patchPinned = (patch: Partial<PinnedPosts>) =>
+        setContent((c) => ({ ...c, pinned_posts: { ...EMPTY_PINNED_POSTS, ...(c.pinned_posts ?? {}), ...patch } }));
 
     /* ── Client feedback on the welcome emails ──
        Same table, same function, same identity rules as suggestion mode, under the
@@ -1860,6 +1922,13 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
         if (id === "reels") {
             const n = (content.reels ?? []).filter((r) => r.url).length;
             return n ? pill(`${n}/${REEL_SLOTS}`, "muted") : null;
+        }
+        if (id === "pinnedposts") {
+            // Open change requests need the team; everything else is just a count.
+            const open = pinnedFeedback.filter((s) => s.status === "pending" && s.field_key.endsWith(".feedback")).length;
+            if (isTeam && open) return pill(String(open), "todo");
+            const n = pinnedPosts.posts.length;
+            return n ? pill(String(n), "muted") : null;
         }
         return null;
     };
@@ -2886,8 +2955,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                                                     item.link &&
                                                                                                     isTeam && (
                                                                                                         <span className="text-xs text-warning-primary">
-                                                                                                            No link set — add it under
-                                                                                                            Onboarding links.
+                                                                                                            No link set — add it under Onboarding links.
                                                                                                         </span>
                                                                                                     )
                                                                                                 )}
@@ -2981,8 +3049,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                                 >
                                                                                     {isTeam
                                                                                         ? "No link set — add it under Onboarding links."
-                                                                                        : (step.pendingNote ??
-                                                                                          "Your Account Manager will send you this link.")}
+                                                                                        : (step.pendingNote ?? "Your Account Manager will send you this link.")}
                                                                                 </span>
                                                                             )}
                                                                             {/* AM tick, edit mode only. Auto steps get no tick:
@@ -3075,6 +3142,41 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                     </>
                                                 )}
 
+                                                {/* ── Pinned Posts — the three Canva carousels on top of the grid ── */}
+                                                {activeSection === "pinnedposts" && (
+                                                    <PinnedPostsSection
+                                                        pinned={pinnedPosts}
+                                                        onPatch={patchPinned}
+                                                        isLocked={isLocked}
+                                                        isTeam={isTeam}
+                                                        isTemplate={isTemplate}
+                                                        profile={{
+                                                            handle:
+                                                                handleFromProfileUrl(content.instagram.profile_url) || slugify(clientName).replace(/-/g, "."),
+                                                            displayName: clientName,
+                                                            avatar: content.logo_url,
+                                                            // The bio is whatever the Master Brand has settled on: taglines first,
+                                                            // then the opening of the brand bio. Empty until then, and the mockup says so.
+                                                            bio: foundation.taglines.filter((t) => t.trim()).slice(0, 2).length
+                                                                ? foundation.taglines.filter((t) => t.trim()).slice(0, 2)
+                                                                : foundation.brandBio.trim()
+                                                                  ? [foundation.brandBio.trim().split(/(?<=[.!?])\s/)[0]]
+                                                                  : [],
+                                                            linkLabel: clientWebsite.replace(/^https?:\/\//, "").replace(/\/$/, ""),
+                                                            highlights: content.instagram.highlights.map((h) => ({
+                                                                label: h.title,
+                                                                src: h.image_url || undefined,
+                                                            })),
+                                                        }}
+                                                        feedback={pinnedFeedback}
+                                                        canReview={canReviewPinned}
+                                                        reviewerEmail={suggestAuthor}
+                                                        onSendFeedback={sendPinnedFeedback}
+                                                        onWithdrawFeedback={withdrawOwnSuggestion}
+                                                        onResolveFeedback={resolvePinnedFeedback}
+                                                    />
+                                                )}
+
                                                 {/* ── Client Input — the Onboarding Form (the client's FIRST form) ── */}
                                                 {activeSection === "intake" && (
                                                     <Reveal>
@@ -3102,8 +3204,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                     <div className="mt-5 max-w-2xl rounded-xl bg-secondary px-4 py-3 ring-1 ring-secondary">
                                                                         <p className="text-sm text-secondary">
                                                                             <span className="font-semibold text-primary">Worth having on hand:</span> This form
-                                                                            asks for a few account logins so we can set things up for you —{" "}
-                                                                            {CREDENTIAL_LIST}.
+                                                                            asks for a few account logins so we can set things up for you — {CREDENTIAL_LIST}.
                                                                         </p>
                                                                     </div>
                                                                 )}
