@@ -21,7 +21,7 @@
  * handle, logo, highlights and covers. It is a picture (role="img"); the cards beside it
  * are where a client actually opens a post.
  */
-import { type ChangeEvent, type ReactNode, useEffect, useState } from "react";
+import { type ChangeEvent, type DragEvent, type ReactNode, useEffect, useState } from "react";
 import {
     Camera01,
     Check,
@@ -31,7 +31,6 @@ import {
     Link01,
     LinkExternal01,
     MessageTextSquare02,
-    Plus,
     ThumbsUp,
     Trash01,
     UploadCloud02,
@@ -58,6 +57,8 @@ import {
     type PinnedPosts,
     SAMPLE_PINNED_POSTS,
     emptyPinnedPost,
+    filledPinnedPosts,
+    normalizePinnedPosts,
     parseCanvaUrl,
     uid,
 } from "@/pages/client/dashboard/dashboard-model";
@@ -138,9 +139,11 @@ export interface PinnedProfileInputs {
  * account across both sections rather than two mockups that disagree.
  */
 export const buildProfile = (inputs: PinnedProfileInputs, posts: PinnedPost[]): IgProfile => {
-    const pinnedTiles: IgGridItem[] = posts.slice(0, MAX_PINNED_POSTS).map((p) => ({
+    const live = filledPinnedPosts(posts);
+    // The grid keys tiles by alt, so untitled posts still need distinct text.
+    const pinnedTiles: IgGridItem[] = live.slice(0, MAX_PINNED_POSTS).map((p, i) => ({
         src: p.slides[0]?.url,
-        alt: p.title || "Pinned post",
+        alt: p.title || `Pinned post ${i + 1}`,
         kind: "carousel",
         pinned: true,
     }));
@@ -151,7 +154,7 @@ export const buildProfile = (inputs: PinnedProfileInputs, posts: PinnedPost[]): 
         category: "Vacation Home Rental",
         verified: false,
         avatar: inputs.avatar,
-        stats: { posts: String(posts.length || "—"), followers: "—", following: "—" },
+        stats: { posts: String(live.length || "—"), followers: "—", following: "—" },
         bio: inputs.bio.length ? inputs.bio : ["Your bio goes here"],
         link: { label: inputs.linkLabel || "Link in bio", href: "#" },
         highlights: inputs.highlights,
@@ -465,23 +468,51 @@ const CoverThumb = ({ post, onOpen }: { post: PinnedPost; onOpen: () => void }) 
     );
 };
 
+/* ── Drag and drop ───────────────────────────────────────────────────────── */
+
+/**
+ * What is being dragged. Native HTML drag-and-drop only carries strings, and `getData`
+ * is unreadable during dragover, so the payload lives in React state for the drag's
+ * lifetime and the data-transfer entry is just a marker that says "one of ours".
+ */
+type DragPayload = { kind: "pages"; ids: string[] } | { kind: "slide"; postId: string; slideId: string };
+const DRAG_MARK = "application/x-hgm-pinned";
+const isOurs = (e: DragEvent<Element>) => e.dataTransfer.types.includes(DRAG_MARK);
+
 /* ── Editor (team, unlocked) ─────────────────────────────────────────────── */
 
+/**
+ * One of the three fixed slots. A drop target for imported pages and for slides dragged
+ * out of another slot; drop on a slide to insert before it, anywhere else to append.
+ */
 const PostEditor = ({
     post,
-    ordinal,
+    slot,
+    drag,
     onChange,
-    onRemove,
+    onClear,
+    onDragSlide,
+    onDragEnd,
+    onDrop,
     children,
 }: {
     post: PinnedPost;
-    ordinal: number;
+    slot: number;
+    drag: DragPayload | null;
     onChange: (patch: Partial<PinnedPost>) => void;
-    onRemove: () => void;
+    onClear: () => void;
+    onDragSlide: (e: DragEvent<Element>, slideId: string) => void;
+    onDragEnd: () => void;
+    /** `index` is where the payload lands in this post's slides; null appends. */
+    onDrop: (index: number | null) => void;
     children?: ReactNode;
 }) => {
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState("");
+    /** Where the drop would land: a slide index, "end", or null when nothing hovers. */
+    const [over, setOver] = useState<number | "end" | null>(null);
+    const empty = post.slides.length === 0;
+    const label = `Pinned post ${String(slot).padStart(2, "0")}`;
 
     const addSlides = async (e: ChangeEvent<HTMLInputElement>) => {
         // Canva exports as 0001.jpg, 0002.jpg… and a multi-select arrives in whatever order
@@ -508,16 +539,42 @@ const PostEditor = ({
         onChange({ slides: next });
     };
 
+    const dragOver = (target: number | "end") => (e: DragEvent<Element>) => {
+        if (!isOurs(e)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = "move";
+        if (over !== target) setOver(target);
+    };
+    const drop = (target: number | "end") => (e: DragEvent<Element>) => {
+        if (!isOurs(e)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        setOver(null);
+        onDrop(target === "end" ? null : target);
+    };
+
     return (
-        <div className="rounded-2xl bg-primary p-4 ring-1 ring-secondary">
+        <div
+            onDragOver={dragOver("end")}
+            onDragLeave={(e) => {
+                // Only clear when the pointer actually leaves the card, not when it crosses a child.
+                if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(null);
+            }}
+            onDrop={drop("end")}
+            className={cx(
+                "rounded-2xl bg-primary p-4 ring-1 transition duration-100 ease-linear",
+                over !== null ? "ring-2 ring-brand" : drag ? "ring-dashed ring-brand/40" : "ring-secondary",
+            )}
+        >
             <div className="flex items-start gap-3">
-                <span className="mt-2 shrink-0 font-mono text-xs text-quaternary tabular-nums">{String(ordinal).padStart(2, "0")}</span>
+                <span className="mt-2 shrink-0 font-mono text-xs text-quaternary tabular-nums">{String(slot).padStart(2, "0")}</span>
                 <div className="flex min-w-0 flex-1 flex-col gap-2">
                     <input
                         type="text"
                         value={post.title}
                         onChange={(e) => onChange({ title: e.target.value })}
-                        placeholder="Post title — what this carousel is for"
+                        placeholder={`${label} — what this carousel is for`}
                         className={editInput("font-semibold")}
                     />
                     <textarea
@@ -528,78 +585,116 @@ const PostEditor = ({
                         className={editInput("resize-y")}
                     />
                 </div>
-                <button
-                    type="button"
-                    title="Remove post"
-                    onClick={onRemove}
-                    className="flex size-8 shrink-0 items-center justify-center rounded-lg text-fg-quaternary transition duration-100 ease-linear hover:bg-error-primary hover:text-fg-error-primary"
-                >
-                    <Trash01 className="size-4" aria-hidden="true" />
-                </button>
+                {(!empty || post.title || post.caption) && (
+                    <button
+                        type="button"
+                        title="Clear this post"
+                        onClick={onClear}
+                        className="flex size-8 shrink-0 items-center justify-center rounded-lg text-fg-quaternary transition duration-100 ease-linear hover:bg-error-primary hover:text-fg-error-primary"
+                    >
+                        <Trash01 className="size-4" aria-hidden="true" />
+                    </button>
+                )}
             </div>
 
             {/* Slides in carousel order. The first is the grid tile — the cover. */}
-            <div className="mt-4 scrollbar-hide flex gap-2 overflow-x-auto pb-1">
-                {post.slides.map((s, i) => (
-                    <div key={s.id} className="group relative w-20 shrink-0">
-                        <img
-                            src={s.url}
-                            alt={`Slide ${i + 1}`}
-                            className="block aspect-3/4 w-full rounded-lg object-cover ring-1 ring-secondary"
-                            draggable={false}
-                        />
-                        <span
-                            className={cx(
-                                "absolute top-1 left-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums",
-                                i === 0 ? "bg-brand-solid text-white" : "bg-black/55 text-white",
-                            )}
-                        >
-                            {i === 0 ? "Cover" : i + 1}
-                        </span>
-                        <div className="absolute inset-x-1 bottom-1 flex justify-between opacity-0 transition duration-100 ease-linear group-focus-within:opacity-100 group-hover:opacity-100">
-                            <button
-                                type="button"
-                                aria-label="Move slide left"
-                                onClick={() => move(i, i - 1)}
-                                disabled={i === 0}
-                                className="flex size-6 items-center justify-center rounded-md bg-black/60 text-white disabled:opacity-30"
-                            >
-                                <ChevronLeft className="size-3.5" aria-hidden="true" />
-                            </button>
-                            <button
-                                type="button"
-                                aria-label="Remove slide"
-                                onClick={() => onChange({ slides: post.slides.filter((x) => x.id !== s.id) })}
-                                className="flex size-6 items-center justify-center rounded-md bg-black/60 text-white hover:bg-error-solid"
-                            >
-                                <XClose className="size-3.5" aria-hidden="true" />
-                            </button>
-                            <button
-                                type="button"
-                                aria-label="Move slide right"
-                                onClick={() => move(i, i + 1)}
-                                disabled={i === post.slides.length - 1}
-                                className="flex size-6 items-center justify-center rounded-md bg-black/60 text-white disabled:opacity-30"
-                            >
-                                <ChevronRight className="size-3.5" aria-hidden="true" />
-                            </button>
-                        </div>
-                    </div>
-                ))}
-                <label
+            {empty ? (
+                <div
                     className={cx(
-                        "flex aspect-3/4 w-20 shrink-0 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-secondary text-center text-[11px] font-medium text-tertiary transition duration-100 ease-linear hover:border-brand hover:text-brand-secondary",
-                        busy && "pointer-events-none opacity-50",
+                        "mt-4 flex min-h-32 flex-col items-center justify-center gap-2 rounded-xl border border-dashed px-4 text-center transition duration-100 ease-linear",
+                        over !== null ? "border-brand bg-brand-primary" : "border-secondary bg-secondary",
                     )}
                 >
-                    <input type="file" accept="image/*" multiple className="hidden" onChange={addSlides} disabled={busy} />
-                    <UploadCloud02 className={cx("size-4", busy && "animate-pulse")} aria-hidden="true" />
-                    {busy ? "Adding…" : "Add slides"}
-                </label>
-            </div>
+                    <p className="text-sm font-medium text-tertiary">{drag ? "Drop here" : "Drag imported pages here"}</p>
+                    <label
+                        className={cx(
+                            "cursor-pointer text-xs font-semibold text-brand-secondary transition duration-100 ease-linear hover:text-brand-secondary_hover",
+                            busy && "pointer-events-none opacity-50",
+                        )}
+                    >
+                        <input type="file" accept="image/*" multiple className="hidden" onChange={addSlides} disabled={busy} />
+                        {busy ? "Adding…" : "or upload exported pages"}
+                    </label>
+                </div>
+            ) : (
+                <div className="mt-4 scrollbar-hide flex gap-2 overflow-x-auto pb-1">
+                    {post.slides.map((s, i) => (
+                        <div
+                            key={s.id}
+                            draggable
+                            onDragStart={(e) => onDragSlide(e, s.id)}
+                            onDragEnd={onDragEnd}
+                            onDragOver={dragOver(i)}
+                            onDrop={drop(i)}
+                            className={cx(
+                                "group relative w-20 shrink-0 cursor-grab rounded-lg active:cursor-grabbing",
+                                over === i && "ring-2 ring-brand ring-offset-2 ring-offset-bg-primary",
+                                drag?.kind === "slide" && drag.slideId === s.id && "opacity-40",
+                            )}
+                        >
+                            <img
+                                src={s.url}
+                                alt={`Slide ${i + 1}`}
+                                className="pointer-events-none block aspect-3/4 w-full rounded-lg object-cover ring-1 ring-secondary"
+                                draggable={false}
+                            />
+                            <span
+                                className={cx(
+                                    "absolute top-1 left-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums",
+                                    i === 0 ? "bg-brand-solid text-white" : "bg-black/55 text-white",
+                                )}
+                            >
+                                {i === 0 ? "Cover" : i + 1}
+                            </span>
+                            <div className="absolute inset-x-1 bottom-1 flex justify-between opacity-0 transition duration-100 ease-linear group-focus-within:opacity-100 group-hover:opacity-100">
+                                <button
+                                    type="button"
+                                    aria-label="Move slide left"
+                                    onClick={() => move(i, i - 1)}
+                                    disabled={i === 0}
+                                    className="flex size-6 items-center justify-center rounded-md bg-black/60 text-white disabled:opacity-30"
+                                >
+                                    <ChevronLeft className="size-3.5" aria-hidden="true" />
+                                </button>
+                                <button
+                                    type="button"
+                                    aria-label="Remove slide"
+                                    onClick={() => onChange({ slides: post.slides.filter((x) => x.id !== s.id) })}
+                                    className="flex size-6 items-center justify-center rounded-md bg-black/60 text-white hover:bg-error-solid"
+                                >
+                                    <XClose className="size-3.5" aria-hidden="true" />
+                                </button>
+                                <button
+                                    type="button"
+                                    aria-label="Move slide right"
+                                    onClick={() => move(i, i + 1)}
+                                    disabled={i === post.slides.length - 1}
+                                    className="flex size-6 items-center justify-center rounded-md bg-black/60 text-white disabled:opacity-30"
+                                >
+                                    <ChevronRight className="size-3.5" aria-hidden="true" />
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                    <label
+                        className={cx(
+                            "flex aspect-3/4 w-20 shrink-0 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-dashed text-center text-[11px] font-medium transition duration-100 ease-linear",
+                            over === "end"
+                                ? "border-brand text-brand-secondary"
+                                : "border-secondary text-tertiary hover:border-brand hover:text-brand-secondary",
+                            busy && "pointer-events-none opacity-50",
+                        )}
+                    >
+                        <input type="file" accept="image/*" multiple className="hidden" onChange={addSlides} disabled={busy} />
+                        <UploadCloud02 className={cx("size-4", busy && "animate-pulse")} aria-hidden="true" />
+                        {busy ? "Adding…" : "Add slides"}
+                    </label>
+                </div>
+            )}
             <p className="mt-2 text-[11px] text-quaternary">
-                {post.slides.length ? `${post.slides.length} slide${post.slides.length === 1 ? "" : "s"} · ` : ""}Select all the exported pages of this post at
-                once — they sort into page order. Resized to 1080px WebP on the way in.
+                {empty
+                    ? "Drag pages from the import tray, or select the exported pages of this post at once — they sort into page order."
+                    : `${post.slides.length} slide${post.slides.length === 1 ? "" : "s"} · drag to reorder, or drag a slide onto another post to move it.`}
             </p>
             {error && <p className="mt-1 text-xs text-error-primary">{error}</p>}
             {children}
@@ -625,6 +720,8 @@ export interface PinnedPostsSectionProps {
     onResolveFeedback: (s: Suggestion) => void;
 }
 
+type TrayPage = { id: string; page: number; url: string };
+
 export const PinnedPostsSection = ({
     pinned,
     onPatch,
@@ -639,7 +736,10 @@ export const PinnedPostsSection = ({
     onWithdrawFeedback,
     onResolveFeedback,
 }: PinnedPostsSectionProps) => {
-    const posts = pinned.posts;
+    // Three slots, always — a row saved before the slots existed is padded on the way in.
+    const posts = normalizePinnedPosts(pinned.posts);
+    const filled = filledPinnedPosts(posts);
+    const slotOf = (post: PinnedPost) => posts.indexOf(post) + 1;
     const [viewer, setViewer] = useState<{ post: PinnedPost; index: number } | null>(null);
     const canva = parseCanvaUrl(pinned.canva_url);
     const editing = isTeam && !isLocked;
@@ -648,14 +748,18 @@ export const PinnedPostsSection = ({
        The portal's Canva connection (see src/lib/canva-import.ts) exports every page of the
        pasted design and hands them back here, where each goes through compressImageFile
        exactly as a hand-uploaded page would. They land in a tray — one design usually holds
-       all three carousels back to back — and the AM deals them out to posts. The tray is
-       session state on purpose: the pages aren't the client's until they're in a post and
-       saved, and a re-import is a few seconds. */
+       all three carousels back to back — and the AM drags them into the three slots. The
+       tray is session state on purpose: the pages aren't the client's until they're in a
+       post and saved, and a re-import is a few seconds. */
     const [canvaStatus, setCanvaStatus] = useState<CanvaStatus | null>(null);
     const [canvaBusy, setCanvaBusy] = useState(false);
     const [canvaNote, setCanvaNote] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
     const [importing, setImporting] = useState<string | null>(null);
-    const [tray, setTray] = useState<{ id: string; page: number; url: string }[]>([]);
+    const [tray, setTray] = useState<TrayPage[]>([]);
+    /** Tray pages picked for a group move, in tray order. Shift-click extends a run. */
+    const [selected, setSelected] = useState<string[]>([]);
+    const [lastPicked, setLastPicked] = useState<string | null>(null);
+    const [drag, setDrag] = useState<DragPayload | null>(null);
 
     useEffect(() => {
         if (!isTeam || isTemplate) return;
@@ -694,24 +798,81 @@ export const PinnedPostsSection = ({
         }
     };
 
-    /** Move tray pages into a post — an existing one, or a new one when `postId` is "new". */
-    const dealPages = (pageIds: string[], postId: string) => {
+    /* ── Placing pages ── */
+
+    const updatePost = (id: string, patch: Partial<PinnedPost>) => onPatch({ posts: posts.map((p) => (p.id === id ? { ...p, ...patch } : p)) });
+    const clearPost = (id: string) => onPatch({ posts: posts.map((p) => (p.id === id ? { ...emptyPinnedPost(), id } : p)) });
+
+    /** Move tray pages into a slot, at `index` (null appends), keeping their page order. */
+    const dealPages = (pageIds: string[], postId: string, index: number | null = null) => {
         const moving = tray.filter((p) => pageIds.includes(p.id));
         if (!moving.length) return;
         const slides = moving.map((p) => ({ id: p.id, url: p.url }));
-        if (postId === "new") {
-            if (posts.length >= MAX_PINNED_POSTS) return;
-            onPatch({ posts: [...posts, { ...emptyPinnedPost(), slides }] });
-        } else {
-            onPatch({ posts: posts.map((p) => (p.id === postId ? { ...p, slides: [...p.slides, ...slides] } : p)) });
-        }
+        onPatch({
+            posts: posts.map((p) => {
+                if (p.id !== postId) return p;
+                const next = [...p.slides];
+                next.splice(index ?? next.length, 0, ...slides);
+                return { ...p, slides: next };
+            }),
+        });
         setTray((t) => t.filter((p) => !pageIds.includes(p.id)));
+        setSelected((s) => s.filter((id) => !pageIds.includes(id)));
     };
+
+    /** Move one slide within a post or into another, landing at `index` (null appends). */
+    const moveSlide = (fromPostId: string, slideId: string, toPostId: string, index: number | null) => {
+        const from = posts.find((p) => p.id === fromPostId);
+        const slide = from?.slides.find((s) => s.id === slideId);
+        if (!from || !slide) return;
+        onPatch({
+            posts: posts.map((p) => {
+                let slides = p.id === fromPostId ? p.slides.filter((s) => s.id !== slideId) : p.slides;
+                if (p.id === toPostId) {
+                    slides = [...slides];
+                    // The removal above shifted anything after the source slot back by one.
+                    const fromIdx = from.slides.findIndex((s) => s.id === slideId);
+                    const at = index === null ? slides.length : p.id === fromPostId && index > fromIdx ? index - 1 : index;
+                    slides.splice(Math.min(at, slides.length), 0, slide);
+                }
+                return slides === p.slides ? p : { ...p, slides };
+            }),
+        });
+    };
+
+    const startDrag = (e: DragEvent<Element>, payload: DragPayload) => {
+        e.dataTransfer.setData(DRAG_MARK, "1");
+        e.dataTransfer.effectAllowed = "move";
+        setDrag(payload);
+    };
+    const endDrag = () => setDrag(null);
+    const dropInto = (postId: string, index: number | null) => {
+        if (!drag) return;
+        if (drag.kind === "pages") dealPages(drag.ids, postId, index);
+        else moveSlide(drag.postId, drag.slideId, postId, index);
+        setDrag(null);
+    };
+
+    /** Click picks a page; shift-click picks the run between it and the last pick. */
+    const pickPage = (id: string, shift: boolean) => {
+        const order = tray.map((p) => p.id);
+        setSelected((cur) => {
+            if (shift && lastPicked && order.includes(lastPicked)) {
+                const [a, b] = [order.indexOf(lastPicked), order.indexOf(id)].sort((x, y) => x - y);
+                const run = order.slice(a, b + 1);
+                return order.filter((pid) => cur.includes(pid) || run.includes(pid));
+            }
+            return cur.includes(id) ? cur.filter((pid) => pid !== id) : order.filter((pid) => cur.includes(pid) || pid === id);
+        });
+        setLastPicked(id);
+    };
+    /** What a drag from the tray carries: the selection when the page is part of it, else that page. */
+    const trayDragIds = (id: string) => (selected.includes(id) ? selected : [id]);
+    /** The header buttons act on the selection, or on the whole tray when nothing is picked. */
+    const trayTargetIds = selected.length ? selected : tray.map((p) => p.id);
+
     const igProfile = buildProfile({ ...profile, handle: pinned.handle.trim() || profile.handle }, posts);
 
-    const updatePost = (id: string, patch: Partial<PinnedPost>) => onPatch({ posts: posts.map((p) => (p.id === id ? { ...p, ...patch } : p)) });
-    const removePost = (id: string) => onPatch({ posts: posts.filter((p) => p.id !== id) });
-    const addPost = () => posts.length < MAX_PINNED_POSTS && onPatch({ posts: [...posts, emptyPinnedPost()] });
     const loadSample = () =>
         onPatch({
             // Fresh ids, so a test client's sample rows never share feedback keys with the template's.
@@ -725,8 +886,8 @@ export const PinnedPostsSection = ({
             canva_url: pinned.canva_url || SAMPLE_PINNED_POSTS.canva_url,
         });
 
-    const openCount = posts.filter((p) => reviewFor(p.id, feedback).openNote).length;
-    const approvedCount = posts.filter((p) => reviewFor(p.id, feedback).approval).length;
+    const openCount = filled.filter((p) => reviewFor(p.id, feedback).openNote).length;
+    const approvedCount = filled.filter((p) => reviewFor(p.id, feedback).approval).length;
 
     return (
         <Reveal>
@@ -739,7 +900,7 @@ export const PinnedPostsSection = ({
                         {openCount} change request{openCount === 1 ? "" : "s"}
                     </Badge>
                 )}
-                {posts.length > 0 && approvedCount === posts.length && (
+                {filled.length > 0 && approvedCount === filled.length && (
                     <Badge color="success" size="md" type="pill-color">
                         All approved
                     </Badge>
@@ -832,8 +993,8 @@ export const PinnedPostsSection = ({
                             above.
                         </li>
                         <li className="rounded-lg bg-primary px-3 py-2 ring-1 ring-secondary">
-                            <span className="font-semibold text-secondary">2 · Import the pages.</span> Press Import from Canva and every page arrives below,
-                            ready to deal out to posts. Or export them yourself (Canva → Share → Download) and add them to each post.
+                            <span className="font-semibold text-secondary">2 · Import and drag.</span> Press Import from Canva, then drag each page onto post
+                            01, 02 or 03. Shift-click picks a run of pages so a whole carousel moves in one drag.
                         </li>
                         <li className="rounded-lg bg-primary px-3 py-2 ring-1 ring-secondary">
                             <span className="font-semibold text-secondary">3 · Save and reveal.</span> Title each post, save, then reveal the section with the
@@ -841,68 +1002,91 @@ export const PinnedPostsSection = ({
                         </li>
                     </ol>
 
-                    {/* ── Imported pages, waiting to be dealt into posts ── */}
+                    {/* ── Imported pages, waiting to be dragged into the three slots ── */}
                     {tray.length > 0 && (
                         <div className="mt-4 rounded-xl bg-primary p-3 ring-1 ring-secondary">
                             <div className="flex flex-wrap items-center justify-between gap-2">
                                 <p className="text-sm font-semibold text-primary">
-                                    Imported pages <span className="font-normal text-quaternary">· {tray.length} waiting</span>
+                                    Imported pages{" "}
+                                    <span className="font-normal text-quaternary">
+                                        · {tray.length} waiting{selected.length ? ` · ${selected.length} selected` : ""}
+                                    </span>
                                 </p>
-                                <div className="flex flex-wrap items-center gap-2">
-                                    {posts.length < MAX_PINNED_POSTS && (
-                                        <Button
-                                            size="sm"
-                                            color="secondary"
-                                            iconLeading={Plus}
-                                            onClick={() =>
-                                                dealPages(
-                                                    tray.map((p) => p.id),
-                                                    "new",
-                                                )
-                                            }
-                                        >
-                                            All into a new post
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                    <span className="text-xs text-tertiary">{selected.length ? `Add ${selected.length} selected to` : "Add all to"}</span>
+                                    {posts.map((post, i) => (
+                                        <Button key={post.id} size="sm" color="secondary" onClick={() => dealPages(trayTargetIds, post.id)}>
+                                            {String(i + 1).padStart(2, "0")}
+                                        </Button>
+                                    ))}
+                                    {selected.length > 0 && (
+                                        <Button size="sm" color="tertiary" onClick={() => setSelected([])}>
+                                            Deselect
                                         </Button>
                                     )}
-                                    <Button size="sm" color="tertiary" onClick={() => setTray([])}>
+                                    <Button size="sm" color="tertiary" onClick={() => (setTray([]), setSelected([]))}>
                                         Clear
                                     </Button>
                                 </div>
                             </div>
                             <p className="mt-1 text-xs text-tertiary">
-                                One Canva design usually holds all three carousels back to back — pick where each page belongs. Pages stay here only until you
-                                place them; a re-import brings them back.
+                                Drag a page onto a post below, or click pages to pick several (shift-click for a run) and drag them together. Pages stay here
+                                only until you place them; a re-import brings them back.
                             </p>
                             <div className="mt-3 scrollbar-hide flex gap-3 overflow-x-auto pb-1">
-                                {tray.map((p) => (
-                                    <div key={p.id} className="flex w-24 shrink-0 flex-col gap-1.5">
-                                        <div className="relative">
-                                            <img
-                                                src={p.url}
-                                                alt={`Page ${p.page}`}
-                                                className="block aspect-3/4 w-full rounded-lg object-cover ring-1 ring-secondary"
-                                                draggable={false}
-                                            />
-                                            <span className="absolute top-1 left-1 rounded-full bg-black/55 px-1.5 py-0.5 text-[10px] font-bold text-white tabular-nums">
-                                                p{p.page}
-                                            </span>
+                                {tray.map((p) => {
+                                    const picked = selected.includes(p.id);
+                                    const lifting = drag?.kind === "pages" && drag.ids.includes(p.id);
+                                    return (
+                                        <div key={p.id} className="flex w-24 shrink-0 flex-col gap-1.5">
+                                            <div
+                                                role="button"
+                                                tabIndex={0}
+                                                aria-pressed={picked}
+                                                aria-label={`Page ${p.page}${picked ? ", selected" : ""}`}
+                                                draggable
+                                                onClick={(e) => pickPage(p.id, e.shiftKey)}
+                                                onKeyDown={(e) => (e.key === " " || e.key === "Enter") && (e.preventDefault(), pickPage(p.id, e.shiftKey))}
+                                                onDragStart={(e) => startDrag(e, { kind: "pages", ids: trayDragIds(p.id) })}
+                                                onDragEnd={endDrag}
+                                                className={cx(
+                                                    "relative cursor-grab rounded-lg transition duration-100 ease-linear outline-none focus-visible:ring-2 focus-visible:ring-brand active:cursor-grabbing",
+                                                    picked && "ring-2 ring-brand ring-offset-2 ring-offset-bg-primary",
+                                                    lifting && "opacity-40",
+                                                )}
+                                            >
+                                                <img
+                                                    src={p.url}
+                                                    alt=""
+                                                    className="pointer-events-none block aspect-3/4 w-full rounded-lg object-cover ring-1 ring-secondary"
+                                                    draggable={false}
+                                                />
+                                                <span className="absolute top-1 left-1 rounded-full bg-black/55 px-1.5 py-0.5 text-[10px] font-bold text-white tabular-nums">
+                                                    p{p.page}
+                                                </span>
+                                                {picked && (
+                                                    <span className="absolute top-1 right-1 flex size-5 items-center justify-center rounded-full bg-brand-solid text-white">
+                                                        <Check className="size-3" aria-hidden="true" />
+                                                    </span>
+                                                )}
+                                            </div>
+                                            {/* Keyboard and touch fallback for the drag. */}
+                                            <select
+                                                aria-label={`Add page ${p.page} to a post`}
+                                                value=""
+                                                onChange={(e) => e.target.value && dealPages(trayDragIds(p.id), e.target.value)}
+                                                className={editInput("px-1.5 py-1 text-xs")}
+                                            >
+                                                <option value="">Add to…</option>
+                                                {posts.map((post, i) => (
+                                                    <option key={post.id} value={post.id}>
+                                                        {String(i + 1).padStart(2, "0")} {post.title.trim() || `Pinned post ${i + 1}`}
+                                                    </option>
+                                                ))}
+                                            </select>
                                         </div>
-                                        <select
-                                            aria-label={`Add page ${p.page} to a post`}
-                                            value=""
-                                            onChange={(e) => e.target.value && dealPages([p.id], e.target.value)}
-                                            className={editInput("px-1.5 py-1 text-xs")}
-                                        >
-                                            <option value="">Add to…</option>
-                                            {posts.map((post, i) => (
-                                                <option key={post.id} value={post.id}>
-                                                    {String(i + 1).padStart(2, "0")} {post.title.trim() || "Untitled post"}
-                                                </option>
-                                            ))}
-                                            {posts.length < MAX_PINNED_POSTS && <option value="new">New post</option>}
-                                        </select>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         </div>
                     )}
@@ -921,118 +1105,101 @@ export const PinnedPostsSection = ({
 
                 {/* ── The posts ── */}
                 <div className="flex flex-col gap-4">
-                    {posts.length === 0 && !editing && (
+                    {filled.length === 0 && !editing && (
                         <div className="flex items-center gap-3 rounded-xl bg-secondary px-4 py-5">
                             <Camera01 className="size-5 shrink-0 text-fg-quaternary" aria-hidden="true" />
                             <p className="text-sm text-tertiary">
                                 {isTeam
-                                    ? "No posts yet — unlock to paste the Canva link and upload the exported pages."
+                                    ? "No posts yet — unlock to paste the Canva link and import the pages."
                                     : "Your pinned posts are on the way — the HiddenGem team will add them here."}
                             </p>
                         </div>
                     )}
 
-                    {posts.map((post, i) =>
-                        editing ? (
-                            <PostEditor
-                                key={post.id}
-                                post={post}
-                                ordinal={i + 1}
-                                onChange={(patch) => updatePost(post.id, patch)}
-                                onRemove={() => removePost(post.id)}
-                            >
-                                {feedback.some((s) => s.field_key.startsWith(`${KEY_PREFIX}${post.id}.`)) && (
-                                    <FeedbackPanel
-                                        post={post}
-                                        ordinal={i + 1}
-                                        review={reviewFor(post.id, feedback)}
-                                        isTeam
-                                        canReview={false}
-                                        reviewerEmail={reviewerEmail}
-                                        onSend={onSendFeedback}
-                                        onWithdraw={onWithdrawFeedback}
-                                        onResolve={onResolveFeedback}
-                                    />
-                                )}
-                            </PostEditor>
-                        ) : (
-                            <article key={post.id} className="rounded-2xl bg-primary p-4 ring-1 ring-secondary sm:p-5">
-                                <div className="flex gap-4">
-                                    <CoverThumb post={post} onOpen={() => setViewer({ post, index: 0 })} />
-                                    <div className="flex min-w-0 flex-1 flex-col">
-                                        <div className="flex flex-wrap items-center gap-2">
-                                            <span className="font-mono text-xs text-quaternary tabular-nums">{String(i + 1).padStart(2, "0")}</span>
-                                            <StatusBadge review={reviewFor(post.id, feedback)} forTeam={isTeam} />
-                                        </div>
-                                        <h3 className="mt-1.5 text-md font-semibold text-primary">{post.title.trim() || "Untitled post"}</h3>
-                                        {post.caption.trim() && <p className="mt-1 line-clamp-3 text-sm text-tertiary">{post.caption}</p>}
-                                        <div className="mt-auto flex flex-wrap items-center gap-2 pt-3">
-                                            <Button
-                                                size="sm"
-                                                color="secondary"
-                                                iconTrailing={ChevronRight}
-                                                onClick={() => setViewer({ post, index: 0 })}
-                                                isDisabled={!post.slides.length}
-                                            >
-                                                {post.slides.length > 1 ? `View all ${post.slides.length} slides` : "View post"}
-                                            </Button>
-                                        </div>
-                                    </div>
-                                </div>
-                                {/* Slide strip — every page at a glance, each opening the viewer at itself. */}
-                                {post.slides.length > 1 && (
-                                    <div className="mt-4 scrollbar-hide flex gap-1.5 overflow-x-auto">
-                                        {post.slides.map((s, si) => (
-                                            <button
-                                                key={s.id}
-                                                type="button"
-                                                onClick={() => setViewer({ post, index: si })}
-                                                aria-label={`Slide ${si + 1}`}
-                                                className="w-14 shrink-0 overflow-hidden rounded-md ring-1 ring-secondary transition duration-100 ease-linear hover:ring-brand"
-                                            >
-                                                <img src={s.url} alt="" className="block aspect-3/4 w-full object-cover" draggable={false} loading="lazy" />
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
-                                {(canReview || isTeam || feedback.some((s) => s.field_key.startsWith(`${KEY_PREFIX}${post.id}.`))) && (
-                                    <FeedbackPanel
-                                        post={post}
-                                        ordinal={i + 1}
-                                        review={reviewFor(post.id, feedback)}
-                                        isTeam={isTeam}
-                                        canReview={canReview}
-                                        reviewerEmail={reviewerEmail}
-                                        onSend={onSendFeedback}
-                                        onWithdraw={onWithdrawFeedback}
-                                        onResolve={onResolveFeedback}
-                                    />
-                                )}
-                            </article>
-                        ),
-                    )}
+                    {editing
+                        ? posts.map((post, i) => (
+                              <PostEditor
+                                  key={post.id}
+                                  post={post}
+                                  slot={i + 1}
+                                  drag={drag}
+                                  onChange={(patch) => updatePost(post.id, patch)}
+                                  onClear={() => clearPost(post.id)}
+                                  onDragSlide={(e, slideId) => startDrag(e, { kind: "slide", postId: post.id, slideId })}
+                                  onDragEnd={endDrag}
+                                  onDrop={(index) => dropInto(post.id, index)}
+                              >
+                                  {feedback.some((s) => s.field_key.startsWith(`${KEY_PREFIX}${post.id}.`)) && (
+                                      <FeedbackPanel
+                                          post={post}
+                                          ordinal={i + 1}
+                                          review={reviewFor(post.id, feedback)}
+                                          isTeam
+                                          canReview={false}
+                                          reviewerEmail={reviewerEmail}
+                                          onSend={onSendFeedback}
+                                          onWithdraw={onWithdrawFeedback}
+                                          onResolve={onResolveFeedback}
+                                      />
+                                  )}
+                              </PostEditor>
+                          ))
+                        : filled.map((post) => (
+                              <article key={post.id} className="rounded-2xl bg-primary p-4 ring-1 ring-secondary sm:p-5">
+                                  <div className="flex gap-4">
+                                      <CoverThumb post={post} onOpen={() => setViewer({ post, index: 0 })} />
+                                      <div className="flex min-w-0 flex-1 flex-col">
+                                          <div className="flex flex-wrap items-center gap-2">
+                                              <span className="font-mono text-xs text-quaternary tabular-nums">{String(slotOf(post)).padStart(2, "0")}</span>
+                                              <StatusBadge review={reviewFor(post.id, feedback)} forTeam={isTeam} />
+                                          </div>
+                                          <h3 className="mt-1.5 text-md font-semibold text-primary">{post.title.trim() || `Pinned post ${slotOf(post)}`}</h3>
+                                          {post.caption.trim() && <p className="mt-1 line-clamp-3 text-sm text-tertiary">{post.caption}</p>}
+                                          <div className="mt-auto flex flex-wrap items-center gap-2 pt-3">
+                                              <Button size="sm" color="secondary" iconTrailing={ChevronRight} onClick={() => setViewer({ post, index: 0 })}>
+                                                  {post.slides.length > 1 ? `View all ${post.slides.length} slides` : "View post"}
+                                              </Button>
+                                          </div>
+                                      </div>
+                                  </div>
+                                  {/* Slide strip — every page at a glance, each opening the viewer at itself. */}
+                                  {post.slides.length > 1 && (
+                                      <div className="mt-4 scrollbar-hide flex gap-1.5 overflow-x-auto">
+                                          {post.slides.map((s, si) => (
+                                              <button
+                                                  key={s.id}
+                                                  type="button"
+                                                  onClick={() => setViewer({ post, index: si })}
+                                                  aria-label={`Slide ${si + 1}`}
+                                                  className="w-14 shrink-0 overflow-hidden rounded-md ring-1 ring-secondary transition duration-100 ease-linear hover:ring-brand"
+                                              >
+                                                  <img src={s.url} alt="" className="block aspect-3/4 w-full object-cover" draggable={false} loading="lazy" />
+                                              </button>
+                                          ))}
+                                      </div>
+                                  )}
+                                  {(canReview || isTeam || feedback.some((s) => s.field_key.startsWith(`${KEY_PREFIX}${post.id}.`))) && (
+                                      <FeedbackPanel
+                                          post={post}
+                                          ordinal={slotOf(post)}
+                                          review={reviewFor(post.id, feedback)}
+                                          isTeam={isTeam}
+                                          canReview={canReview}
+                                          reviewerEmail={reviewerEmail}
+                                          onSend={onSendFeedback}
+                                          onWithdraw={onWithdrawFeedback}
+                                          onResolve={onResolveFeedback}
+                                      />
+                                  )}
+                              </article>
+                          ))}
 
-                    {editing && (
-                        <div className="flex flex-wrap items-center gap-3">
-                            {posts.length < MAX_PINNED_POSTS && (
-                                <button
-                                    type="button"
-                                    onClick={addPost}
-                                    className="flex min-h-20 flex-1 items-center justify-center gap-1.5 rounded-xl border border-dashed border-secondary text-sm font-medium text-tertiary transition duration-100 ease-linear hover:border-brand hover:text-brand-secondary"
-                                >
-                                    <Plus className="size-5" aria-hidden="true" />
-                                    Add post{posts.length ? ` (${posts.length}/${MAX_PINNED_POSTS})` : ""}
-                                </button>
-                            )}
-                            {posts.length === 0 && !isTemplate && (
-                                <Button size="sm" color="tertiary" onClick={loadSample}>
-                                    Load the sample set to try it
-                                </Button>
-                            )}
+                    {editing && filled.length === 0 && !isTemplate && (
+                        <div>
+                            <Button size="sm" color="tertiary" onClick={loadSample}>
+                                Load the sample set to try it
+                            </Button>
                         </div>
-                    )}
-                    {editing && posts.length >= MAX_PINNED_POSTS && (
-                        <p className="text-xs text-quaternary">Instagram pins three posts at most — that's the set.</p>
                     )}
                 </div>
             </div>

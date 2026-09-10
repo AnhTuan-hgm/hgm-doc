@@ -259,7 +259,7 @@ const DASHBOARD_GROUPS: { group: string; items: { label: string; note: string }[
             },
             {
                 label: "Pinned Posts",
-                note: "The three Canva carousels pinned to the top of the client's grid, previewed on a phone. Paste the Canva link, upload the exported pages, reveal it; the client approves or requests changes per post.",
+                note: "The three Canva carousels pinned to the top of the client's grid, previewed on a phone. Three fixed slots: paste the Canva link, Import from Canva, drag the pages into 01, 02 and 03, reveal it; the client approves or requests changes per post.",
             },
             {
                 label: "Example Reels",
