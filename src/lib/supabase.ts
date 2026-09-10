@@ -211,6 +211,24 @@ export interface DashboardContent {
     };
     links: { title: string; description: string; url: string }[];
     videos?: { id: string; title: string; url: string }[]; // Video guides (Loom link or uploaded mp4) — optional so older rows load unchanged
+    /** Marketing → Example Reels: three fixed phone-mockup slots. `url` is a public
+     *  `videos`-bucket file (never base64 — reels are tens of MB). The description doubles
+     *  as the text alternative for a silent loop. Optional: older rows predate it. */
+    reels?: { id: string; title: string; description: string; url: string }[];
+    /**
+     * The Pinned Posts the team designs for the client's Instagram grid — up to three
+     * carousels, each a Canva design exported page by page. Slide images are compressed
+     * WebP data URLs (see compressImageFile), first slide = the grid tile. `canva_url` is
+     * the design the AM pasted, kept so the team can jump straight back to editing it.
+     * Client feedback and approvals live in dashboard_suggestions under the
+     * `pinnedposts.{postId}.*` keys, never in this row. Optional: older rows predate it.
+     */
+    pinned_posts?: {
+        canva_url: string;
+        /** Instagram handle shown on the phone mockup, without the "@". */
+        handle: string;
+        posts: { id: string; title: string; caption: string; slides: { id: string; url: string }[] }[];
+    };
     /** AM-added rows in the side menu's Resources group (e.g. a Claude project link).
      *  `hidden` keeps a row team-only — new rows start hidden so nothing internal
      *  leaks to a client by default. Optional: older rows predate it. */

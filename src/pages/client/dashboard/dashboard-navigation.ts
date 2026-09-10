@@ -16,6 +16,7 @@ import {
     Folder,
     Globe01,
     Image01,
+    Image03,
     LayoutAlt01,
     Mail01,
     MessageChatCircle,
@@ -63,10 +64,13 @@ export type PhaseId = keyof typeof PHASES;
  * AM tick stored in content.journey_done — calls and reviews happen off-platform and
  * there is nothing to infer them from.
  */
-export type JourneyStepId = "form" | "kickoff" | "call" | "vision" | "masterdoc" | "brandkit" | "funnel" | "resources" | "website";
+export type JourneyStepId = "chat" | "form" | "kickoff" | "call" | "vision" | "masterdoc" | "brandkit" | "funnel" | "resources" | "website";
 
 /** Dustin's strategy-call booking page, linked from the Kick-off Call step. */
 export const KICKOFF_CALENDLY = "https://calendly.com/dustin-d-baker/strategy";
+
+/** Scribe walkthrough for the clients who can't work out how to join Google Chat on their own. */
+const GOOGLE_CHAT_GUIDE = "https://scribehow.com/o/AYYQm0qaSdqzluh6vDb1dw/viewer/How_To_Use_Google_Chat__WhkIl2H5Rcaf4YUKBNzOZQ";
 
 /**
  * A per-client URL a journey step points at, named rather than embedded so one step
@@ -84,7 +88,8 @@ export type JourneyLink = "chat" | "folder" | "onboarding_call";
 export const JOURNEY_STEPS: {
     id: JourneyStepId;
     label: string;
-    detail: string;
+    /** Step-level summary line. Omit when the item(s) below already say everything needed. */
+    detail?: string;
     icon: FC<{ className?: string }>;
     /** Section this step jumps to, when it has one. */
     to?: SectionId;
@@ -97,6 +102,16 @@ export const JOURNEY_STEPS: {
     hrefLabel?: string;
     /** Step that must be done before `href` is offered. */
     requires?: JourneyStepId;
+    /** Overrides the generic "Available once {requires step} is done" line, when set. */
+    blockedNote?: string;
+    /** A how-to guide, offered beside the step's own action for clients who get stuck. */
+    helpHref?: string;
+    helpLabel?: string;
+    /**
+     * What the CLIENT reads while `hrefFrom` has no URL on their row yet. Per-step because
+     * the generic line can't tell them what to do instead — that depends on the step.
+     */
+    pendingNote?: string;
     /**
      * Sub-items: the several separate things one step actually asks for. Deliberately
      * NOT tickable — none of these are states the app can observe, and an empty box
@@ -107,8 +122,19 @@ export const JOURNEY_STEPS: {
     itemsTitle?: string;
 }[] = [
     {
+        id: "chat",
+        label: "Join the Google Chat group",
+        detail: "This is our primary channel for updates — please join as soon as possible to stay in the loop on progress.",
+        icon: MessageChatCircle,
+        hrefFrom: "chat",
+        hrefLabel: "Open chat",
+        helpHref: GOOGLE_CHAT_GUIDE,
+        helpLabel: "Need help joining?",
+        pendingNote: "Your Account Manager will add the link shortly — please continue to the next step and fill in the Onboarding Form.",
+    },
+    {
         id: "form",
-        label: "Fill in the Onboarding form",
+        label: "Fill in the Onboarding Form",
         detail: "Your business details and the logins we need.",
         icon: ClipboardCheck,
         to: "intake",
@@ -126,6 +152,7 @@ export const JOURNEY_STEPS: {
         href: KICKOFF_CALENDLY,
         hrefLabel: "Book your call",
         requires: "form",
+        blockedNote: "Available once the Onboarding Form is complete",
     },
     {
         id: "vision",
@@ -136,27 +163,24 @@ export const JOURNEY_STEPS: {
         auto: true,
     },
     {
-        // The two things the post-Kick-off email asks for. The old detail line read
+        // The one thing the post-Kick-off email still asks for beyond the Google Chat group,
+        // which is now its own step at the top of the journey. The old detail line read
         // "Folder of content, plus the Brand Kit document" — but no Brand Kit document
         // link exists, and at this point in the journey the Brand Kit hasn't been built.
         //
-        // No `to: "contentfolder"` any more: the folder is one of the items below, and a
-        // step-level "Open" button pointing at the same URL just asks the client which of
-        // two identical buttons to press.
+        // No `to: "contentfolder"` any more: the folder is the item below, and a step-level
+        // "Open" button pointing at the same URL just asks the client which of two identical
+        // buttons to press.
         id: "resources",
         label: "Add your resources",
-        detail: "Two things to send us after the Kick-off Call, so your Account Manager can start building.",
         icon: Folder,
         items: [
             {
-                label: "Join the Google Chat group",
-                note: "Where we post updates and ask quick questions.",
-                link: "chat",
-                action: "Open chat",
-            },
-            {
-                label: "Upload your photos and video",
-                note: "Everything you already have: listing photos, phone clips, drone footage. Send too much rather than too little, we'll pick.",
+                // Brand assets share the content folder rather than sitting in an item of their
+                // own: a second item would carry a second "Open your folder" button to the very
+                // same URL, and the client would have to guess which one to press.
+                label: "Upload your photos, videos and brand assets",
+                note: "Please upload your photos and videos, including listing photos, drone footage, and any other assets. Add any brand material you already have too — fonts, graphics, logos and colours. Our team will take it from there.",
                 link: "folder",
                 action: "Open your folder",
             },
@@ -165,7 +189,7 @@ export const JOURNEY_STEPS: {
     {
         id: "call",
         label: "Onboarding Call",
-        detail: "With Dustin and your Account Manager. Book it once your Brand Vision Form is in.",
+        detail: "Book your onboarding call using the link below. Please join with a good Wi-Fi connection, and keep your phone and email handy so you can grab verification codes and approve access as your account manager walks you through it.",
         icon: Users01,
         hrefFrom: "onboarding_call",
         hrefLabel: "Book your onboarding call",
@@ -177,30 +201,46 @@ export const JOURNEY_STEPS: {
         // we never ask for their Facebook password, and the form no longer asks either.
         items: [
             { label: "Instagram", note: "Logged in on the laptop you'll join from." },
-            { label: "TikTok", note: "Logged in, if you use it." },
             {
                 label: "Facebook",
                 note: "Logged in to your business page, so you can add us as a user. We never ask for your Facebook password.",
             },
+            { label: "TikTok", note: "Logged in, if you use it." },
             { label: "Domain", note: "Logged in wherever your domain is registered." },
-            { label: "Credit card", note: "We set up your Facebook Ad account during the call." },
-            { label: "Zoom", note: "Installed on your computer, so we can ask to share your screen." },
+            {
+                label: "Credit card",
+                note: "Have it on hand — we set up your Facebook ad account during the call and Meta requires a payment method.",
+            },
+            {
+                label: "Netlify",
+                note: "We'll walk you through creating an account on the call. Your landing page will be hosted there, which lets us set up proper tracking.",
+            },
+            { label: "Zoom", note: "Installed on your computer, so we can ask you to share your screen." },
         ],
     },
     {
         id: "masterdoc",
         label: "Review the Master Brand",
-        detail: "Hosts, personas, properties and brand voice — what everything else reads from.",
+        detail: "Hosts, personas, properties and brand voice — the foundation everything else is built on.",
         icon: FileCheck02,
         to: "foundation",
     },
     { id: "brandkit", label: "Review the Brand Kit", detail: "Colours, fonts and logo.", icon: Image01, to: "brand" },
     {
+        // No `detail` line: it listed the same five pieces the items below now name one
+        // by one, so it only said everything twice.
         id: "funnel",
         label: "Review the marketing funnel",
-        detail: "Landing page, Welcome Flow, Repeat Flow, Pinned Posts and example Reels.",
         icon: Mail01,
         to: "flow",
+        items: [
+            { label: "Landing Page" },
+            { label: "Welcome Flow" },
+            { label: "Repeat Booking Flow" },
+            { label: "Pinned Posts" },
+            { label: "Pinned Stories" },
+            { label: "Example Reels" },
+        ],
     },
     {
         // Derived from the Website Setup Guide section: done once the Netlify account is
@@ -256,7 +296,7 @@ export const NAV_GROUPS: {
         phase: "input",
         icon: ClipboardCheck,
         items: [
-            { id: "intake", label: "Onboarding form", icon: ClipboardCheck },
+            { id: "intake", label: "Onboarding Form", icon: ClipboardCheck },
             { id: "onboarding", label: "Brand Vision Form", icon: FileCheck02 },
         ],
     },
@@ -275,11 +315,12 @@ export const NAV_GROUPS: {
         phase: "marketing",
         icon: Announcement02,
         items: [
-            { id: "landing", label: "Landing page", icon: Globe01, soon: true },
+            { id: "landing", label: "Landing Page", icon: Globe01 },
             { id: "flow", label: "Welcome Flow", icon: Mail01 },
-            { id: "repeatflow", label: "Repeat Flow", icon: Repeat01, soon: true },
-            { id: "pinnedposts", label: "Pinned Posts / Story", icon: Camera01, soon: true },
-            { id: "reels", label: "Example Reels", icon: PlayCircle, soon: true },
+            { id: "repeatflow", label: "Repeat Booking Flow", icon: Repeat01, soon: true },
+            { id: "pinnedposts", label: "Pinned Posts", icon: Camera01 },
+            { id: "pinnedstories", label: "Pinned Stories", icon: Image03 },
+            { id: "reels", label: "Example Reels", icon: PlayCircle },
         ],
     },
     {

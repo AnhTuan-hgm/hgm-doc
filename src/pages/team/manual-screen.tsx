@@ -229,7 +229,7 @@ const DASHBOARD_GROUPS: { group: string; items: { label: string; note: string }[
         group: "Your forms (client input)",
         items: [
             {
-                label: "Onboarding form",
+                label: "Onboarding Form",
                 note: `Property facts, links and the four account logins (Instagram, TikTok, PMS, Domain Host) — ${TOTAL_QUESTIONS} questions, ${ESTIMATE_LABEL}, autosaving as the client types.`,
             },
             { label: "Brand Vision Form", note: "How the brand should look, sound and feel." },
@@ -240,7 +240,10 @@ const DASHBOARD_GROUPS: { group: string; items: { label: string; note: string }[
         items: [
             { label: "Overview Document", note: 'Team-only client brief — a client never sees this row, not even as "Soon".' },
             { label: "Master Brand", note: "The eleven-section Master Brand Document everything downstream reads from. Clients can suggest edits here." },
-            { label: "Brand Kit", note: "Colours, fonts, logos, type scale — with AI drafting from the client's site." },
+            {
+                label: "Brand Kit",
+                note: 'Colours (with text-contrast hints), fonts, logos, type scale, a live brand preview and a Copy/Download CSS export — drafted from the client\'s site. A kit nobody has touched shows the client "on the way", never the template purples.',
+            },
         ],
     },
     {
@@ -250,7 +253,26 @@ const DASHBOARD_GROUPS: { group: string; items: { label: string; note: string }[
                 label: "Welcome Flow",
                 note: "The welcome email sequence, previewed per email. Finished emails from the email pipeline load automatically by client name.",
             },
-            { label: "Landing page / Repeat Flow / Pinned Posts / Example Reels", note: 'Placeholders marked "Soon" until each is built.' },
+            {
+                label: "Landing Page",
+                note: "The AM pastes the finished HTML; the client reviews it in-frame and approves or asks for changes.",
+            },
+            {
+                label: "Pinned Posts",
+                note: "The three Canva carousels pinned to the top of the client's grid, previewed on a phone. Paste the Canva link, upload the exported pages, reveal it; the client approves or requests changes per post.",
+            },
+            {
+                label: "Example Reels",
+                note: "Three iPhone mockups. In edit mode the team uploads a 9:16 mp4 into each (videos bucket, 50 MB cap) and writes the title and one-line description under it; the client sees only filled slots.",
+            },
+            {
+                label: "Pinned Stories",
+                note: "The Canva story highlights for the top of the client's profile. Paste the Canva link (or upload the exported pages), arrange pages into highlights, publish; the client plays them in the phone and leaves notes slide by slide.",
+            },
+            {
+                label: "Repeat Booking Flow",
+                note: 'Placeholder marked "Soon" until it is built.',
+            },
         ],
     },
     {
@@ -280,6 +302,14 @@ const TABLES: { group: string; rows: { name: string; what: string }[] }[] = [
             {
                 name: "dashboard_suggestions",
                 what: "Client-proposed Master Brand edits, one row per suggested field — pending / accepted / declined. Quarantined: never touches the document until an AM accepts and saves.",
+            },
+            {
+                name: "landing_pages",
+                what: "Marketing → Landing Page: every published HTML version per client dashboard, newest first, plus the client's approve / request-changes state.",
+            },
+            {
+                name: "pinned_stories",
+                what: "Marketing → Pinned Stories: the team's draft (imported pages arranged into highlights) and every published version, each with the client's per-slide notes and approval.",
             },
             { name: "client_pages", what: "Meta Pixel setup pages ({client}-metapixel and any other suffix)." },
             { name: "leadcapture_pages", what: "Popup / lead-capture pages, incl. before-after images and form options." },
@@ -316,6 +346,7 @@ const TABLES: { group: string; rows: { name: string; what: string }[] }[] = [
             { name: "videos", what: "Uploaded video guides." },
             { name: "brandkits", what: "Brand-kit files (logos, fonts)." },
             { name: "recordings", what: "Call recordings for /log-script (private bucket)." },
+            { name: "stories", what: "Pinned Stories pages (JPG/WebP per page, MP4 for video slides) — team-only uploads, public read." },
         ],
     },
 ];
@@ -333,6 +364,15 @@ const FUNCTIONS: { name: string; what: string }[] = [
     {
         name: "dashboard-suggestions",
         what: "Client suggestion traffic: list / send / withdraw. Validates the client's email against that dashboard's allowlist on every call.",
+    },
+    { name: "landing-page-review", what: "The client's Approve / Request changes on the Landing Page — only ever writes the review state, never a version." },
+    {
+        name: "pinned-stories-review",
+        what: "The client's per-slide notes and approval on Pinned Stories — only ever writes the live version's review, never the highlights.",
+    },
+    {
+        name: "canva-import",
+        what: "Team-only. Exports a Canva design's pages through the Canva Connect API into the stories bucket, in three short steps (start / status / store). Needs CANVA_ACCESS_TOKEN in Netlify; without it the section falls back to uploading Canva's exported pages.",
     },
 ];
 

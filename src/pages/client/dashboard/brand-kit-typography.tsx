@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { Trash01, UploadCloud02 } from "@untitledui-pro/icons/line";
 import { editInput } from "@/pages/client/dashboard/dashboard-chrome";
+import { TYPE_SCALE, clampFor } from "@/pages/client/dashboard/type-scale";
 
 export type BrandFontFile = { name: string; url: string };
 export type BrandFontFiles = { heading?: BrandFontFile; body?: BrandFontFile };
 
 /** The comma-separated fonts field, as up-to-4 trimmed family names. */
-const splitFamilies = (fonts: string) =>
+export const splitFamilies = (fonts: string) =>
     fonts
         .split(",")
         .map((f) => f.trim())
@@ -16,13 +17,18 @@ const splitFamilies = (fonts: string) =>
 /**
  * Which family each role resolves to. An uploaded file wins over a typed name for its
  * role; the body falls back to the heading so one font still styles the whole scale.
+ * Shared with the brand preview and the CSS export so every surface agrees on which
+ * font is "the heading font".
  */
-const resolveRoles = (fonts: string, files: BrandFontFiles | undefined) => {
+export const resolveRoles = (fonts: string, files: BrandFontFiles | undefined) => {
     const typed = splitFamilies(fonts);
     const heading = files?.heading?.name ?? typed[0];
     const body = files?.body?.name ?? typed[1] ?? heading;
     return { heading, body, headingCustom: !!files?.heading, bodyCustom: !!files?.body };
 };
+
+/** A family name as a CSS font-family value with the one fallback the previews use. */
+export const fontStack = (family: string | undefined) => (family ? `"${family}", sans-serif` : undefined);
 
 /**
  * Load typed families from Google Fonts while mounted. A family Google doesn't host
@@ -203,37 +209,9 @@ export const TypographyCards = ({
 };
 
 /**
- * The Untitled UI type scale, verbatim from src/styles/theme.css (spacing step = 4px):
- * Text xs→xl, Display xs→2xl, with each step's line-height and letter-spacing.
- * `min` is the mobile size — one display step down, the same `text-display-xs
- * md:text-display-sm` pattern the dashboard's own headings use; text sizes don't shrink.
- */
-const TYPE_SCALE: { label: string; px: number; lh: number; ls?: number; min: number; display?: boolean }[] = [
-    { label: "Display 2xl", px: 72, lh: 90, ls: -1.44, min: 60, display: true },
-    { label: "Display xl", px: 60, lh: 72, ls: -1.2, min: 48, display: true },
-    { label: "Display lg", px: 48, lh: 60, ls: -0.96, min: 36, display: true },
-    { label: "Display md", px: 36, lh: 44, ls: -0.72, min: 30, display: true },
-    { label: "Display sm", px: 30, lh: 38, min: 24, display: true },
-    { label: "Display xs", px: 24, lh: 32, min: 20, display: true },
-    { label: "Text xl", px: 20, lh: 30, min: 20 },
-    { label: "Text lg", px: 18, lh: 28, min: 18 },
-    { label: "Text md", px: 16, lh: 24, min: 16 },
-    { label: "Text sm", px: 14, lh: 20, min: 14 },
-    { label: "Text xs", px: 12, lh: 18, min: 12 },
-];
-
-/** Fluid size between a 360px and 1280px viewport; a step that doesn't shrink is just px. */
-const clampFor = (min: number, max: number): string => {
-    if (min === max) return `${max}px`;
-    const slope = (max - min) / (1280 - 360);
-    const intercept = min - slope * 360;
-    return `clamp(${min}px, ${intercept.toFixed(2)}px + ${(slope * 100).toFixed(2)}vw, ${max}px)`;
-};
-
-/**
- * The scale rendered in the brand's own fonts — heading font for Display sizes, body
- * font for Text sizes. Each row shows px / line-height and the CSS clamp() for fluid
- * sizing; click the code to copy it.
+ * The Untitled UI type scale (see type-scale.ts) rendered in the brand's own fonts —
+ * heading font for Display sizes, body font for Text sizes. Each row shows px /
+ * line-height and the CSS clamp() for fluid sizing; click the code to copy it.
  */
 export const TypeScale = ({ fonts, files }: { fonts: string; files?: BrandFontFiles }) => {
     const resolved = resolveRoles(fonts, files);
@@ -245,8 +223,8 @@ export const TypeScale = ({ fonts, files }: { fonts: string; files?: BrandFontFi
         });
     };
 
-    const heading = resolved.heading ? `"${resolved.heading}", sans-serif` : undefined;
-    const body = resolved.body ? `"${resolved.body}", sans-serif` : heading;
+    const heading = fontStack(resolved.heading);
+    const body = fontStack(resolved.body) ?? heading;
 
     return (
         <div className="flex flex-col">

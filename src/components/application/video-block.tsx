@@ -70,10 +70,13 @@ export const VideoEmbed = ({ url, className }: { url: string; className?: string
     );
 };
 
-const MAX_BYTES = 50 * 1024 * 1024; // keep in sync with the bucket's file_size_limit
+export const MAX_VIDEO_BYTES = 50 * 1024 * 1024; // keep in sync with the bucket's file_size_limit
+const MAX_BYTES = MAX_VIDEO_BYTES;
 
-/** Upload an mp4/webm/mov to the "videos" bucket and return its public URL. */
-async function uploadVideo(file: File): Promise<string> {
+/** Upload an mp4/webm/mov to the "videos" bucket and return its public URL.
+ *  Exported for surfaces that need the upload without this component's player
+ *  (the dashboard's Example Reels put the file behind a phone bezel instead). */
+export async function uploadVideo(file: File): Promise<string> {
     const safeName = file.name.toLowerCase().replace(/[^a-z0-9.]+/g, "-").slice(-80);
     const path = `${Date.now()}-${safeName}`;
     const { error } = await supabase.storage

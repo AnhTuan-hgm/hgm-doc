@@ -30,6 +30,21 @@ export interface Suggestion {
     created_at: string;
 }
 
+/* ── Welcome-flow feedback ──
+   A client's note on one of the nine welcome emails rides the same table, function and
+   review loop as a document edit, under its own key family so the two never mix:
+   "welcomeFlow.3" is feedback on E4. `suggested_value` holds the note, `current_value`
+   the subject line the client was looking at. parseKey below knows nothing about these
+   keys on purpose — applySuggestion returns null, so a feedback row can never be
+   "accepted" into the Master Brand Document. The team resolves it as done or dismissed. */
+
+export const FLOW_FEEDBACK_PREFIX = "welcomeFlow.";
+/** Field key of a client's feedback on step `slot` (0-based). */
+export const flowFeedbackKey = (slot: number) => `${FLOW_FEEDBACK_PREFIX}${slot}`;
+export const isFlowFeedbackKey = (key: string) => key.startsWith(FLOW_FEEDBACK_PREFIX);
+/** The 0-based step a feedback key addresses, or NaN for any other key. */
+export const flowFeedbackSlot = (key: string) => (isFlowFeedbackKey(key) ? Number(key.slice(FLOW_FEEDBACK_PREFIX.length)) : NaN);
+
 /** One proposed edit, as the client's browser sends it to the create action. */
 export interface SuggestionItem {
     fieldKey: string;
