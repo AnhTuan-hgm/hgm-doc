@@ -66,6 +66,12 @@ export interface StoryVersion {
     publishedBy: string;
     /** Each version carries its own review, so feedback on v1 survives publishing v2. */
     review: StoryReview;
+    /**
+     * Imported pages that were left in the tray when this was published. Never shown to
+     * the client; kept so "Make changes" gives the AM the whole import back rather than only
+     * the pages they placed. Older versions don't have it.
+     */
+    unassigned?: StorySlide[];
 }
 
 /** The team's working copy — imported but not yet shown to the client. */
@@ -152,7 +158,13 @@ export const moveSlideTo = (d: StoryDraft, slideId: string, highlightId: string 
         return [...list.slice(0, at), found.slide, ...list.slice(at)];
     };
     if (highlightId === null) return { ...base, unassigned: insert(base.unassigned) };
-    if (!base.highlights.some((h) => h.id === highlightId)) return d;
+    const target = base.highlights.find((h) => h.id === highlightId);
+    if (!target) return d;
+    // The first image dropped into an empty, coverless highlight IS its cover: a Canva story
+    // file runs [cover, slides…] and the icon page is never a story frame.
+    if (!target.cover && target.slides.length === 0 && found.slide.kind === "image") {
+        return { ...base, highlights: base.highlights.map((h) => (h.id === highlightId ? { ...h, cover: found.slide.url } : h)) };
+    }
     return { ...base, highlights: base.highlights.map((h) => (h.id === highlightId ? { ...h, slides: insert(h.slides) } : h)) };
 };
 
@@ -194,10 +206,19 @@ export const buildHighlightsFromCovers = (d: StoryDraft, coverIds: string[]): St
 /** The image a highlight's circle shows — its cover, else its first slide. */
 export const coverOf = (h: StoryHighlight): string => h.cover || h.slides.find((s) => s.kind === "image")?.url || h.slides[0]?.url || "";
 
-/** Publishable = at least one highlight with at least one slide. */
-export const draftPublishable = (d: StoryDraft | null): boolean => !!d && d.highlights.some((h) => h.slides.length > 0);
+/**
+ * True when the highlight has no explicit cover and is standing in with its first slide —
+ * that slide is then the icon only, and storyFrames() leaves it out of playback.
+ */
+export const firstSlideIsCover = (h: StoryHighlight): boolean => !h.cover && h.slides.length > 1 && h.slides[0].kind === "image";
 
-export const totalSlides = (highlights: StoryHighlight[]) => highlights.reduce((n, h) => n + h.slides.length, 0);
+/** The frames that actually play — every slide, minus the one doubling as the cover icon. */
+export const storyFrames = (h: StoryHighlight): StorySlide[] => (firstSlideIsCover(h) ? h.slides.slice(1) : h.slides);
+
+/** Publishable = at least one highlight with at least one slide. */
+export const draftPublishable = (d: StoryDraft | null): boolean => !!d && d.highlights.some((h) => storyFrames(h).length > 0);
+
+export const totalSlides = (highlights: StoryHighlight[]) => highlights.reduce((n, h) => n + storyFrames(h).length, 0);
 
 /* ── The sample ──────────────────────────────────────────────────────────── */
 

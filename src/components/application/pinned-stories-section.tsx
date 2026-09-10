@@ -50,10 +50,12 @@ import {
     draftFromPages,
     draftPublishable,
     emptyHighlight,
+    firstSlideIsCover,
     mergePinnedStories,
     moveSlideTo,
     sampleDraft,
     setCoverFromSlide,
+    storyFrames,
     totalSlides,
 } from "@/pages/client/dashboard/pinned-stories-model";
 import { compressImageFile } from "@/utils/compress-image";
@@ -266,6 +268,8 @@ export const PinnedStoriesSection = ({
             publishedAt: new Date().toISOString(),
             publishedBy: teamName,
             review: EMPTY_REVIEW,
+            // The tray travels with the version so "Make changes" restores the whole import.
+            unassigned: draft.unassigned,
         };
         const ok = await persist({ draft: null, versions: [version, ...data.versions] });
         setPublishing(false);
@@ -299,14 +303,25 @@ export const PinnedStoriesSection = ({
         }
     };
 
-    /** Start a draft from the live set, so titles and order can change without a re-import. */
+    /**
+     * Start a draft from the live set, so titles and order can change without a re-import.
+     * The tray comes back too: the pages left unplaced at publish time, plus any page an
+     * older version used that this one dropped, so nothing imported is ever out of reach.
+     */
     const editLive = () => {
         if (!live) return;
+        const inLive = new Set(live.highlights.flatMap((h) => [h.cover, ...h.slides.map((s) => s.url)]));
+        const tray: StorySlide[] = [...(live.unassigned ?? [])];
+        for (const v of data.versions.slice(1)) {
+            for (const s of [...v.highlights.flatMap((h) => h.slides), ...(v.unassigned ?? [])]) {
+                if (!inLive.has(s.url) && !tray.some((t) => t.url === s.url)) tray.push({ ...s });
+            }
+        }
         void persist({
             ...data,
             draft: {
                 highlights: live.highlights.map((h) => ({ ...h, id: uid(), slides: h.slides.map((s) => ({ ...s })) })),
-                unassigned: [],
+                unassigned: tray.sort((a, b) => a.page - b.page),
                 source: live.source,
             },
         });
@@ -527,14 +542,15 @@ export const PinnedStoriesSection = ({
     /** "Slide 3 of 6 · FAQ" for a note, from the live set. */
     const describe = (c: { highlightId: string; slideId: string }) => {
         const h = live?.highlights.find((x) => x.id === c.highlightId);
-        const i = h?.slides.findIndex((s) => s.id === c.slideId) ?? -1;
+        const frames = h ? storyFrames(h) : [];
+        const i = frames.findIndex((s) => s.id === c.slideId);
         if (!h || i < 0) return { label: "Whole set", slide: null as StorySlide | null };
-        return { label: `Slide ${i + 1} of ${h.slides.length} · ${h.title || "Untitled"}`, slide: h.slides[i] };
+        return { label: `Slide ${i + 1} of ${frames.length} · ${h.title || "Untitled"}`, slide: frames[i] };
     };
 
     const jumpTo = (c: { highlightId: string; slideId: string }) => {
         const h = live?.highlights.find((x) => x.id === c.highlightId);
-        const i = h?.slides.findIndex((s) => s.id === c.slideId) ?? -1;
+        const i = h ? storyFrames(h).findIndex((s) => s.id === c.slideId) : -1;
         if (h && i >= 0) {
             setView("live");
             setPosition({ highlightId: h.id, slide: i });
@@ -871,7 +887,7 @@ export const PinnedStoriesSection = ({
                                                     {/* Cover circle — tap to play, drop a page to make it the cover. */}
                                                     <button
                                                         type="button"
-                                                        onClick={() => h.slides.length && setPosition({ highlightId: h.id, slide: 0 })}
+                                                        onClick={() => storyFrames(h).length && setPosition({ highlightId: h.id, slide: 0 })}
                                                         className={cx(
                                                             "flex size-12 shrink-0 items-center justify-center rounded-full ring-1 ring-offset-2 ring-offset-bg-primary transition duration-100 ease-linear",
                                                             over === coverKey ? "scale-110 ring-2 ring-brand" : "ring-primary",
@@ -899,11 +915,11 @@ export const PinnedStoriesSection = ({
                                                             <p className="text-sm font-semibold text-primary">{h.title}</p>
                                                         )}
                                                         <p className="text-xs text-quaternary">
-                                                            {h.slides.length} slide{h.slides.length === 1 ? "" : "s"}
-                                                            {!h.cover &&
-                                                                h.slides.length > 0 &&
-                                                                " · cover: first slide — drop a page on the circle, or star one"}
-                                                            {h.slides.length === 0 && " · empty highlights aren't published"}
+                                                            {storyFrames(h).length} slide{storyFrames(h).length === 1 ? "" : "s"}
+                                                            {firstSlideIsCover(h) && " · the first page is the cover icon and doesn't play"}
+                                                            {!h.cover && h.slides.length === 1 && " · drop a page on the circle, or star one, to set the cover"}
+                                                            {h.cover && h.slides.length === 0 && " · cover set — drag the story pages in"}
+                                                            {!h.cover && h.slides.length === 0 && " · empty highlights aren't published"}
                                                         </p>
                                                     </div>
                                                     {canEdit && (
@@ -918,7 +934,10 @@ export const PinnedStoriesSection = ({
                                                 </div>
                                                 <div className="flex gap-2 overflow-x-auto pb-1">
                                                     {h.slides.map((s, si) => {
-                                                        const active = position.highlightId === h.id && position.slide === si;
+                                                        // With no explicit cover the first page is the icon only; the rest play as 1, 2, 3…
+                                                        const isIconOnly = firstSlideIsCover(h) && si === 0;
+                                                        const frameIndex = firstSlideIsCover(h) ? si - 1 : si;
+                                                        const active = position.highlightId === h.id && !isIconOnly && position.slide === frameIndex;
                                                         const key = `slide:${s.id}`;
                                                         return (
                                                             <div
@@ -941,18 +960,24 @@ export const PinnedStoriesSection = ({
                                                                 )}
                                                                 <button
                                                                     type="button"
-                                                                    onClick={() => setPosition({ highlightId: h.id, slide: si })}
+                                                                    onClick={() => setPosition({ highlightId: h.id, slide: Math.max(0, frameIndex) })}
                                                                     className={cx(
                                                                         "block aspect-9/16 w-full overflow-hidden rounded-lg bg-secondary ring-1 transition duration-100 ease-linear",
                                                                         canEdit && "cursor-grab active:cursor-grabbing",
                                                                         active ? "ring-2 ring-brand" : "ring-secondary hover:ring-primary",
+                                                                        isIconOnly && "opacity-70",
                                                                     )}
-                                                                    aria-label={`Slide ${si + 1}`}
+                                                                    aria-label={isIconOnly ? "Cover icon" : `Slide ${frameIndex + 1}`}
                                                                 >
                                                                     <SlideThumb slide={s} className="pointer-events-none" />
                                                                 </button>
-                                                                <span className="pointer-events-none absolute top-1 left-1 rounded bg-primary-solid/70 px-1 text-[10px] font-semibold text-white tabular-nums">
-                                                                    {si + 1}
+                                                                <span
+                                                                    className={cx(
+                                                                        "pointer-events-none absolute top-1 left-1 rounded px-1 text-[10px] font-semibold text-white tabular-nums",
+                                                                        isIconOnly ? "bg-brand-solid" : "bg-primary-solid/70",
+                                                                    )}
+                                                                >
+                                                                    {isIconOnly ? "Cover" : frameIndex + 1}
                                                                 </span>
                                                                 {canEdit && (
                                                                     <div className="absolute inset-x-0 bottom-0 flex justify-center gap-0.5 rounded-b-lg bg-primary-solid/70 py-0.5 opacity-0 transition duration-100 ease-linear group-focus-within:opacity-100 group-hover:opacity-100">
@@ -1278,7 +1303,8 @@ export const PinnedStoriesSection = ({
                                                     setNoteFor({
                                                         highlightId: position.highlightId ?? "",
                                                         slideId: position.highlightId
-                                                            ? (shownHighlights.find((h) => h.id === position.highlightId)?.slides[position.slide]?.id ?? "")
+                                                            ? (shownHighlights.filter((h) => h.id === position.highlightId).flatMap(storyFrames)[position.slide]
+                                                                  ?.id ?? "")
                                                             : "",
                                                     })
                                                 }
