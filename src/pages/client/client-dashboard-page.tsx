@@ -132,6 +132,7 @@ import {
     OVERVIEW_COUNTED_FIELDS,
     OVERVIEW_RAIL,
     OVERVIEW_SECTIONS,
+    compileOverviewDocument,
     overviewSectionNumber,
 } from "@/pages/client/dashboard/overview-doc";
 import { SuggestionBox, SuggestionContext, fetchSuggestions, sendSuggestions, withdrawSuggestion } from "@/pages/client/dashboard/suggestions";
@@ -559,6 +560,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     const [pdfError, setPdfError] = useState(false);
     const [masterDocCopied, setMasterDocCopied] = useState(false);
     const [headerDocCopied, setHeaderDocCopied] = useState(false);
+    const [overviewCopied, setOverviewCopied] = useState(false);
     /** "Copied" flash on the Reviews working prompt (team-only block). */
     const [promptCopied, setPromptCopied] = useState(false);
     /* ── Master Document drafting (team-only) ──
@@ -1330,6 +1332,33 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
         }
         setHeaderDocCopied(true);
         setTimeout(() => setHeaderDocCopied(false), 1600);
+    };
+
+    /** The Client Overview brief, copied the same way — rich text for Google Docs, plain text behind it. */
+    const copyOverviewForDocs = async () => {
+        const compiled = compileOverviewDocument(overviewDoc);
+        const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        const html = [
+            `<h1>Client Overview — ${esc(overviewDoc.business_name.trim() || overviewDoc.client_name.trim() || "Client")}</h1>`,
+            `<p>${esc(`Generated: ${compiled.generatedOn}`)}</p>`,
+            ...compiled.sections.map((s, i) => `<h2>${i + 1}. ${esc(s.label)}</h2><p>${esc(s.value || "Not provided yet.").replace(/\n/g, "<br>")}</p>`),
+        ].join("");
+        try {
+            await navigator.clipboard.write([
+                new ClipboardItem({
+                    "text/html": new Blob([html], { type: "text/html" }),
+                    "text/plain": new Blob([compiled.doc], { type: "text/plain" }),
+                }),
+            ]);
+        } catch {
+            try {
+                await navigator.clipboard.writeText(compiled.doc);
+            } catch {
+                return;
+            }
+        }
+        setOverviewCopied(true);
+        setTimeout(() => setOverviewCopied(false), 1600);
     };
 
     /**
@@ -3300,6 +3329,14 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                     {overviewBusy ? "Reading their answers…" : "Draft from the onboarding form"}
                                                                 </Button>
                                                             )}
+                                                            <Button
+                                                                size="sm"
+                                                                color="secondary"
+                                                                iconLeading={overviewCopied ? Check : Copy01}
+                                                                onClick={() => void copyOverviewForDocs()}
+                                                            >
+                                                                {overviewCopied ? "Copied!" : "Copy document"}
+                                                            </Button>
                                                             <span className="text-sm text-quaternary tabular-nums">
                                                                 {OVERVIEW_SECTIONS.length + 2} sections · {overviewFilled} of {OVERVIEW_COUNTED_FIELDS.length}{" "}
                                                                 fields filled
