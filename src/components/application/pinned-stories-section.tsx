@@ -789,10 +789,10 @@ export const PinnedStoriesSection = ({
                     <div className="mt-3 grid gap-2 text-xs text-tertiary sm:grid-cols-3">
                         <p className="rounded-xl bg-primary px-3 py-2.5 ring-1 ring-secondary">
                             <span className="font-semibold text-secondary">1 · Design in Canva.</span> One design, one page per slide, 9:16. Each highlight is a
-                            cover page followed by its slides. Paste its link above.
+                            icon page followed by its slides. Paste its link above.
                         </p>
                         <p className="rounded-xl bg-primary px-3 py-2.5 ring-1 ring-secondary">
-                            <span className="font-semibold text-secondary">2 · Import and arrange.</span> Press Import from Canva, star the cover pages in the
+                            <span className="font-semibold text-secondary">2 · Import and arrange.</span> Press Import from Canva, star the icon pages in the
                             tray and press Build — or drag pages into highlights yourself. The phone follows.
                         </p>
                         <p className="rounded-xl bg-primary px-3 py-2.5 ring-1 ring-secondary">
@@ -920,8 +920,8 @@ export const PinnedStoriesSection = ({
                                     <div>
                                         <p className="text-md font-semibold text-primary">Arrange the highlights</p>
                                         <p className="text-sm text-pretty text-tertiary">
-                                            Drag pages into highlights and onto cover circles; the phone follows. Faster: star the cover pages in the tray and
-                                            press Build — every page after a cover joins that highlight.
+                                            Drag pages into highlights and onto icon circles; the phone follows. Faster: star the icon pages in the tray and
+                                            press Build — every page after an icon joins that highlight.
                                         </p>
                                     </div>
                                     {canEdit && (
@@ -934,7 +934,7 @@ export const PinnedStoriesSection = ({
                                 <div className="flex flex-col divide-y divide-border-secondary">
                                     {draft.highlights.length === 0 && (
                                         <p className="px-5 py-6 text-sm text-quaternary">
-                                            No highlights yet. Star the covers below and press Build, or add a highlight and drag pages into it.
+                                            No highlights yet. Star the icons below and press Build, or add a highlight and drag pages into it.
                                         </p>
                                     )}
                                     {draft.highlights.map((h, hi) => {
@@ -975,9 +975,9 @@ export const PinnedStoriesSection = ({
                                                         )}
                                                         <p className="text-xs text-quaternary">
                                                             {storyFrames(h).length} slide{storyFrames(h).length === 1 ? "" : "s"}
-                                                            {firstSlideIsCover(h) && " · the first page is the cover icon and doesn't play"}
-                                                            {!h.cover && h.slides.length === 1 && " · drop a page on the circle, or star one, to set the cover"}
-                                                            {h.cover && h.slides.length === 0 && " · cover set — drag the story pages in"}
+                                                            {firstSlideIsCover(h) && " · the first page is the icon and doesn't play"}
+                                                            {!h.cover && h.slides.length === 1 && " · drop a page on the circle, or star one, to set the icon"}
+                                                            {h.cover && h.slides.length === 0 && " · icon set — drag the story pages in"}
                                                             {!h.cover && h.slides.length === 0 && " · empty highlights aren't published"}
                                                         </p>
                                                     </div>
@@ -1026,7 +1026,7 @@ export const PinnedStoriesSection = ({
                                                                         active ? "ring-2 ring-brand" : "ring-secondary hover:ring-primary",
                                                                         isIconOnly && "opacity-70",
                                                                     )}
-                                                                    aria-label={isIconOnly ? "Cover icon" : `Slide ${frameIndex + 1}`}
+                                                                    aria-label={isIconOnly ? "Icon" : `Slide ${frameIndex + 1}`}
                                                                 >
                                                                     <SlideThumb slide={s} className="pointer-events-none" />
                                                                 </button>
@@ -1036,7 +1036,7 @@ export const PinnedStoriesSection = ({
                                                                         isIconOnly ? "bg-brand-solid" : "bg-primary-solid/70",
                                                                     )}
                                                                 >
-                                                                    {isIconOnly ? "Cover" : frameIndex + 1}
+                                                                    {isIconOnly ? "Icon" : frameIndex + 1}
                                                                 </span>
                                                                 {canEdit && (
                                                                     <div className="absolute inset-x-0 bottom-0 flex justify-center gap-0.5 rounded-b-lg bg-primary-solid/70 py-0.5 opacity-0 transition duration-100 ease-linear group-focus-within:opacity-100 group-hover:opacity-100">
@@ -1053,7 +1053,7 @@ export const PinnedStoriesSection = ({
                                                                                 type="button"
                                                                                 onClick={() => makeCover(h.id, s.id)}
                                                                                 className="rounded p-0.5 text-white hover:bg-white/20"
-                                                                                aria-label="Use as cover"
+                                                                                aria-label="Use as icon"
                                                                             >
                                                                                 <Star01 className="size-3.5" />
                                                                             </button>
@@ -1117,8 +1117,8 @@ export const PinnedStoriesSection = ({
                                                 <div className="flex flex-wrap items-center gap-2">
                                                     <span className="text-xs text-tertiary">
                                                         {coverPicks.size
-                                                            ? `${coverPicks.size} cover${coverPicks.size === 1 ? "" : "s"} starred`
-                                                            : "Star the cover pages, then"}
+                                                            ? `${coverPicks.size} icon${coverPicks.size === 1 ? "" : "s"} starred`
+                                                            : "Star the icon pages, then"}
                                                     </span>
                                                     <Button
                                                         size="sm"
@@ -1162,7 +1162,7 @@ export const PinnedStoriesSection = ({
                                                                     type="button"
                                                                     onClick={() => togglePick(s.id)}
                                                                     aria-pressed={picked}
-                                                                    aria-label={picked ? "Not a cover" : "Mark as a cover"}
+                                                                    aria-label={picked ? "Not an icon" : "Mark as the icon"}
                                                                     className={cx(
                                                                         "absolute top-1 right-1 flex size-6 items-center justify-center rounded-full transition duration-100 ease-linear",
                                                                         picked
