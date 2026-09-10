@@ -6,6 +6,7 @@ import {
     ChevronLeft,
     ChevronRight,
     Image03,
+    Link01,
     LinkExternal01,
     MessageChatCircle,
     Plus,
@@ -65,6 +66,31 @@ import { cx } from "@/utils/cx";
 
 const REVIEW_ENDPOINT = "/.netlify/functions/pinned-stories-review";
 const IMPORT_ENDPOINT = "/.netlify/functions/canva-import";
+const AUTH_ENDPOINT = "/.netlify/functions/canva-auth";
+
+/** What canva-auth.mts reports about the portal's Canva connection. */
+interface CanvaStatus {
+    /** Client id/secret present in Netlify — without them nothing can connect. */
+    configured: boolean;
+    connected: boolean;
+    connectedBy: string;
+    expiresAt: string | null;
+    redirectUri: string | null;
+}
+
+/** POST to a team-only function with the signed-in AM's Supabase token. */
+const teamCall = async (endpoint: string, body: Record<string, unknown>) => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) throw new Error("Your sign-in has expired — reload and sign in again.");
+    const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+    });
+    const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    return { res, json };
+};
 const STORE_BATCH = 5;
 const MAX_VIDEO_BYTES = 50 * 1024 * 1024; // keep in sync with the bucket's file_size_limit
 
@@ -126,7 +152,9 @@ export const PinnedStoriesSection = ({
     const [canvaLink, setCanvaLink] = useState("");
     const [importing, setImporting] = useState<string | null>(null);
     const [importErr, setImportErr] = useState("");
-    const [canvaOffline, setCanvaOffline] = useState(false);
+    const [canva, setCanva] = useState<CanvaStatus | null>(null);
+    const [canvaBusy, setCanvaBusy] = useState(false);
+    const [canvaNote, setCanvaNote] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
     const [showImport, setShowImport] = useState(false);
 
     const [publishing, setPublishing] = useState(false);
@@ -138,6 +166,59 @@ export const PinnedStoriesSection = ({
     const [reviewErr, setReviewErr] = useState("");
 
     const canEdit = isTeam && !isLocked && !isTemplate;
+
+    /* ── Canva connection (team only) ──
+       Asked once per mount; the answer decides whether the import button, Connect Canva,
+       or "not set up" shows. The `?canva=` query is what canva-auth.mts sends the AM back
+       with after the OAuth round-trip — read it, say what happened, and clean the URL. */
+    const refreshCanva = useCallback(async () => {
+        try {
+            const { res, json } = await teamCall(AUTH_ENDPOINT, { action: "status" });
+            if (res.ok) setCanva(json as unknown as CanvaStatus);
+        } catch {
+            /* Not signed in as team, or functions not served locally — the panel stays neutral. */
+        }
+    }, []);
+    useEffect(() => {
+        if (!isTeam || isTemplate) return;
+        void refreshCanva();
+        const params = new URLSearchParams(window.location.search);
+        const outcome = params.get("canva");
+        if (outcome) {
+            setCanvaNote(
+                outcome === "connected"
+                    ? { kind: "ok", text: "Canva is connected. Paste a design link to import it." }
+                    : { kind: "err", text: params.get("reason") || "Canva didn't connect." },
+            );
+            params.delete("canva");
+            params.delete("reason");
+            const q = params.toString();
+            window.history.replaceState(null, "", `${window.location.pathname}${q ? `?${q}` : ""}${window.location.hash}`);
+        }
+    }, [isTeam, isTemplate, refreshCanva]);
+
+    const connectCanva = async () => {
+        setCanvaBusy(true);
+        setCanvaNote(null);
+        try {
+            const { res, json } = await teamCall(AUTH_ENDPOINT, { action: "start", returnTo: `${window.location.pathname}#pinnedstories` });
+            if (!res.ok || typeof json.url !== "string") throw new Error(String(json.error ?? "Couldn't start the Canva connection."));
+            window.location.assign(json.url);
+        } catch (e) {
+            setCanvaNote({ kind: "err", text: e instanceof Error ? e.message : "Couldn't start the Canva connection." });
+            setCanvaBusy(false);
+        }
+    };
+
+    const disconnectCanva = async () => {
+        setCanvaBusy(true);
+        try {
+            await teamCall(AUTH_ENDPOINT, { action: "disconnect" });
+            await refreshCanva();
+        } finally {
+            setCanvaBusy(false);
+        }
+    };
 
     /* ── Load ── */
     useEffect(() => {
@@ -269,18 +350,12 @@ export const PinnedStoriesSection = ({
         if (!slug) return;
         setImporting("Checking the design…");
         try {
-            const { data: sessionData } = await supabase.auth.getSession();
-            const token = sessionData.session?.access_token;
-            if (!token) throw new Error("Your sign-in has expired — reload and sign in again.");
             const call = async (body: Record<string, unknown>) => {
-                const res = await fetch(IMPORT_ENDPOINT, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                    body: JSON.stringify(body),
-                });
-                const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+                const { res, json } = await teamCall(IMPORT_ENDPOINT, body);
                 if (res.status === 501 && json.code === "canva_not_configured") {
-                    setCanvaOffline(true);
+                    // The stored token stopped working mid-way — re-read the status so the
+                    // panel swaps the import button for Connect Canva.
+                    void refreshCanva();
                     throw new Error(String(json.error));
                 }
                 if (!res.ok) throw new Error(String(json.error ?? "Something went wrong."));
@@ -559,19 +634,60 @@ export const PinnedStoriesSection = ({
                                     className={cx(inputCls, "min-w-60 flex-1 font-mono text-xs")}
                                     spellCheck={false}
                                 />
-                                <Button
-                                    size="md"
-                                    isDisabled={!canEdit || !canvaLink.trim() || canvaOffline}
-                                    isLoading={!!importing}
-                                    showTextWhileLoading
-                                    onClick={() => void importFromCanva()}
-                                >
-                                    {importing ?? "Import from Canva"}
-                                </Button>
+                                {canva && !canva.connected && canva.configured ? (
+                                    <Button
+                                        size="md"
+                                        iconLeading={Link01}
+                                        isDisabled={!canEdit}
+                                        isLoading={canvaBusy}
+                                        showTextWhileLoading
+                                        onClick={() => void connectCanva()}
+                                    >
+                                        Connect Canva
+                                    </Button>
+                                ) : (
+                                    <Button
+                                        size="md"
+                                        isDisabled={!canEdit || !canvaLink.trim() || (!!canva && !canva.connected)}
+                                        isLoading={!!importing}
+                                        showTextWhileLoading
+                                        onClick={() => void importFromCanva()}
+                                    >
+                                        {importing ?? "Import from Canva"}
+                                    </Button>
+                                )}
                             </div>
-                            {canvaOffline && (
+                            {canvaNote && (
+                                <p className={cx("text-xs", canvaNote.kind === "ok" ? "text-success-primary" : "text-error-primary")}>{canvaNote.text}</p>
+                            )}
+                            {canva && canva.connected && (
                                 <p className="text-xs text-quaternary">
-                                    The link is kept with the import so the team can open the design later — the pages themselves come from the upload below.
+                                    Canva connected{canva.connectedBy ? ` by ${canva.connectedBy}` : ""}. The portal refreshes the token itself.
+                                    {canEdit && (
+                                        <>
+                                            {" "}
+                                            <button
+                                                type="button"
+                                                onClick={() => void disconnectCanva()}
+                                                disabled={canvaBusy}
+                                                className="font-semibold text-tertiary transition duration-100 ease-linear hover:text-error-primary disabled:opacity-50"
+                                            >
+                                                Disconnect
+                                            </button>
+                                        </>
+                                    )}
+                                </p>
+                            )}
+                            {canva && !canva.connected && canva.configured && (
+                                <p className="text-xs text-quaternary">
+                                    One-time step: Connect Canva signs the portal in to the HiddenGem Canva account, so pasting a design link pulls every page
+                                    in from then on. The link is kept with the import either way.
+                                </p>
+                            )}
+                            {canva && !canva.configured && (
+                                <p className="text-xs text-quaternary">
+                                    Canva isn't set up on the portal yet — the web team adds CANVA_CLIENT_ID and CANVA_CLIENT_SECRET in Netlify, then Connect
+                                    Canva appears here. Until then, upload the exported pages below.
                                 </p>
                             )}
                         </div>

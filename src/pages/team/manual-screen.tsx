@@ -338,6 +338,10 @@ const TABLES: { group: string; rows: { name: string; what: string }[] }[] = [
                 what: "The /dashboard hub's cards and tabs, document templates, and the prompt library.",
             },
             { name: "ghl_integrations", what: "GHL private tokens — server-only: no browser role can read or write it." },
+            {
+                name: "canva_connection / canva_oauth_states",
+                what: "The portal's Canva Connect API token pair (4-hour access token, rotating refresh token) and in-flight OAuth handshakes — server-only, like ghl_integrations.",
+            },
         ],
     },
     {
@@ -372,7 +376,11 @@ const FUNCTIONS: { name: string; what: string }[] = [
     },
     {
         name: "canva-import",
-        what: "Team-only. Exports a Canva design's pages through the Canva Connect API into the stories bucket, in three short steps (start / status / store). Needs CANVA_ACCESS_TOKEN in Netlify; without it the section falls back to uploading Canva's exported pages.",
+        what: "Team-only. Exports a Canva design's pages through the Canva Connect API into the stories bucket, in three short steps (start / status / store), spending the token canva-auth stored and refreshing it when it nears expiry.",
+    },
+    {
+        name: "canva-auth",
+        what: "Connect Canva: the one-time OAuth handshake (PKCE) that stores the team's Canva token pair in canva_connection, plus status / disconnect. Needs CANVA_CLIENT_ID and CANVA_CLIENT_SECRET in Netlify and the callback URL registered on the Canva integration.",
     },
 ];
 

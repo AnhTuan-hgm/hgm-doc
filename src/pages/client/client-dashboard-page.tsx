@@ -2579,7 +2579,13 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                         </aside>
 
                         {/* ── Main (scrolls) ── */}
-                        <div className="min-w-0 flex-1 overflow-y-auto">
+                        {/* `relative` makes this scroller the containing block for anything
+                            absolutely positioned inside it — React Aria's visually-hidden
+                            <input> in Checkbox/Radio/Switch is one. Without it those inputs
+                            resolve against <body>, escape the overflow clip, and stretch the
+                            document, so the window itself scrolls and the whole h-dvh shell
+                            (side menu included) slides off the top of the viewport. */}
+                        <div className="relative min-w-0 flex-1 overflow-y-auto">
                             {/* Fluid body — the card fills the canvas. Combined with the grey canvas's
                 own p-2 (8px), md:px-6 (24px) yields a 32px gap to the side menu and the
                 right edge; zero vertical padding keeps the card's top/bottom flush with
