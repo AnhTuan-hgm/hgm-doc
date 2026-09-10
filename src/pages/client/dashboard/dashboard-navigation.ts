@@ -201,15 +201,19 @@ export const JOURNEY_STEPS: {
         // we never ask for their Facebook password, and the form no longer asks either.
         items: [
             { label: "Instagram", note: "Logged in on the laptop you'll join from." },
-            { label: "TikTok", note: "Logged in, if you use it." },
             {
                 label: "Facebook",
                 note: "Logged in to your business page, so you can add us as a user. We never ask for your Facebook password.",
             },
+            { label: "TikTok", note: "Logged in, if you use it." },
             { label: "Domain", note: "Logged in wherever your domain is registered." },
             {
                 label: "Credit card",
                 note: "Have it on hand — we set up your Facebook ad account during the call and Meta requires a payment method.",
+            },
+            {
+                label: "Netlify",
+                note: "We'll walk you through creating an account on the call. Your landing page will be hosted there, which lets us set up proper tracking.",
             },
             { label: "Zoom", note: "Installed on your computer, so we can ask you to share your screen." },
         ],
