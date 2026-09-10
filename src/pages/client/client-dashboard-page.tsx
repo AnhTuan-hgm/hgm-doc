@@ -37,7 +37,7 @@ import { useNavigate, useSearchParams } from "react-router";
 import { Bar, BarChart, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, XAxis, YAxis } from "recharts";
 import { ChartTooltipContent } from "@/components/application/charts/charts-base";
 import { VideoAttach, VideoEmbed } from "@/components/application/video-block";
-import { WelcomeFlowSection } from "@/components/application/welcome-flow";
+import { WelcomeFlowSection, stepLabel } from "@/components/application/welcome-flow";
 import { Badge, BadgeWithDot, BadgeWithIcon } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
 import { ProgressBarCircle } from "@/components/base/progress-indicators/progress-circles";
@@ -139,7 +139,7 @@ import {
     overviewSectionNumber,
 } from "@/pages/client/dashboard/overview-doc";
 import { SuggestionBox, SuggestionContext, fetchSuggestions, sendSuggestions, withdrawSuggestion } from "@/pages/client/dashboard/suggestions";
-import { type Suggestion, applySuggestion, labelForKey, valueForKey } from "@/pages/client/dashboard/suggestions-model";
+import { type Suggestion, applySuggestion, flowFeedbackKey, isFlowFeedbackKey, labelForKey, valueForKey } from "@/pages/client/dashboard/suggestions-model";
 import { HostOnboardingFormPage, ensureHostOnboardingForm, hostOnboardingAnswers, hostOnboardingProgress } from "@/pages/client/host-onboarding-form-page";
 import { useSuppressFloatingThemeToggle, useTheme } from "@/providers/theme-provider";
 import { compressImageFile } from "@/utils/compress-image";
@@ -744,6 +744,8 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     /** What actually went wrong, so a failed send says why instead of "try again". */
     const [sendError, setSendError] = useState("");
     const foundationRevealed = (content.client_visible ?? DEFAULT_CLIENT_VISIBLE).includes("foundation");
+    /** The Welcome Email Flow shares the table: a client comments on emails the same way. */
+    const flowRevealed = (content.client_visible ?? DEFAULT_CLIENT_VISIBLE).includes("flow");
 
     const refreshSuggestions = useCallback(async () => {
         if (!slug || isTemplate) return;
@@ -754,13 +756,13 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
             if (signedInAsTeam) {
                 const { data, error } = await supabase.from("dashboard_suggestions").select("*").eq("slug", slug).order("created_at", { ascending: false });
                 if (!error && data) setSuggestions(data as Suggestion[]);
-            } else if (identityEmail && foundationRevealed) {
+            } else if (identityEmail && (foundationRevealed || flowRevealed)) {
                 setSuggestions(await fetchSuggestions(slug, identityEmail));
             }
         } catch {
             /* the section just shows no suggestions — nothing is lost, they're server-side */
         }
-    }, [slug, isTemplate, signedInAsTeam, identityEmail, foundationRevealed]);
+    }, [slug, isTemplate, signedInAsTeam, identityEmail, foundationRevealed, flowRevealed]);
     useEffect(() => {
         void refreshSuggestions();
     }, [refreshSuggestions]);
@@ -772,7 +774,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     for (const s of suggestions) if (s.status !== "pending" && !resolvedByKey.has(s.field_key)) resolvedByKey.set(s.field_key, s);
     /** Pending rows whose key no longer resolves (their row was deleted) — surfaced to
      *  the team above the document, since no field exists to hang them on. */
-    const orphanedPending = isTeam ? pendingSuggestions.filter((s) => valueForKey(foundation, s.field_key) === null) : [];
+    const orphanedPending = isTeam ? pendingSuggestions.filter((s) => !isFlowFeedbackKey(s.field_key) && valueForKey(foundation, s.field_key) === null) : [];
 
     const acceptSuggestion = (s: Suggestion) => {
         const patch = applySuggestion(foundation, s.field_key, s.suggested_value);
@@ -864,6 +866,54 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     /** The address a suggestion sent from this view would carry. */
     const suggestAuthor = identityEmail || (suggestAsTeam ? viewerEmail : "");
     const canSuggest = !isTeam && !isTemplate && foundationRevealed && !!suggestAuthor;
+
+    /* ── Client feedback on the welcome emails ──
+       Same table, same function, same identity rules as suggestion mode, under the
+       "welcomeFlow.{slot}" keys. The section renders; these do the reads and writes. */
+    const flowFeedback = suggestions.filter((s) => isFlowFeedbackKey(s.field_key));
+    const canFlowFeedback = !isTeam && !isTemplate && flowRevealed && !!suggestAuthor;
+    const sendFlowFeedback = async (slot: number, text: string, subjectNow: string) => {
+        if (!slug || !suggestAuthor) throw new Error("Sign in with your email to send feedback.");
+        const item = { fieldKey: flowFeedbackKey(slot), fieldLabel: `${stepLabel(slot)} · feedback`, currentValue: subjectNow, suggestedValue: text };
+        if (identityEmail) {
+            await sendSuggestions(slug, identityEmail, [item]);
+        } else {
+            // Team member previewing as the client — as themselves, like submitSuggestions.
+            // The function replaces the author's own open comment; do the same here.
+            await supabase
+                .from("dashboard_suggestions")
+                .delete()
+                .eq("slug", slug)
+                .eq("suggested_by", suggestAuthor)
+                .eq("status", "pending")
+                .eq("field_key", item.fieldKey);
+            const { error } = await supabase.from("dashboard_suggestions").insert({
+                slug,
+                field_key: item.fieldKey,
+                field_label: item.fieldLabel,
+                current_value: item.currentValue,
+                suggested_value: item.suggestedValue,
+                suggested_by: suggestAuthor,
+            });
+            if (error) throw new Error(error.message);
+        }
+        await refreshSuggestions();
+    };
+    const withdrawFlowFeedback = async (s: Suggestion) => {
+        if (!slug) return;
+        if (identityEmail) await withdrawSuggestion(slug, identityEmail, s.id);
+        else if (signedInAsTeam) await supabase.from("dashboard_suggestions").delete().eq("id", s.id).eq("status", "pending");
+        await refreshSuggestions();
+    };
+    /** Feedback is never "applied" anywhere — done or dismissed is the whole outcome. */
+    const resolveFlowFeedback = async (s: Suggestion, status: "accepted" | "declined") => {
+        await supabase
+            .from("dashboard_suggestions")
+            .update({ status, resolved_by: user?.email ?? "", resolved_at: new Date().toISOString() })
+            .eq("id", s.id)
+            .eq("status", "pending");
+        await refreshSuggestions();
+    };
 
     const suggestDraftCount = Object.entries(suggestDraft).filter(([key, value]) => {
         const live = valueForKey(foundation, key);
@@ -2912,6 +2962,14 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                 clientName={clientName}
                                                                 isLocked={isLocked}
                                                                 isTemplate={isTemplate}
+                                                                feedback={{
+                                                                    mode: isTeam ? "review" : canFlowFeedback ? "client" : "off",
+                                                                    items: flowFeedback,
+                                                                    author: suggestAuthor,
+                                                                    send: sendFlowFeedback,
+                                                                    withdraw: withdrawFlowFeedback,
+                                                                    resolve: resolveFlowFeedback,
+                                                                }}
                                                             />
                                                         </div>
                                                     </>
