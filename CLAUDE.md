@@ -118,9 +118,12 @@ Both follow the same access model: team writes go straight to Supabase under a
 team-only policy; the client's review goes through a Netlify function that checks their
 email against the dashboard's `allowed_emails` (`landing-page-review.mts`,
 `pinned-stories-review.mts`). `canva-import.mts` pulls a Canva design's pages into the
-`stories` bucket and needs `CANVA_ACCESS_TOKEN` (a Canva Connect API token) in the
-Netlify environment; without it the section falls back to uploading Canva's exported
-pages, which yields the same result.
+`stories` bucket using the token pair `canva-auth.mts` stores in `canva_connection` (a
+service-role-only table, like `ghl_integrations`) when a team member presses Connect
+Canva; `netlify/lib/canva.mts` refreshes it before its 4-hour expiry. Netlify needs
+`CANVA_CLIENT_ID` / `CANVA_CLIENT_SECRET` from the Canva Developer Portal integration,
+whose redirect URL is `https://hgmportal.com/.netlify/functions/canva-auth`. Without a
+connection the section falls back to uploading Canva's exported pages, same result.
 
 `client-dashboard-page.tsx` itself is still ~4,700 lines of one component. That
 body has not been split — doing so needs real prop-threading, so treat it as a

@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { CANVA_API, getCanvaAccessToken } from "../lib/canva.mts";
 import { NOT_CONFIGURED, callerEmail, isDashboardSlug, isTeamEmail, readAuthEnv } from "../lib/client-sources.mts";
 
 /**
@@ -20,19 +21,17 @@ import { NOT_CONFIGURED, callerEmail, isDashboardSlug, isTeamEmail, readAuthEnv 
  *   { action: "status", jobId }                          → { status: "in_progress" | "success", urls? }
  *   { action: "store",  slug, designId, urls, firstPage } → { pages: [{ page, url }] }   (≤ STORE_BATCH urls)
  *
- * CANVA_ACCESS_TOKEN is a Connect API user token with `design:content:read` and
- * `design:meta:read`. Connect tokens expire (4 h) and refresh tokens rotate on use, so a
- * static token in the Netlify environment is a stop-gap for testing: the durable setup is
- * an OAuth connect flow that stores the rotating refresh token server-side. Until one
- * exists, a missing or expired token returns `code: "canva_not_configured"` and the
- * section falls back to the AM uploading the pages Canva exports (Share → Download), which
- * yields the identical result — the pages, in Storage, arranged on the dashboard.
+ * The Canva token comes from ../lib/canva.mts: the pair the team stored by pressing
+ * "Connect Canva" (canva-auth.mts), refreshed there when it is near its 4-hour expiry.
+ * Nothing connected — or a refresh Canva refuses — returns `code: "canva_not_configured"`,
+ * the section offers Connect Canva, and the AM can still upload the pages Canva exports
+ * (Share → Download) for the identical result: the pages, in Storage, arranged on the
+ * dashboard.
  *
  * Images only. Canva exports a multi-page design's video as one MP4, not one per page,
  * so video slides are uploaded per page by the AM for now.
  */
 
-const CANVA_API = "https://api.canva.com/rest/v1";
 const STORE_BATCH = 5;
 const MAX_URLS = 60;
 // 1.5× the phone screen the client sees them on; a 1080-wide JPG would be ~3× heavier
@@ -74,13 +73,19 @@ export default async (req: Request) => {
     }
     const action = String(body.action ?? "");
 
-    const token = process.env.CANVA_ACCESS_TOKEN;
-    if (!token) {
-        return Response.json(
-            { error: "Canva isn't connected to the portal yet — upload the exported pages instead.", code: "canva_not_configured" },
-            { status: 501 },
-        );
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!serviceKey) return Response.json({ error: NOT_CONFIGURED }, { status: 500 });
+    const admin = createClient(auth.supabaseUrl, serviceKey);
+
+    const tokenResult = await getCanvaAccessToken(admin);
+    if ("error" in tokenResult) {
+        const error =
+            tokenResult.error === "not_connected"
+                ? "Canva isn't connected to the portal yet — press Connect Canva, or upload the exported pages instead."
+                : `The portal's Canva connection stopped working (${tokenResult.detail ?? "refresh refused"}) — connect it again.`;
+        return Response.json({ error, code: "canva_not_configured" }, { status: 501 });
     }
+    const token = tokenResult.token;
 
     /* ── start: confirm the design and kick off the export ── */
     if (action === "start") {
@@ -89,10 +94,7 @@ export default async (req: Request) => {
 
         const meta = await canvaFetch(token, `/designs/${designId}`);
         if (meta.status === 401 || meta.status === 403) {
-            return Response.json(
-                { error: "The portal's Canva connection has expired — upload the exported pages instead.", code: "canva_not_configured" },
-                { status: 501 },
-            );
+            return Response.json({ error: "Canva refused the portal's token — connect Canva again.", code: "canva_not_configured" }, { status: 501 });
         }
         if (meta.status === 404)
             return Response.json({ error: "Canva can't find that design. Is it shared with the HiddenGem team account?" }, { status: 404 });
@@ -133,9 +135,6 @@ export default async (req: Request) => {
         // Only Canva's own export host — never an arbitrary URL handed in by the browser.
         if (!urls.every((u) => /^https:\/\/export-download\.canva\.com\//.test(u))) return Response.json({ error: "Bad URL." }, { status: 400 });
 
-        const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-        if (!serviceKey) return Response.json({ error: NOT_CONFIGURED }, { status: 500 });
-        const admin = createClient(auth.supabaseUrl, serviceKey);
         const folder = `${slug}/${designId}/${String(body.batchId ?? Date.now())
             .replace(/[^a-zA-Z0-9-]/g, "")
             .slice(0, 32)}`;
