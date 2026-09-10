@@ -726,6 +726,83 @@ export const PinnedStoriesSection = ({
                 </div>
             )}
 
+            {/* ── Team settings, above the phone like Pinned Posts: the Canva source and how the section works ── */}
+            {canEdit && draft && (
+                <div className="mt-6 rounded-2xl bg-secondary p-4 ring-1 ring-secondary">
+                    <label className="flex flex-col gap-1">
+                        <span className="text-xs font-medium text-secondary">Canva design link</span>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <input
+                                type="url"
+                                value={canvaLink}
+                                onChange={(e) => setCanvaLink(e.target.value)}
+                                disabled={!!importing}
+                                placeholder="https://www.canva.com/design/…/edit"
+                                className={cx(inputCls, "min-w-60 flex-1 font-mono text-xs")}
+                                spellCheck={false}
+                            />
+                            {parseCanvaUrl(canvaLink) && (
+                                <Button
+                                    href={canvaEditUrl(parseCanvaUrl(canvaLink)!.id)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    color="secondary"
+                                    size="sm"
+                                    iconTrailing={LinkExternal01}
+                                >
+                                    Open
+                                </Button>
+                            )}
+                            {canva && !canva.connected && canva.configured ? (
+                                <Button size="sm" iconLeading={Link01} isLoading={canvaBusy} showTextWhileLoading onClick={() => void connectCanva()}>
+                                    Connect Canva
+                                </Button>
+                            ) : (
+                                <Button
+                                    size="sm"
+                                    iconLeading={Download01}
+                                    isDisabled={!parseCanvaUrl(canvaLink) || (!!canva && !canva.connected)}
+                                    isLoading={!!importing}
+                                    showTextWhileLoading
+                                    onClick={() => void importFromCanva()}
+                                >
+                                    {importing ?? "Import from Canva"}
+                                </Button>
+                            )}
+                        </div>
+                        {canvaLink.trim() && !parseCanvaUrl(canvaLink) && (
+                            <span className="text-xs text-warning-primary">That doesn't look like a Canva design link.</span>
+                        )}
+                        {!showImport && importErr && <span className="text-xs text-error-primary">{importErr}</span>}
+                        {canvaNote && (
+                            <span className={cx("text-xs", canvaNote.kind === "ok" ? "text-success-primary" : "text-error-primary")}>{canvaNote.text}</span>
+                        )}
+                        {canva && !canva.configured && (
+                            <span className="text-xs text-quaternary">Canva isn't set up on the portal yet — use Add pages to upload the export.</span>
+                        )}
+                        {importing === null && !importErr && (
+                            <span className="text-xs text-quaternary">
+                                Importing again adds every page to the tray; the highlights you've arranged stay as they are.
+                            </span>
+                        )}
+                    </label>
+                    <div className="mt-3 grid gap-2 text-xs text-tertiary sm:grid-cols-3">
+                        <p className="rounded-xl bg-primary px-3 py-2.5 ring-1 ring-secondary">
+                            <span className="font-semibold text-secondary">1 · Design in Canva.</span> One design, one page per slide, 9:16. Each highlight is a
+                            cover page followed by its slides. Paste its link above.
+                        </p>
+                        <p className="rounded-xl bg-primary px-3 py-2.5 ring-1 ring-secondary">
+                            <span className="font-semibold text-secondary">2 · Import and arrange.</span> Press Import from Canva, star the cover pages in the
+                            tray and press Build — or drag pages into highlights yourself. The phone follows.
+                        </p>
+                        <p className="rounded-xl bg-primary px-3 py-2.5 ring-1 ring-secondary">
+                            <span className="font-semibold text-secondary">3 · Publish and review.</span> Name each highlight, then publish. The client plays
+                            the set in this phone and leaves notes slide by slide, or approves it.
+                        </p>
+                    </div>
+                </div>
+            )}
+
             {/* ── The phone + its side panel ── */}
             {(live || (isTeam && draft)) && (
                 <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(260px,320px)_1fr]">
@@ -853,79 +930,6 @@ export const PinnedStoriesSection = ({
                                         </Button>
                                     )}
                                 </div>
-
-                                {/* The Canva source, always to hand — open the design, or pull its pages in again after editing it. Same row Pinned Posts has. */}
-                                {canEdit && (
-                                    <div className="border-b border-secondary bg-secondary px-5 py-4">
-                                        <label className="flex flex-col gap-1">
-                                            <span className="text-xs font-medium text-secondary">Canva design link</span>
-                                            <div className="flex flex-wrap items-center gap-2">
-                                                <input
-                                                    type="url"
-                                                    value={canvaLink}
-                                                    onChange={(e) => setCanvaLink(e.target.value)}
-                                                    disabled={!!importing}
-                                                    placeholder="https://www.canva.com/design/…/edit"
-                                                    className={cx(inputCls, "min-w-60 flex-1 font-mono text-xs")}
-                                                    spellCheck={false}
-                                                />
-                                                {parseCanvaUrl(canvaLink) && (
-                                                    <Button
-                                                        href={canvaEditUrl(parseCanvaUrl(canvaLink)!.id)}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        color="secondary"
-                                                        size="sm"
-                                                        iconTrailing={LinkExternal01}
-                                                    >
-                                                        Open
-                                                    </Button>
-                                                )}
-                                                {canva && !canva.connected && canva.configured ? (
-                                                    <Button
-                                                        size="sm"
-                                                        iconLeading={Link01}
-                                                        isLoading={canvaBusy}
-                                                        showTextWhileLoading
-                                                        onClick={() => void connectCanva()}
-                                                    >
-                                                        Connect Canva
-                                                    </Button>
-                                                ) : (
-                                                    <Button
-                                                        size="sm"
-                                                        iconLeading={Download01}
-                                                        isDisabled={!parseCanvaUrl(canvaLink) || (!!canva && !canva.connected)}
-                                                        isLoading={!!importing}
-                                                        showTextWhileLoading
-                                                        onClick={() => void importFromCanva()}
-                                                    >
-                                                        {importing ?? "Import from Canva"}
-                                                    </Button>
-                                                )}
-                                            </div>
-                                            {canvaLink.trim() && !parseCanvaUrl(canvaLink) && (
-                                                <span className="text-xs text-warning-primary">That doesn't look like a Canva design link.</span>
-                                            )}
-                                            {!showImport && importErr && <span className="text-xs text-error-primary">{importErr}</span>}
-                                            {canvaNote && (
-                                                <span className={cx("text-xs", canvaNote.kind === "ok" ? "text-success-primary" : "text-error-primary")}>
-                                                    {canvaNote.text}
-                                                </span>
-                                            )}
-                                            {canva && !canva.configured && (
-                                                <span className="text-xs text-quaternary">
-                                                    Canva isn't set up on the portal yet — use Add pages to upload the export.
-                                                </span>
-                                            )}
-                                            {importing === null && !importErr && (
-                                                <span className="text-xs text-quaternary">
-                                                    Importing again adds every page to the tray below; the highlights you've arranged stay as they are.
-                                                </span>
-                                            )}
-                                        </label>
-                                    </div>
-                                )}
 
                                 <div className="flex flex-col divide-y divide-border-secondary">
                                     {draft.highlights.length === 0 && (
