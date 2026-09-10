@@ -354,6 +354,39 @@ export interface DashboardContent {
     login_bg_url?: string;
     /** The team's internal Client Overview Document. Never rendered for a client — see OverviewDoc. */
     overview_doc?: Partial<OverviewDoc>;
+    /**
+     * The Website Setup Guide section — what the client has done towards hosting and, if they
+     * opted in, the AI website. Written by the client through the website-setup function
+     * (they are `anon`, so they can't write this row directly) and by the team through the
+     * ordinary Save. Optional: older rows predate it. See WebsiteSetup for the rule on what
+     * may live here.
+     */
+    website_setup?: WebsiteSetup;
+}
+
+/**
+ * Website Setup Guide answers.
+ *
+ * NEVER a password or an API key. This row is readable with the public anon key (see
+ * share_password above), so a secret stored here is a secret published. Account emails and
+ * provider names only — the logins themselves are handed over in the client's own
+ * password-gated owner guide (/owner-guide/{slug}), which is what the section links to.
+ */
+export interface WebsiteSetup {
+    /** The email the client registered their Netlify account under. */
+    netlify_email: string;
+    /** The client has confirmed the Netlify account exists. Required for every client. */
+    netlify_done: boolean;
+    /** "" = not answered yet, "yes" = wants the AI website, "no" = declined for now. */
+    ai_website: "" | "yes" | "no";
+    /** Per-service account details for the AI website, keyed by WebsiteSetupAccountId. */
+    accounts: Record<string, { value: string; done: boolean }>;
+    /** The web address the site should live at. */
+    domain: string;
+    /** Anything else the client wants the web team to know. */
+    notes: string;
+    /** ISO time of the client's last save through the function; absent for team edits. */
+    updated_at?: string;
 }
 
 export interface DashboardPageData {
