@@ -229,7 +229,7 @@ const DASHBOARD_GROUPS: { group: string; items: { label: string; note: string }[
         group: "Your forms (client input)",
         items: [
             {
-                label: "Onboarding form",
+                label: "Onboarding Form",
                 note: `Property facts, links and the four account logins (Instagram, TikTok, PMS, Domain Host) — ${TOTAL_QUESTIONS} questions, ${ESTIMATE_LABEL}, autosaving as the client types.`,
             },
             { label: "Brand Vision Form", note: "How the brand should look, sound and feel." },
@@ -253,7 +253,10 @@ const DASHBOARD_GROUPS: { group: string; items: { label: string; note: string }[
                 label: "Welcome Flow",
                 note: "The welcome email sequence, previewed per email. Finished emails from the email pipeline load automatically by client name.",
             },
-            { label: "Landing page / Repeat Flow / Pinned Posts / Example Reels", note: 'Placeholders marked "Soon" until each is built.' },
+            {
+                label: "Landing Page / Repeat Booking Flow / Pinned Posts / Pinned Stories / Example Reels",
+                note: 'Placeholders marked "Soon" until each is built.',
+            },
         ],
     },
     {

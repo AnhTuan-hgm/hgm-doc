@@ -18,6 +18,7 @@ import {
     Download01,
     Edit01,
     FileCheck02,
+    HelpCircle,
     Image01,
     LinkExternal01,
     MessageChatCircle,
@@ -36,6 +37,7 @@ import { motion } from "motion/react";
 import { useNavigate, useSearchParams } from "react-router";
 import { Bar, BarChart, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, XAxis, YAxis } from "recharts";
 import { ChartTooltipContent } from "@/components/application/charts/charts-base";
+import { LandingPageSection } from "@/components/application/landing-page-section";
 import { VideoAttach, VideoEmbed } from "@/components/application/video-block";
 import { WelcomeFlowSection } from "@/components/application/welcome-flow";
 import { Badge, BadgeWithDot, BadgeWithIcon } from "@/components/base/badges/badges";
@@ -51,6 +53,7 @@ import { useEditShortcuts } from "@/hooks/use-edit-shortcuts";
 import { type DashboardContent, type HostOnboardingData, type OverviewDoc, supabase } from "@/lib/supabase";
 import {
     CREDENTIAL_LABELS,
+    CREDENTIAL_LIST,
     type ClientOnboardingData,
     ClientOnboardingFormPage,
     ESTIMATE_LABEL,
@@ -136,6 +139,7 @@ import {
     OVERVIEW_COUNTED_FIELDS,
     OVERVIEW_RAIL,
     OVERVIEW_SECTIONS,
+    compileOverviewDocument,
     overviewSectionNumber,
 } from "@/pages/client/dashboard/overview-doc";
 import { SuggestionBox, SuggestionContext, fetchSuggestions, sendSuggestions, withdrawSuggestion } from "@/pages/client/dashboard/suggestions";
@@ -563,6 +567,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     const [pdfError, setPdfError] = useState(false);
     const [masterDocCopied, setMasterDocCopied] = useState(false);
     const [headerDocCopied, setHeaderDocCopied] = useState(false);
+    const [overviewCopied, setOverviewCopied] = useState(false);
     /** "Copied" flash on the Reviews working prompt (team-only block). */
     const [promptCopied, setPromptCopied] = useState(false);
     /* ── Master Document drafting (team-only) ──
@@ -1358,6 +1363,33 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
         }
         setHeaderDocCopied(true);
         setTimeout(() => setHeaderDocCopied(false), 1600);
+    };
+
+    /** The Client Overview brief, copied the same way — rich text for Google Docs, plain text behind it. */
+    const copyOverviewForDocs = async () => {
+        const compiled = compileOverviewDocument(overviewDoc);
+        const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        const html = [
+            `<h1>Client Overview — ${esc(overviewDoc.business_name.trim() || overviewDoc.client_name.trim() || "Client")}</h1>`,
+            `<p>${esc(`Generated: ${compiled.generatedOn}`)}</p>`,
+            ...compiled.sections.map((s, i) => `<h2>${i + 1}. ${esc(s.label)}</h2><p>${esc(s.value || "Not provided yet.").replace(/\n/g, "<br>")}</p>`),
+        ].join("");
+        try {
+            await navigator.clipboard.write([
+                new ClipboardItem({
+                    "text/html": new Blob([html], { type: "text/html" }),
+                    "text/plain": new Blob([compiled.doc], { type: "text/plain" }),
+                }),
+            ]);
+        } catch {
+            try {
+                await navigator.clipboard.writeText(compiled.doc);
+            } catch {
+                return;
+            }
+        }
+        setOverviewCopied(true);
+        setTimeout(() => setOverviewCopied(false), 1600);
     };
 
     /**
@@ -2396,7 +2428,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                     className="flex shrink-0 items-center gap-1.5 rounded-lg bg-brand-solid px-3.5 py-2 text-[13px] font-semibold text-white transition hover:opacity-90"
                                                 >
                                                     <Plus className="size-4" aria-hidden="true" />
-                                                    Create dashboard for the client
+                                                    Create dashboard for a client
                                                 </button>
                                             </div>
                                         )}
@@ -2738,7 +2770,9 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                                 )
                                                                             )}
                                                                         </div>
-                                                                        <p className="mt-1.5 text-sm text-pretty text-tertiary">{step.detail}</p>
+                                                                        {step.detail && (
+                                                                            <p className="mt-1.5 text-sm text-pretty text-tertiary">{step.detail}</p>
+                                                                        )}
 
                                                                         {!step.done && step.progress && step.progress.total > 0 && (
                                                                             <div className="mt-3">
@@ -2791,7 +2825,8 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                                                     item.link &&
                                                                                                     isTeam && (
                                                                                                         <span className="text-xs text-warning-primary">
-                                                                                                            No link set yet
+                                                                                                            No link set — add it under
+                                                                                                            Onboarding links.
                                                                                                         </span>
                                                                                                     )
                                                                                                 )}
@@ -2825,10 +2860,14 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                                 !step.done &&
                                                                                 (step.requires && !journeySteps.find((x) => x.id === step.requires)?.done ? (
                                                                                     <span className="text-xs text-quaternary">
-                                                                                        Available once{" "}
-                                                                                        {journeySteps.find((x) => x.id === step.requires)?.label ??
-                                                                                            "the previous step"}{" "}
-                                                                                        is done
+                                                                                        {step.blockedNote ?? (
+                                                                                            <>
+                                                                                                Available once{" "}
+                                                                                                {journeySteps.find((x) => x.id === step.requires)?.label ??
+                                                                                                    "the previous step"}{" "}
+                                                                                                is done
+                                                                                            </>
+                                                                                        )}
                                                                                     </span>
                                                                                 ) : step.href === KICKOFF_CALENDLY ? (
                                                                                     // Booking opens over the dashboard instead of in a new
@@ -2853,9 +2892,25 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                                         {step.hrefLabel ?? "Open link"}
                                                                                     </Button>
                                                                                 ))}
-                                                                            {/* A step whose booking page comes off the row has nothing to
-                                                                                offer until an AM pastes it in. The client is told to expect
-                                                                                it; the team is told to go and set it. */}
+                                                                            {/* Walkthrough for a step people get stuck on, beside the action
+                                                                                itself rather than behind the Help menu — a client who can't
+                                                                                work out how to join won't go looking for it elsewhere. */}
+                                                                            {step.helpHref && !step.done && (
+                                                                                <Button
+                                                                                    size="sm"
+                                                                                    color="link-color"
+                                                                                    href={step.helpHref}
+                                                                                    target="_blank"
+                                                                                    rel="noopener noreferrer"
+                                                                                    iconLeading={HelpCircle}
+                                                                                >
+                                                                                    {step.helpLabel ?? "How to do this"}
+                                                                                </Button>
+                                                                            )}
+                                                                            {/* A step whose link comes off the row has nothing to offer until
+                                                                                an AM pastes it in. The client is told to expect it; the team
+                                                                                is told to go and set it. Worded for any link, not just a
+                                                                                booking page — the Google Chat step comes through here too. */}
                                                                             {step.hrefFrom && !step.href && !step.done && (
                                                                                 <span
                                                                                     className={cx(
@@ -2864,8 +2919,9 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                                     )}
                                                                                 >
                                                                                     {isTeam
-                                                                                        ? "No booking link set — add it under Onboarding links."
-                                                                                        : "Your Account Manager will send you a booking link."}
+                                                                                        ? "No link set — add it under Onboarding links."
+                                                                                        : (step.pendingNote ??
+                                                                                          "Your Account Manager will send you this link.")}
                                                                                 </span>
                                                                             )}
                                                                             {/* AM tick, edit mode only. Auto steps get no tick:
@@ -2900,6 +2956,25 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                         {/* ── Section content (driven by the side menu) ── */}
                                         <div className="mt-10">
                                             <div className="min-w-0">
+                                                {activeSection === "landing" && (
+                                                    <>
+                                                        {/* Renders its own component (own heading included), same reasoning
+                                                            as Welcome Flow just below it. */}
+                                                        <SectionEyebrow section={activeSection} />
+                                                        <div className="mt-6">
+                                                            <LandingPageSection
+                                                                slug={slug}
+                                                                clientName={clientName}
+                                                                isTeam={isTeam}
+                                                                isLocked={isLocked}
+                                                                isTemplate={isTemplate}
+                                                                teamName={user?.name ?? user?.email ?? ""}
+                                                                clientEmail={identityEmail}
+                                                            />
+                                                        </div>
+                                                    </>
+                                                )}
+
                                                 {activeSection === "flow" && (
                                                     <>
                                                         {/* This section renders its own component, so it was the one
@@ -2943,9 +3018,9 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                 {CREDENTIAL_LABELS.length > 0 && (
                                                                     <div className="mt-5 max-w-2xl rounded-xl bg-secondary px-4 py-3 ring-1 ring-secondary">
                                                                         <p className="text-sm text-secondary">
-                                                                            <span className="font-semibold text-primary">Worth having to hand:</span> this form
+                                                                            <span className="font-semibold text-primary">Worth having on hand:</span> This form
                                                                             asks for a few account logins so we can set things up for you —{" "}
-                                                                            {CREDENTIAL_LABELS.join(", ")}.
+                                                                            {CREDENTIAL_LIST}.
                                                                         </p>
                                                                     </div>
                                                                 )}
@@ -2977,7 +3052,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                         </p>
                                                                         <p className="mt-0.5 text-sm text-tertiary" aria-live="polite">
                                                                             {isTemplate ? (
-                                                                                "Preview of the form every client fills in first."
+                                                                                "Preview of the form every client completes during onboarding."
                                                                             ) : intakeStatus === "error" ? (
                                                                                 "Check your connection and try again."
                                                                             ) : !intakeReady ? (
@@ -3304,6 +3379,14 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                     {overviewBusy ? "Reading their answers…" : "Draft from the onboarding form"}
                                                                 </Button>
                                                             )}
+                                                            <Button
+                                                                size="sm"
+                                                                color="secondary"
+                                                                iconLeading={overviewCopied ? Check : Copy01}
+                                                                onClick={() => void copyOverviewForDocs()}
+                                                            >
+                                                                {overviewCopied ? "Copied!" : "Copy document"}
+                                                            </Button>
                                                             <span className="text-sm text-quaternary tabular-nums">
                                                                 {OVERVIEW_SECTIONS.length + 2} sections · {overviewFilled} of {OVERVIEW_COUNTED_FIELDS.length}{" "}
                                                                 fields filled
@@ -6130,7 +6213,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                             <h2 className="text-display-xs font-semibold text-primary">Questions about your dashboard?</h2>
                                                             <h3 className="mt-3 text-sm font-semibold text-brand-secondary">Contact us</h3>
                                                             <p className="mt-1.5 max-w-xl text-sm text-tertiary">
-                                                                Our team is here to help. Reach out to HiddenGem about your brand, setup, or results anytime.
+                                                                Our team is here to help. Reach out to HiddenGem about your brand, setup or results anytime.
                                                             </p>
                                                             <div className="mt-5">
                                                                 <Button href={CONTACT_MAILTO} size="lg" color="primary" iconTrailing={ArrowRight}>
