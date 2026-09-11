@@ -331,10 +331,16 @@ export const PinnedStoriesSection = ({
     };
 
     const startDraftWith = (pages: StorySlide[], source: StoryDraft["source"]) => {
-        // A second import while a draft is open adds to it (that's how a video page joins an
-        // image set) rather than throwing the AM's arrangement away.
+        // A second import while a draft is open never throws the AM's arrangement away. From
+        // Canva it REPLACES the tray (the design's current pages, once), so pressing the button
+        // twice never stacks forty pages; an upload adds to it, since that is how a video page
+        // joins an image set.
         const next: StoryDraft = draft
-            ? { ...draft, unassigned: [...draft.unassigned, ...pages], source: source.designId || !draft.source.designId ? source : draft.source }
+            ? {
+                  ...draft,
+                  unassigned: source.via === "canva" ? pages : [...draft.unassigned, ...pages],
+                  source: source.designId || !draft.source.designId ? source : draft.source,
+              }
             : draftFromPages(pages, source);
         void persist({ ...data, draft: next });
         setPosition(PROFILE);
@@ -782,7 +788,7 @@ export const PinnedStoriesSection = ({
                         )}
                         {importing === null && !importErr && (
                             <span className="text-xs text-quaternary">
-                                Importing again adds every page to the tray; the highlights you've arranged stay as they are.
+                                The pages land below. Importing again refreshes them from the design; the highlights you've arranged stay as they are.
                             </span>
                         )}
                     </label>
@@ -800,6 +806,120 @@ export const PinnedStoriesSection = ({
                             the set in this phone and leaves notes slide by slide, or approves it.
                         </p>
                     </div>
+
+                    {/* ── Imported pages, right under the link they came from. Not yet in a highlight; also a drop target, to unplace. ── */}
+                    {(draft.unassigned.length > 0 || dragId) && (
+                        <div
+                            className={cx(
+                                "mt-4 flex flex-col gap-3 rounded-xl p-3 ring-1 ring-secondary transition duration-100 ease-linear",
+                                over === "tray" ? "bg-brand-primary" : "bg-primary",
+                            )}
+                            {...(canEdit ? dropZone("tray", (id) => toTray(id)) : {})}
+                        >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <p className="text-sm font-semibold text-primary">
+                                    Pages to place <span className="font-normal text-quaternary">· {draft.unassigned.length}</span>
+                                </p>
+                                {canEdit && draft.unassigned.length > 0 && (
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <span className="text-xs text-tertiary">
+                                            {coverPicks.size
+                                                ? `${coverPicks.size} icon${coverPicks.size === 1 ? "" : "s"} starred`
+                                                : "Star the icon pages, then"}
+                                        </span>
+                                        <Button
+                                            size="sm"
+                                            color={coverPicks.size ? "primary" : "secondary"}
+                                            iconLeading={Star01}
+                                            isDisabled={!coverPicks.size}
+                                            onClick={buildFromCovers}
+                                        >
+                                            Build {coverPicks.size || ""} highlight{coverPicks.size === 1 ? "" : "s"}
+                                        </Button>
+                                    </div>
+                                )}
+                            </div>
+                            <div className="flex gap-3 overflow-x-auto pb-1">
+                                {draft.unassigned.map((s) => {
+                                    const picked = coverPicks.has(s.id);
+                                    return (
+                                        <div
+                                            key={s.id}
+                                            className={cx(
+                                                "group relative flex w-[100px] shrink-0 flex-col gap-1.5 transition duration-100 ease-linear",
+                                                dragId === s.id && "opacity-40",
+                                            )}
+                                            draggable={canEdit}
+                                            onDragStart={(e) => onDragStart(e, s.id)}
+                                            onDragEnd={onDragEnd}
+                                        >
+                                            <div
+                                                className={cx(
+                                                    "relative aspect-9/16 overflow-hidden rounded-lg bg-secondary ring-1 transition duration-100 ease-linear",
+                                                    canEdit && "cursor-grab active:cursor-grabbing",
+                                                    picked ? "ring-2 ring-brand" : "ring-secondary",
+                                                )}
+                                            >
+                                                <SlideThumb slide={s} className="pointer-events-none" />
+                                                <span className="pointer-events-none absolute top-1 left-1 rounded bg-primary-solid/70 px-1 text-[10px] font-semibold text-white tabular-nums">
+                                                    p{s.page}
+                                                </span>
+                                                {canEdit && s.kind === "image" && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => togglePick(s.id)}
+                                                        aria-pressed={picked}
+                                                        aria-label={picked ? "Not an icon" : "Mark as the icon"}
+                                                        className={cx(
+                                                            "absolute top-1 right-1 flex size-6 items-center justify-center rounded-full transition duration-100 ease-linear",
+                                                            picked
+                                                                ? "bg-brand-solid text-white"
+                                                                : "bg-primary-solid/60 text-white opacity-0 group-focus-within:opacity-100 group-hover:opacity-100",
+                                                        )}
+                                                    >
+                                                        <Star01 className="size-3.5" />
+                                                    </button>
+                                                )}
+                                                {picked && (
+                                                    <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-brand-solid py-0.5 text-center text-[10px] font-semibold text-white">
+                                                        Icon
+                                                    </span>
+                                                )}
+                                            </div>
+                                            {canEdit && (
+                                                <div className="flex items-center justify-between gap-1">
+                                                    <select
+                                                        aria-label={`Add page ${s.page} to a highlight`}
+                                                        value=""
+                                                        onChange={(e) => e.target.value && setDraft((d) => moveSlideTo(d, s.id, e.target.value))}
+                                                        className={cx(inputCls, "min-w-0 flex-1 px-1 py-0.5 text-[11px]")}
+                                                    >
+                                                        <option value="">Add to…</option>
+                                                        {draft.highlights.map((h) => (
+                                                            <option key={h.id} value={h.id}>
+                                                                {h.title || "Untitled"}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => deleteUnassigned(s.id)}
+                                                        className="rounded p-1 text-fg-quaternary transition duration-100 ease-linear hover:text-error-primary"
+                                                        aria-label="Discard page"
+                                                    >
+                                                        <Trash01 className="size-3.5" />
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                                {draft.unassigned.length === 0 && (
+                                    <p className="py-3 text-xs text-quaternary">Drop a slide here to take it out of its highlight.</p>
+                                )}
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -920,8 +1040,8 @@ export const PinnedStoriesSection = ({
                                     <div>
                                         <p className="text-md font-semibold text-primary">Arrange the highlights</p>
                                         <p className="text-sm text-pretty text-tertiary">
-                                            Drag pages into highlights and onto icon circles; the phone follows. Faster: star the icon pages in the tray and
-                                            press Build — every page after an icon joins that highlight.
+                                            Drag pages from the tray above into highlights and onto icon circles; the phone follows. Faster: star the icon pages
+                                            and press Build — every page after an icon joins that highlight.
                                         </p>
                                     </div>
                                     {canEdit && (
@@ -1099,120 +1219,6 @@ export const PinnedStoriesSection = ({
                                         );
                                     })}
                                 </div>
-
-                                {/* The tray — pages not yet in a highlight. Also a drop target, to unplace. */}
-                                {(draft.unassigned.length > 0 || dragId) && (
-                                    <div
-                                        className={cx(
-                                            "flex flex-col gap-3 border-t border-secondary px-5 py-4 transition duration-100 ease-linear",
-                                            over === "tray" ? "bg-brand-primary" : "bg-secondary",
-                                        )}
-                                        {...(canEdit ? dropZone("tray", (id) => toTray(id)) : {})}
-                                    >
-                                        <div className="flex flex-wrap items-center justify-between gap-2">
-                                            <p className="text-sm font-semibold text-primary">
-                                                Pages to place <span className="font-normal text-quaternary">· {draft.unassigned.length}</span>
-                                            </p>
-                                            {canEdit && draft.unassigned.length > 0 && (
-                                                <div className="flex flex-wrap items-center gap-2">
-                                                    <span className="text-xs text-tertiary">
-                                                        {coverPicks.size
-                                                            ? `${coverPicks.size} icon${coverPicks.size === 1 ? "" : "s"} starred`
-                                                            : "Star the icon pages, then"}
-                                                    </span>
-                                                    <Button
-                                                        size="sm"
-                                                        color={coverPicks.size ? "primary" : "secondary"}
-                                                        iconLeading={Star01}
-                                                        isDisabled={!coverPicks.size}
-                                                        onClick={buildFromCovers}
-                                                    >
-                                                        Build {coverPicks.size || ""} highlight{coverPicks.size === 1 ? "" : "s"}
-                                                    </Button>
-                                                </div>
-                                            )}
-                                        </div>
-                                        <div className="flex gap-3 overflow-x-auto pb-1">
-                                            {draft.unassigned.map((s) => {
-                                                const picked = coverPicks.has(s.id);
-                                                return (
-                                                    <div
-                                                        key={s.id}
-                                                        className={cx(
-                                                            "group relative flex w-[100px] shrink-0 flex-col gap-1.5 transition duration-100 ease-linear",
-                                                            dragId === s.id && "opacity-40",
-                                                        )}
-                                                        draggable={canEdit}
-                                                        onDragStart={(e) => onDragStart(e, s.id)}
-                                                        onDragEnd={onDragEnd}
-                                                    >
-                                                        <div
-                                                            className={cx(
-                                                                "relative aspect-9/16 overflow-hidden rounded-lg bg-primary ring-1 transition duration-100 ease-linear",
-                                                                canEdit && "cursor-grab active:cursor-grabbing",
-                                                                picked ? "ring-2 ring-brand" : "ring-secondary",
-                                                            )}
-                                                        >
-                                                            <SlideThumb slide={s} className="pointer-events-none" />
-                                                            <span className="pointer-events-none absolute top-1 left-1 rounded bg-primary-solid/70 px-1 text-[10px] font-semibold text-white tabular-nums">
-                                                                p{s.page}
-                                                            </span>
-                                                            {canEdit && s.kind === "image" && (
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => togglePick(s.id)}
-                                                                    aria-pressed={picked}
-                                                                    aria-label={picked ? "Not an icon" : "Mark as the icon"}
-                                                                    className={cx(
-                                                                        "absolute top-1 right-1 flex size-6 items-center justify-center rounded-full transition duration-100 ease-linear",
-                                                                        picked
-                                                                            ? "bg-brand-solid text-white"
-                                                                            : "bg-primary-solid/60 text-white opacity-0 group-focus-within:opacity-100 group-hover:opacity-100",
-                                                                    )}
-                                                                >
-                                                                    <Star01 className="size-3.5" />
-                                                                </button>
-                                                            )}
-                                                            {picked && (
-                                                                <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-brand-solid py-0.5 text-center text-[10px] font-semibold text-white">
-                                                                    Cover
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                        {canEdit && (
-                                                            <div className="flex items-center justify-between gap-1">
-                                                                <select
-                                                                    aria-label={`Add page ${s.page} to a highlight`}
-                                                                    value=""
-                                                                    onChange={(e) => e.target.value && setDraft((d) => moveSlideTo(d, s.id, e.target.value))}
-                                                                    className={cx(inputCls, "min-w-0 flex-1 px-1 py-0.5 text-[11px]")}
-                                                                >
-                                                                    <option value="">Add to…</option>
-                                                                    {draft.highlights.map((h) => (
-                                                                        <option key={h.id} value={h.id}>
-                                                                            {h.title || "Untitled"}
-                                                                        </option>
-                                                                    ))}
-                                                                </select>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => deleteUnassigned(s.id)}
-                                                                    className="rounded p-1 text-fg-quaternary transition duration-100 ease-linear hover:text-error-primary"
-                                                                    aria-label="Discard page"
-                                                                >
-                                                                    <Trash01 className="size-3.5" />
-                                                                </button>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                );
-                                            })}
-                                            {draft.unassigned.length === 0 && (
-                                                <p className="py-3 text-xs text-quaternary">Drop a slide here to take it out of its highlight.</p>
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
 
                                 {canEdit && (
                                     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-secondary px-5 py-4">
