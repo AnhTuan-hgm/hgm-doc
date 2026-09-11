@@ -5,7 +5,7 @@ import {
     ArrowRight,
     Check,
     Home02,
-    InfoCircle,
+    Lock01,
     Mail01,
     Microphone01,
     Plus,
@@ -51,6 +51,11 @@ type Question = {
     upload?: boolean;
     /** Renders two inputs (username + password, stored as {field}__user / {field}__pass) plus a trust note. */
     credentials?: boolean;
+    /** How this login reads inside the "Worth having on hand" sentence. The field label is a
+        heading ("Domain Host"), which is not how it reads mid-sentence; set this to override
+        it. Which logins appear in the list is still derived from `credentials`, so the two
+        cannot drift apart. */
+    credentialLabel?: string;
     /** Adds a public-handle input above the login fields (stored as {field}__handle) —
         the @name guests see, distinct from the login username which is often an email. */
     handle?: { label: string; placeholder: string };
@@ -196,6 +201,7 @@ const SECTIONS: SectionDef[] = [
                 hint: "Your booking system, and the login we use to connect calendar, rates and availability to the new website.",
                 required: true,
                 credentials: true,
+                credentialLabel: "your Property Management System (PMS)",
                 platform: {
                     field: "pms",
                     label: "Which PMS do you use?",
@@ -210,6 +216,7 @@ const SECTIONS: SectionDef[] = [
                 hint: "Where your domain is registered, and the login we use for DNS configuration and technical setup.",
                 required: true,
                 credentials: true,
+                credentialLabel: "your domain host",
                 platform: {
                     field: "domainPlatform",
                     label: "Where is your domain registered?",
@@ -350,8 +357,19 @@ export const TOTAL_QUESTIONS = QUESTION_STEPS.length;
  * to their password manager before they start.
  */
 export const CREDENTIAL_LABELS = SECTIONS.flatMap((sec) =>
-    sec.questions.filter((q) => q.credentials).map((q) => q.label.replace(/\s*Login$/i, "").replace(/^Your\s+/i, "")),
+    sec.questions
+        .filter((q) => q.credentials)
+        .map((q) => q.credentialLabel ?? q.label.replace(/\s*Login$/i, "").replace(/^Your\s+/i, "")),
 );
+
+/**
+ * The same labels as one sentence fragment — commas with "and" before the last, no
+ * Oxford comma, matching the rest of the site ("look, sound and feel").
+ */
+export const CREDENTIAL_LIST =
+    CREDENTIAL_LABELS.length > 1
+        ? `${CREDENTIAL_LABELS.slice(0, -1).join(", ")} and ${CREDENTIAL_LABELS[CREDENTIAL_LABELS.length - 1]}`
+        : CREDENTIAL_LABELS.join("");
 
 /**
  * The welcome copy, exported so the client dashboard's Onboarding Form section shows the
@@ -359,9 +377,9 @@ export const CREDENTIAL_LABELS = SECTIONS.flatMap((sec) =>
  * two versions of the truth about what the form asks for.
  */
 export const ONBOARDING_INTRO =
-    "To ensure a smooth and efficient launch of your marketing funnel, please complete this form with as much detail as possible. Your responses help our team understand your business, branding, and target audience so we can get started promptly.";
+    "To ensure a smooth and efficient launch of your marketing funnel, please complete this form with as much detail as possible. Your responses help our team understand your business, branding and target audience so we can get started promptly.";
 export const ONBOARDING_LEAD_TIME =
-    "completing this form at least 12 hours before our scheduled call allows our team to review your responses and prepare a customized strategy.";
+    "Please complete this form at least 12 hours before our scheduled call so our team can review your responses and prepare a customised strategy.";
 export const ONBOARDING_SAVES_NOTE = "Your answers save as you go, so you can stop and come back to it.";
 
 /**
@@ -635,7 +653,7 @@ const TextQuestion = ({
 /** Reassurance shown under credential questions — clients are sharing real logins. */
 const SafeNote = () => (
     <div className="mt-6 flex max-w-xl items-start gap-2.5 rounded-xl bg-secondary px-4 py-3">
-        <InfoCircle className="mt-0.5 size-4 shrink-0 text-fg-quaternary" aria-hidden="true" />
+        <Lock01 className="mt-0.5 size-4 shrink-0 text-fg-quaternary" aria-hidden="true" />
         <p className="text-sm text-tertiary">
             <span className="font-semibold text-secondary">Your details are safe.</span> Everything you enter is sent over an encrypted connection, stored
             privately, and used only by your dedicated HiddenGem team to set up your accounts — never shared with anyone else. You're welcome to update or
@@ -1324,8 +1342,8 @@ export const ClientOnboardingFormPage = ({
                                     {CREDENTIAL_LABELS.length > 0 && (
                                         <div className="mt-6 max-w-xl rounded-xl bg-secondary px-4 py-3 ring-1 ring-secondary">
                                             <p className="text-sm text-secondary">
-                                                <span className="font-semibold text-primary">Worth having to hand:</span> this form asks for a few account
-                                                logins so we can set things up for you — {CREDENTIAL_LABELS.join(", ")}.
+                                                <span className="font-semibold text-primary">Worth having on hand:</span> This form asks for a few account
+                                                logins so we can set things up for you — {CREDENTIAL_LIST}.
                                             </p>
                                         </div>
                                     )}

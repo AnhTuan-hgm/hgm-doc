@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { isFlowFeedbackKey } from "@/pages/client/dashboard/suggestions-model";
 
 /**
  * Attention feed for the header notification bell (icon-rail.tsx HeaderBell).
@@ -44,7 +45,7 @@ export async function fetchAttentionItems(): Promise<AttentionItem[]> {
         // Client edit suggestions awaiting AM review. Non-team sessions get a
         // permission-denied error (anon has no grant at all), which the error
         // check below turns into a silent no-op.
-        supabase.from("dashboard_suggestions").select("slug").eq("status", "pending"),
+        supabase.from("dashboard_suggestions").select("slug, field_key").eq("status", "pending"),
     ]);
 
     const items: AttentionItem[] = [];
@@ -89,17 +90,36 @@ export async function fetchAttentionItems(): Promise<AttentionItem[]> {
         }
     }
 
-    // 4) Client suggestions on Master Brand Documents awaiting review
+    // 4) Client suggestions awaiting review — document edits and welcome-email feedback
+    //    share a table but are different jobs, so they get separate lines.
     if (!suggestionsRes.error && suggestionsRes.data && suggestionsRes.data.length > 0) {
-        const slugs = [...new Set(suggestionsRes.data.map((r) => r.slug as string))];
-        const n = suggestionsRes.data.length;
-        items.push({
-            id: "suggestions",
-            kind: "suggestions",
-            title: `${n} client edit suggestion${n === 1 ? "" : "s"} to review`,
-            description: `On ${slugs.length} dashboard${slugs.length === 1 ? "" : "s"} — accept or decline in the Master Brand Document`,
-            to: slugs.length === 1 ? `/${slugs[0]}#foundation` : "/dashboard?dept=clients",
-        });
+        const rows = suggestionsRes.data as { slug: string; field_key: string }[];
+        const edits = rows.filter((r) => !isFlowFeedbackKey(r.field_key));
+        const notes = rows.filter((r) => isFlowFeedbackKey(r.field_key));
+        const dashboards = (list: { slug: string }[]) => {
+            const slugs = [...new Set(list.map((r) => r.slug))];
+            return { slugs, label: `${slugs.length} dashboard${slugs.length === 1 ? "" : "s"}` };
+        };
+        if (edits.length > 0) {
+            const { slugs, label } = dashboards(edits);
+            items.push({
+                id: "suggestions",
+                kind: "suggestions",
+                title: `${edits.length} client edit suggestion${edits.length === 1 ? "" : "s"} to review`,
+                description: `On ${label} — accept or decline in the Master Brand Document`,
+                to: slugs.length === 1 ? `/${slugs[0]}#foundation` : "/dashboard?dept=clients",
+            });
+        }
+        if (notes.length > 0) {
+            const { slugs, label } = dashboards(notes);
+            items.push({
+                id: "flow-feedback",
+                kind: "suggestions",
+                title: `${notes.length} client comment${notes.length === 1 ? "" : "s"} on welcome emails`,
+                description: `On ${label} — read and mark done in the Welcome Email Flow`,
+                to: slugs.length === 1 ? `/${slugs[0]}#flow` : "/dashboard?dept=clients",
+            });
+        }
     }
 
     // 2) Open docs requests / bugs (bugs + high priority first, cap at 4)

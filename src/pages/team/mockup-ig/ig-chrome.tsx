@@ -77,10 +77,26 @@ export const IG_SCREEN = { w: 402, h: 874 } as const;
  * `origin-top-left` the default 50% 50% origin leaves the stage floating in the
  *                   middle of a box it no longer fills.
  */
-export const IgScreen = ({ label, className, children }: { label: string; className?: string; children: React.ReactNode }) => (
+export const IgScreen = ({
+    label,
+    className,
+    children,
+    interactive = false,
+}: {
+    label: string;
+    className?: string;
+    children: React.ReactNode;
+    /**
+     * The stage is a picture (`role="img"`) by default — every /mockup-ig surface is. The
+     * client dashboard's Pinned Stories player puts real buttons inside it, and a button
+     * inside an image role is invisible to assistive tech, so that caller opts into a
+     * labelled group instead. The stage itself is unchanged.
+     */
+    interactive?: boolean;
+}) => (
     <div
         data-ig-fit
-        role="img"
+        role={interactive ? "group" : "img"}
         aria-label={label}
         className={cx(
             "ig-surface @container aspect-402/874 w-full max-w-[402px] overflow-hidden bg-(--ig-canvas)",

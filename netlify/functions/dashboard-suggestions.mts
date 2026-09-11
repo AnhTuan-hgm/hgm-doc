@@ -16,6 +16,10 @@ import { createClient } from "@supabase/supabase-js";
  * save path. So the worst a caller with a stolen email + slug pair can do is file
  * suggestions an AM will read and decline. Keep it that way.
  *
+ * The same rows also carry a client's feedback on the welcome emails, under field keys
+ * "welcomeFlow.{0-8}" (see suggestions-model.ts). Nothing here treats them differently
+ * except the visibility check: they need the flow section shared, not the foundation.
+ *
  * Actions (POST, JSON):
  *   { action: "list",     slug, email }         → { suggestions: [...] }
  *   { action: "create",   slug, email, items }  → { ok: true, created }
@@ -83,21 +87,23 @@ export default async (req: Request) => {
     }
 
     if (action === "create") {
-        // Suggesting requires the Master Brand section to actually be shared with THIS
-        // person. Access is per person now: their own section list wins where they have
-        // one, and only a caller with no list of their own falls back to the dashboard
-        // default. Read from the row, never from anything the browser sends.
+        // Suggesting requires the section the key belongs to be shared with the client:
+        // feedback on a welcome email ("welcomeFlow.3") needs the flow shared, feedback or an
+        // approval on a pinned post ("pinnedposts.{postId}.feedback|approve") needs Pinned
+        // Posts shared, everything else is a Master Brand Document edit and needs the
+        // foundation shared.
+        //
+        // Shared with THIS person, not with the dashboard: access is per person, so their own
+        // section list wins where they have one and only a caller without one falls back to
+        // the dashboard default. Read from the row, never from anything the browser sends.
         const users = Array.isArray(data.dashboard_users) ? (data.dashboard_users as Record<string, unknown>[]) : [];
         const me = users.find((u) => norm(u.email) === email);
-        const sections = Array.isArray(me?.sections)
-            ? (me.sections as unknown[])
-            : Array.isArray(data.client_visible)
-              ? (data.client_visible as unknown[])
-              : [];
-        if (!sections.includes("foundation")) return Response.json({ error: "Not allowed." }, { status: 403 });
+        const visible = Array.isArray(me?.sections) ? (me.sections as unknown[]) : Array.isArray(data.client_visible) ? (data.client_visible as unknown[]) : [];
+        const sectionFor = (key: string) => (key.startsWith("welcomeFlow.") ? "flow" : key.startsWith("pinnedposts.") ? "pinnedposts" : "foundation");
 
         const items = Array.isArray(body.items) ? (body.items as Record<string, unknown>[]) : [];
         if (items.length === 0 || items.length > MAX_ITEMS) return Response.json({ error: "Bad items." }, { status: 400 });
+
         const clean = items.map((i) => ({
             slug,
             field_key: String(i.fieldKey ?? ""),
@@ -113,6 +119,7 @@ export default async (req: Request) => {
             if (c.current_value.length > MAX_VALUE || c.suggested_value.length > MAX_VALUE) {
                 return Response.json({ error: "Suggestion too long." }, { status: 400 });
             }
+            if (!visible.includes(sectionFor(c.field_key))) return Response.json({ error: "Not allowed." }, { status: 403 });
         }
 
         // ponytail: shape caps only, no rate limiter — add one if a client ever abuses this.

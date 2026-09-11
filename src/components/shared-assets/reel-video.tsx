@@ -20,8 +20,12 @@ import { useInView, useReducedMotion } from "motion/react";
  *
  * `preload="none"` so the browser fetches nothing until `play()` is called —
  * which the effect only does when motion is allowed AND the element is in view.
+ *
+ * WITHOUT A POSTER (the dashboard's uploaded Example Reels have none) the element
+ * preloads metadata instead, so the browser paints the first frame: a paused or
+ * reduced-motion reel then shows a still rather than a black screen.
  */
-export const ReelVideo = ({ src, poster, paused = false }: { src: string; poster: string; paused?: boolean }) => {
+export const ReelVideo = ({ src, poster, paused = false }: { src: string; poster?: string; paused?: boolean }) => {
     const ref = useRef<HTMLVideoElement>(null);
     const prefersReducedMotion = useReducedMotion();
     // Not `once` — leaving the section should pause the loop, not just skip
@@ -52,7 +56,7 @@ export const ReelVideo = ({ src, poster, paused = false }: { src: string; poster
             muted
             loop
             playsInline
-            preload="none"
+            preload={poster ? "none" : "metadata"}
             // The reel is 9:16 and so is the screen, so `cover` crops nothing
             // worth keeping — it only absorbs the bezel's rounded corners.
             className="size-full object-cover"

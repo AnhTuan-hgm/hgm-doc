@@ -30,6 +30,29 @@ export interface Suggestion {
     created_at: string;
 }
 
+/* ── Welcome-flow feedback ──
+   A client's note on the welcome emails rides the same table, function and review loop
+   as a document edit, under its own key family so the two never mix. There is ONE note
+   per person for the whole flow — "welcomeFlow.all" — not one per email: a client
+   reviewing nine emails wants to write a single message and send it once (2026-09-10).
+   `suggested_value` holds the note.
+
+   Notes written before that carry a per-email key instead ("welcomeFlow.3" was feedback
+   on E4) and are still read, labelled and resolved — only new notes use the combined
+   key, so nothing already sent is stranded.
+
+   parseKey below knows nothing about any of these keys on purpose — applySuggestion
+   returns null, so a feedback row can never be "accepted" into the Master Brand
+   Document. The team resolves it as done or dismissed. */
+
+export const FLOW_FEEDBACK_PREFIX = "welcomeFlow.";
+/** The one key a new note is stored under — the whole flow, not a single email. */
+export const FLOW_FEEDBACK_KEY = `${FLOW_FEEDBACK_PREFIX}all`;
+export const isFlowFeedbackKey = (key: string) => key.startsWith(FLOW_FEEDBACK_PREFIX);
+/** The 0-based email a legacy per-email note addresses. NaN for a combined note and for
+ *  any other key, so `Number.isInteger` is the test for "this one names an email". */
+export const flowFeedbackSlot = (key: string) => (isFlowFeedbackKey(key) ? Number(key.slice(FLOW_FEEDBACK_PREFIX.length)) : NaN);
+
 /** One proposed edit, as the client's browser sends it to the create action. */
 export interface SuggestionItem {
     fieldKey: string;

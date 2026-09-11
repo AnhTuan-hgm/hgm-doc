@@ -7,9 +7,15 @@
  * Same no-framework pattern as dashboard-model.check.ts. Run it:
  *   npx tsc src/pages/client/dashboard/dashboard-access.check.ts \
  *     src/pages/client/dashboard/dashboard-model.ts \
+ *     src/pages/client/dashboard/website-setup.ts \
  *     --outDir /tmp/hgm-check --module commonjs --moduleResolution node \
  *     --target es2022 --skipLibCheck --esModuleInterop --types node \
+ *   ; sed -i 's#@/pages/client/dashboard/#./#g' /tmp/hgm-check/*.js \
  *   ; node /tmp/hgm-check/dashboard-access.check.js
+ *
+ * dashboard-model.ts pulls in website-setup.ts at runtime, so it has to be compiled
+ * alongside; add any further runtime import it grows to that list. tsc doesn't rewrite
+ * the `@/` alias on emit, hence the sed.
  *
  * The compile prints one TS2307 for the aliased `@/lib/supabase` type import in
  * dashboard-model.ts — type-only and erased, the emitted JS runs. Ignore that line.

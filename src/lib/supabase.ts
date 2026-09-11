@@ -211,6 +211,24 @@ export interface DashboardContent {
     };
     links: { title: string; description: string; url: string }[];
     videos?: { id: string; title: string; url: string }[]; // Video guides (Loom link or uploaded mp4) — optional so older rows load unchanged
+    /** Marketing → Example Reels: three fixed phone-mockup slots. `url` is a public
+     *  `videos`-bucket file (never base64 — reels are tens of MB). The description doubles
+     *  as the text alternative for a silent loop. Optional: older rows predate it. */
+    reels?: { id: string; title: string; description: string; url: string }[];
+    /**
+     * The Pinned Posts the team designs for the client's Instagram grid — up to three
+     * carousels, each a Canva design exported page by page. Slide images are compressed
+     * WebP data URLs (see compressImageFile), first slide = the grid tile. `canva_url` is
+     * the design the AM pasted, kept so the team can jump straight back to editing it.
+     * Client feedback and approvals live in dashboard_suggestions under the
+     * `pinnedposts.{postId}.*` keys, never in this row. Optional: older rows predate it.
+     */
+    pinned_posts?: {
+        canva_url: string;
+        /** Instagram handle shown on the phone mockup, without the "@". */
+        handle: string;
+        posts: { id: string; title: string; caption: string; slides: { id: string; url: string }[] }[];
+    };
     /** AM-added rows in the side menu's Resources group (e.g. a Claude project link).
      *  `hidden` keeps a row team-only — new rows start hidden so nothing internal
      *  leaks to a client by default. Optional: older rows predate it. */
@@ -351,6 +369,39 @@ export interface DashboardContent {
     login_bg_url?: string;
     /** The team's internal Client Overview Document. Never rendered for a client — see OverviewDoc. */
     overview_doc?: Partial<OverviewDoc>;
+    /**
+     * The Website Setup Guide section — what the client has done towards hosting and, if they
+     * opted in, the AI website. Written by the client through the website-setup function
+     * (they are `anon`, so they can't write this row directly) and by the team through the
+     * ordinary Save. Optional: older rows predate it. See WebsiteSetup for the rule on what
+     * may live here.
+     */
+    website_setup?: WebsiteSetup;
+}
+
+/**
+ * Website Setup Guide answers.
+ *
+ * NEVER a password or an API key. This row is readable with the public anon key (see
+ * share_password above), so a secret stored here is a secret published. Account emails and
+ * provider names only — the logins themselves are handed over in the client's own
+ * password-gated owner guide (/owner-guide/{slug}), which is what the section links to.
+ */
+export interface WebsiteSetup {
+    /** The email the client registered their Netlify account under. */
+    netlify_email: string;
+    /** The client has confirmed the Netlify account exists. Required for every client. */
+    netlify_done: boolean;
+    /** "" = not answered yet, "yes" = wants the AI website, "no" = declined for now. */
+    ai_website: "" | "yes" | "no";
+    /** Per-service account details for the AI website, keyed by WebsiteSetupAccountId. */
+    accounts: Record<string, { value: string; done: boolean }>;
+    /** The web address the site should live at. */
+    domain: string;
+    /** Anything else the client wants the web team to know. */
+    notes: string;
+    /** ISO time of the client's last save through the function; absent for team edits. */
+    updated_at?: string;
 }
 
 export interface DashboardPageData {
