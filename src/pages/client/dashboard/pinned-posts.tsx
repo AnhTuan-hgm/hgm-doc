@@ -68,6 +68,7 @@ import { IgProfileScreen } from "@/pages/team/mockup-ig/ig-profile";
 import type { IgGridItem, IgProfile } from "@/pages/team/mockup-ig/instagram-data";
 import { compressImageFile } from "@/utils/compress-image";
 import { cx } from "@/utils/cx";
+import { downloadSlideJpeg, downloadSlidesZip, fileStem } from "@/utils/download-slides";
 
 /* ── Feedback keys ─────────────────────────────────────────────────────────
    Client input on a post rides the dashboard_suggestions table under a namespaced key,
@@ -180,7 +181,18 @@ const PinnedPhone = ({ profile }: { profile: IgProfile }) => (
  * time, arrows and dots, arrow keys and Escape. The caption sits under the slide as it does
  * on Instagram.
  */
-const SlideViewer = ({ post, index: initial, onClose }: { post: PinnedPost | null; index: number; onClose: () => void }) => {
+const SlideViewer = ({
+    post,
+    index: initial,
+    onClose,
+    downloadStem,
+}: {
+    post: PinnedPost | null;
+    index: number;
+    onClose: () => void;
+    /** When set (team only), each slide offers a JPEG download under this file stem. */
+    downloadStem?: string;
+}) => {
     const [index, setIndex] = useState(initial);
     const count = post?.slides.length ?? 0;
 
@@ -269,9 +281,21 @@ const SlideViewer = ({ post, index: initial, onClose }: { post: PinnedPost | nul
                                 ))}
                             </div>
                         )}
-                        <div className="text-white">
-                            <p className="text-sm font-semibold">{post.title || "Pinned post"}</p>
-                            {post.caption.trim() && <p className="mt-1 text-sm whitespace-pre-wrap text-white/75">{post.caption}</p>}
+                        <div className="flex items-start justify-between gap-3 text-white">
+                            <div className="min-w-0">
+                                <p className="text-sm font-semibold">{post.title || "Pinned post"}</p>
+                                {post.caption.trim() && <p className="mt-1 text-sm whitespace-pre-wrap text-white/75">{post.caption}</p>}
+                            </div>
+                            {downloadStem && (
+                                <button
+                                    type="button"
+                                    onClick={() => void downloadSlideJpeg(slide.url, downloadStem, index + 1)}
+                                    className="flex shrink-0 items-center gap-1.5 rounded-lg bg-white/10 px-2.5 py-1.5 text-xs font-semibold text-white backdrop-blur-sm transition duration-100 ease-linear hover:bg-white/20"
+                                >
+                                    <Download01 className="size-3.5" aria-hidden="true" />
+                                    Save slide {index + 1} as JPG
+                                </button>
+                            )}
                         </div>
                     </motion.div>
                     <button
@@ -741,6 +765,24 @@ export const PinnedPostsSection = ({
     const filled = filledPinnedPosts(posts);
     const slotOf = (post: PinnedPost) => posts.indexOf(post) + 1;
     const [viewer, setViewer] = useState<{ post: PinnedPost; index: number } | null>(null);
+    /* ── Download for posting ──
+       The AM posts these to Instagram by hand, from a phone or a desktop. One zip of JPEGs
+       per post (slides are stored as WebP, which Instagram's uploader won't take), named
+       after the post so three downloads don't collide. */
+    const [downloading, setDownloading] = useState<string | null>(null);
+    const [downloadError, setDownloadError] = useState<string | null>(null);
+    const stemFor = (post: PinnedPost) => fileStem(post.title, `pinned-post-${slotOf(post)}`);
+    const downloadPost = async (post: PinnedPost) => {
+        setDownloading(post.id);
+        setDownloadError(null);
+        try {
+            await downloadSlidesZip(post.slides, stemFor(post));
+        } catch (e) {
+            setDownloadError(e instanceof Error ? e.message : "Couldn't prepare the download.");
+        } finally {
+            setDownloading(null);
+        }
+    };
     const canva = parseCanvaUrl(pinned.canva_url);
     const editing = isTeam && !isLocked;
 
@@ -1095,7 +1137,9 @@ export const PinnedPostsSection = ({
 
             <div className="mt-8 grid gap-10 lg:grid-cols-[280px_minmax(0,1fr)] lg:gap-12">
                 {/* ── The phone: how the profile opens for a guest ── */}
-                <div className="flex flex-col items-center lg:sticky lg:top-8 lg:self-start">
+                {/* Not sticky: the editor below runs long (tray plus three slots), and a phone that
+                    follows the scroll covers what the AM is dragging past. It scrolls with the page. */}
+                <div className="flex flex-col items-center lg:self-start">
                     <PinnedPhone profile={igProfile} />
                     <p className="mt-4 max-w-[260px] text-center text-xs text-quaternary">
                         How <span className="font-medium text-tertiary">@{igProfile.handle}</span> opens for a guest — the pinned posts are the first three
@@ -1159,7 +1203,24 @@ export const PinnedPostsSection = ({
                                               <Button size="sm" color="secondary" iconTrailing={ChevronRight} onClick={() => setViewer({ post, index: 0 })}>
                                                   {post.slides.length > 1 ? `View all ${post.slides.length} slides` : "View post"}
                                               </Button>
+                                              {isTeam && (
+                                                  <Button
+                                                      size="sm"
+                                                      color="secondary"
+                                                      iconLeading={Download01}
+                                                      isLoading={downloading === post.id}
+                                                      showTextWhileLoading
+                                                      onClick={() => void downloadPost(post)}
+                                                  >
+                                                      {downloading === post.id
+                                                          ? "Preparing…"
+                                                          : `Download ${post.slides.length} slide${post.slides.length === 1 ? "" : "s"} (JPG)`}
+                                                  </Button>
+                                              )}
                                           </div>
+                                          {isTeam && downloadError && downloading === null && (
+                                              <p className="mt-1.5 text-xs text-error-primary">{downloadError}</p>
+                                          )}
                                       </div>
                                   </div>
                                   {/* Slide strip — every page at a glance, each opening the viewer at itself. */}
@@ -1204,7 +1265,12 @@ export const PinnedPostsSection = ({
                 </div>
             </div>
 
-            <SlideViewer post={viewer?.post ?? null} index={viewer?.index ?? 0} onClose={() => setViewer(null)} />
+            <SlideViewer
+                post={viewer?.post ?? null}
+                index={viewer?.index ?? 0}
+                onClose={() => setViewer(null)}
+                downloadStem={isTeam && viewer ? stemFor(viewer.post) : undefined}
+            />
         </Reveal>
     );
 };

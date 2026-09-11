@@ -376,7 +376,7 @@ export const WebsiteSetupSection = ({
                                 <p className="text-sm font-semibold text-secondary">Never type a password on this page.</p>
                                 <p className="mt-0.5 text-sm text-tertiary">
                                     {ownGuideUrl
-                                        ? "The logins themselves are handed over in your private Website Setup Guide, which only opens with the password your Account Manager gave you."
+                                        ? "The logins themselves are handed over in your private Setup Guide, which only opens with the password your Account Manager gave you."
                                         : isTeam
                                           ? "No owner guide exists for this client yet — create one from the master template so they have somewhere to hand over the logins."
                                           : "Once your accounts are ready, your Account Manager will send you a private, password-protected link for handing over the logins."}
@@ -384,7 +384,7 @@ export const WebsiteSetupSection = ({
                             </div>
                             {ownGuideUrl ? (
                                 <Button size="sm" color="secondary" href={ownGuideUrl} iconTrailing={LinkExternal01}>
-                                    Open my Website Setup Guide
+                                    Open my Setup Guide
                                 </Button>
                             ) : (
                                 isTeam && (
