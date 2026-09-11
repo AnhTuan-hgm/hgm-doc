@@ -251,7 +251,7 @@ export const JOURNEY_STEPS: {
         // of everyone.
         id: "launch",
         label: "Marketing Launch",
-        detail: "Go time — everything we've built starts working for you. We begin running your ads, posting to social and sending your emails.",
+        detail: "It's go time! Ads running, content posting, emails sending. Now we let the data come in and optimize from there.",
         icon: Rocket02,
     },
 ];
