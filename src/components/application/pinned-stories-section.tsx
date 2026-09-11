@@ -925,21 +925,45 @@ export const PinnedStoriesSection = ({
 
             {/* ── The phone + its side panel ── */}
             {(live || (isTeam && draft)) && (
-                <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(260px,320px)_1fr]">
-                    {/* Phone */}
-                    <div className="flex flex-col items-center gap-4">
-                        <PhoneFrame label="Pinned stories" className="w-[248px] sm:w-[280px]">
-                            <StoryPlayer
-                                highlights={shownHighlights}
-                                position={position}
-                                onPosition={setPosition}
-                                profile={igProfile}
-                                onReply={!isTeam && live && review.status !== "approved" && clientEmail ? openNote : undefined}
-                                replyLabel="Leave a note on this slide"
-                                commentCountFor={commentCountFor}
-                            />
-                        </PhoneFrame>
-                        <p className="max-w-[300px] text-center text-xs text-pretty text-quaternary">
+                <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(260px,320px)_1fr] xl:grid-cols-[440px_1fr]">
+                    {/* Phone — on wide screens it sits to the right of its column, leaving room for the pointer beside it. */}
+                    <div className="flex flex-col items-center gap-4 xl:items-end">
+                        <div className="relative">
+                            {/* A hand-drawn pointer at the highlight circles, the cue the section is about. Decorative;
+                                the caption under the phone says the same thing on smaller screens. */}
+                            {!position.highlightId && hasSomething && (
+                                <div
+                                    aria-hidden="true"
+                                    className="pointer-events-none absolute top-[40%] right-full mr-2 hidden w-[140px] flex-col items-start gap-1 xl:flex"
+                                >
+                                    <svg
+                                        viewBox="0 0 120 80"
+                                        className="ml-6 h-[64px] w-[96px] text-fg-quaternary"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2.5"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                    >
+                                        <path d="M8 74 C 22 46, 52 22, 106 14" />
+                                        <path d="M90 6 L 106 14 L 96 28" />
+                                    </svg>
+                                    <p className="max-w-[120px] text-xs leading-snug text-tertiary italic">Tap a highlight circle to play it</p>
+                                </div>
+                            )}
+                            <PhoneFrame label="Pinned stories" className="w-[248px] sm:w-[280px]">
+                                <StoryPlayer
+                                    highlights={shownHighlights}
+                                    position={position}
+                                    onPosition={setPosition}
+                                    profile={igProfile}
+                                    onReply={!isTeam && live && review.status !== "approved" && clientEmail ? openNote : undefined}
+                                    replyLabel="Leave a note on this slide"
+                                    commentCountFor={commentCountFor}
+                                />
+                            </PhoneFrame>
+                        </div>
+                        <p className={cx("max-w-[300px] text-center text-xs text-pretty text-quaternary", !position.highlightId && "xl:hidden")}>
                             {position.highlightId
                                 ? "Tap the right side to go forward, the left to go back. Hold to pause."
                                 : "Tap a highlight circle to play it."}
