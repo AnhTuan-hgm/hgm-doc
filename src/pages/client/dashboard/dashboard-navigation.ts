@@ -235,7 +235,6 @@ export const JOURNEY_STEPS: {
         items: [
             { label: "Landing Page" },
             { label: "Welcome Flow" },
-            { label: "Repeat Booking Flow" },
             { label: "Pinned Posts" },
             { label: "Pinned Stories" },
             { label: "Example Reels" },

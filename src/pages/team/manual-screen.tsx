@@ -269,10 +269,6 @@ const DASHBOARD_GROUPS: { group: string; items: { label: string; note: string }[
                 label: "Pinned Stories",
                 note: "The Canva story highlights for the top of the client's profile. Paste the Canva link (or upload the exported pages), arrange pages into highlights, publish; the client plays them in the phone and leaves notes slide by slide.",
             },
-            {
-                label: "Repeat Booking Flow",
-                note: 'Placeholder marked "Soon" until it is built.',
-            },
         ],
     },
     {
