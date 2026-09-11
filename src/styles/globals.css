@@ -254,33 +254,15 @@ input[type="search"]::-webkit-search-cancel-button {
 
    No `position` here on purpose: this file is unlayered, so it would beat the element's own
    `absolute` utility and drop the fill out of the track. The utility supplies it. */
+/* No sheen on this any more. It was one animating layer when the meter was a single thin
+   bar; the stage tracker draws one of these PER FILLED CELL, so a finished journey left
+   fourteen gradient layers animating forever on a page a client keeps open — a real cost
+   for pure decoration. The step card below already has the travelling beam, and two things
+   moving on one screen compete anyway. */
 .journey-meter-fill {
     overflow: hidden;
     background-image: var(--journey-meter-ramp);
     background-repeat: no-repeat;
-}
-
-/* A slow sheen travelling the filled part. Slow (2.6s) and low-contrast on purpose: this
-   sits on a page a client reads, and anything faster turns a progress bar into a spinner
-   — "still loading" instead of "here is how far you are". */
-.journey-meter-fill::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background-image: linear-gradient(90deg, transparent 0%, rgb(255 255 255 / 0.38) 50%, transparent 100%);
-    background-size: 40% 100%;
-    background-repeat: no-repeat;
-    animation: journey-meter-sheen 2.6s linear infinite;
-    pointer-events: none;
-}
-
-@keyframes journey-meter-sheen {
-    from {
-        background-position: -50% 0;
-    }
-    to {
-        background-position: 150% 0;
-    }
 }
 
 /* The percentage, painted with the same ramp. `text-fill-color` needs the -webkit- prefix
@@ -291,13 +273,6 @@ input[type="search"]::-webkit-search-cancel-button {
     -webkit-background-clip: text;
     color: transparent;
     -webkit-text-fill-color: transparent;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .journey-meter-fill::after {
-        animation: none;
-        opacity: 0;
-    }
 }
 
 /*
