@@ -191,7 +191,9 @@ export const DashboardAccessPanel = ({
 
     return (
         <div className="mt-8 rounded-xl bg-secondary p-5 ring-1 ring-secondary">
-            <p className="text-sm font-semibold text-primary">Who can open this dashboard</p>
+            {/* Sized to match "Your journey" further down Overview — at text-sm it was the
+                same size as its own description and read as another line of body copy. */}
+            <h2 className="text-lg font-semibold text-primary">Who can open this dashboard</h2>
             <p className="mt-1 text-sm text-pretty text-tertiary">
                 Anyone at @hiddengem.media always has access. Add each person who should see this dashboard — they sign in with their own email and password,
                 and you choose which sections each one lands on.

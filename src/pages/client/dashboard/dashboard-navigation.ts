@@ -233,13 +233,7 @@ export const JOURNEY_STEPS: {
         label: "Review the marketing funnel",
         icon: Mail01,
         to: "flow",
-        items: [
-            { label: "Landing Page" },
-            { label: "Welcome Flow" },
-            { label: "Pinned Posts" },
-            { label: "Pinned Stories" },
-            { label: "Example Reels" },
-        ],
+        items: [{ label: "Landing Page" }, { label: "Welcome Flow" }, { label: "Pinned Posts" }, { label: "Pinned Stories" }, { label: "Example Reels" }],
     },
     {
         // Closes the journey on what the client actually signed up for, rather than on a
@@ -378,16 +372,17 @@ export const TEAM_ONLY_SECTIONS = new Set<SectionId>(NAV_GROUPS.flatMap((g) => g
  * The sections an AM can grant to one person, grouped as they appear in the side menu.
  *
  * Derived from the nav for the same reason TEAM_ONLY_SECTIONS is: a row added to the menu
- * shows up here automatically, and a `teamOnly` row can never be offered by mistake. The
- * off-menu sections come last under their own heading — they're reachable by search and
- * `#hash`, so leaving them out would make the checklist quietly incomplete.
+ * shows up here automatically, and a `teamOnly` row can never be offered by mistake.
+ *
+ * HIDDEN_ITEMS is deliberately left out. Those sections aren't on anybody's menu, so an AM
+ * choosing what one person sees has no reason to meet them — and the effect of omitting
+ * them is the safe one: a person on a custom list simply never gets Revenue, Website or the
+ * rest, by search or `#hash` either. They still reach anyone left on the dashboard default,
+ * which is where `client_visible` and the eye toggles already govern them.
  */
-export const ASSIGNABLE_SECTION_GROUPS: { label: string; items: { id: SectionId; label: string; soon?: boolean }[] }[] = [
-    ...NAV_GROUPS.map((g) => ({
-        label: g.label,
-        items: g.items.filter((i) => !i.teamOnly).map((i) => ({ id: i.id, label: i.label, soon: i.soon })),
-    })),
-    { label: "Other sections", items: HIDDEN_ITEMS.map((i) => ({ id: i.id, label: i.label })) },
-];
+export const ASSIGNABLE_SECTION_GROUPS: { label: string; items: { id: SectionId; label: string; soon?: boolean }[] }[] = NAV_GROUPS.map((g) => ({
+    label: g.label,
+    items: g.items.filter((i) => !i.teamOnly).map((i) => ({ id: i.id, label: i.label, soon: i.soon })),
+}));
 
 export type SearchHit = { id: SectionId; label: string; sub?: string };
