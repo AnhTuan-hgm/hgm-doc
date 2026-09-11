@@ -839,7 +839,7 @@ export const PinnedStoriesSection = ({
                                     </div>
                                 )}
                             </div>
-                            <div className="flex gap-3 overflow-x-auto pb-1">
+                            <div className="-m-1 flex gap-3 overflow-x-auto p-1 pb-2">
                                 {draft.unassigned.map((s) => {
                                     const picked = coverPicks.has(s.id);
                                     return (
@@ -1135,7 +1135,7 @@ export const PinnedStoriesSection = ({
                                                         />
                                                     )}
                                                 </div>
-                                                <div className="flex gap-2 overflow-x-auto pb-1">
+                                                <div className="-m-1 flex gap-2 overflow-x-auto p-1 pb-2">
                                                     {h.slides.map((s, si) => {
                                                         // With no explicit cover the first page is the icon only; the rest play as 1, 2, 3…
                                                         const isIconOnly = firstSlideIsCover(h) && si === 0;
