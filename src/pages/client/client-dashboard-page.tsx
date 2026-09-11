@@ -3916,8 +3916,8 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                             </div>
                                                             <SectionHeading>Master Brand Document</SectionHeading>
                                                             <p className="mt-3 text-md text-tertiary">
-                                                                This is where it starts. It's what your Welcome Emails, chat widget, and every future AI feature
-                                                                read from, so the more complete it is, the smarter everything downstream gets.
+                                                                Everything you share here is what we build your deliverables from, so it's worth taking the time
+                                                                to get it complete and correct. It's also what your emails, chat widget, and AI tools read from.
                                                                 {!isTeam && " Spot something off? Suggest an edit and your account manager will review it."}
                                                             </p>
 
