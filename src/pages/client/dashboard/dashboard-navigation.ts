@@ -21,6 +21,7 @@ import {
     Mail01,
     MessageChatCircle,
     PlayCircle,
+    Rocket02,
     Target04,
     TrendUp01,
     Users01,
@@ -63,7 +64,7 @@ export type PhaseId = keyof typeof PHASES;
  * AM tick stored in content.journey_done — calls and reviews happen off-platform and
  * there is nothing to infer them from.
  */
-export type JourneyStepId = "chat" | "form" | "kickoff" | "call" | "vision" | "masterdoc" | "brandkit" | "funnel" | "resources" | "website";
+export type JourneyStepId = "chat" | "form" | "kickoff" | "call" | "vision" | "masterdoc" | "brandkit" | "funnel" | "resources" | "launch";
 
 /** Dustin's strategy-call booking page, linked from the Kick-off Call step. */
 export const KICKOFF_CALENDLY = "https://calendly.com/dustin-d-baker/strategy";
@@ -235,14 +236,17 @@ export const JOURNEY_STEPS: {
         items: [{ label: "Landing Page" }, { label: "Welcome Flow" }, { label: "Pinned Posts" }, { label: "Pinned Stories" }, { label: "Example Reels" }],
     },
     {
-        // Derived from the Website Setup Guide section: done once the Netlify account is
-        // confirmed and, if the client opted in to the AI website, every account it needs.
-        id: "website",
-        label: "Set up the website",
-        detail: "Create your Netlify hosting account, and tell us if you'd like an AI-built booking website.",
-        icon: Globe01,
-        to: "ownerguide",
-        auto: true,
+        // Closes the journey on what the client actually signed up for, rather than on a
+        // task of theirs. Nothing on the dashboard can observe a launch, so an AM ticks it.
+        //
+        // Replaced "Set up the website", dropped in 2026-09: the AI website is no longer
+        // offered to every client as a matter of course, the team approaches the ones they
+        // want to build for. The Setup Guide section stays — its Netlify card is required
+        // of everyone.
+        id: "launch",
+        label: "Marketing Launch",
+        detail: "It's go time! Ads running, content posting, emails sending. Now we let the data come in and optimize from there.",
+        icon: Rocket02,
     },
 ];
 
