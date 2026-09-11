@@ -63,7 +63,7 @@ export type PhaseId = keyof typeof PHASES;
  * AM tick stored in content.journey_done — calls and reviews happen off-platform and
  * there is nothing to infer them from.
  */
-export type JourneyStepId = "chat" | "form" | "kickoff" | "call" | "vision" | "masterdoc" | "brandkit" | "funnel" | "resources" | "website";
+export type JourneyStepId = "chat" | "form" | "kickoff" | "call" | "vision" | "masterdoc" | "brandkit" | "funnel" | "resources";
 
 /** Dustin's strategy-call booking page, linked from the Kick-off Call step. */
 export const KICKOFF_CALENDLY = "https://calendly.com/dustin-d-baker/strategy";
@@ -240,16 +240,11 @@ export const JOURNEY_STEPS: {
             { label: "Example Reels" },
         ],
     },
-    {
-        // Derived from the Website Setup Guide section: done once the Netlify account is
-        // confirmed and, if the client opted in to the AI website, every account it needs.
-        id: "website",
-        label: "Set up the website",
-        detail: "Create your Netlify hosting account, and tell us if you'd like an AI-built booking website.",
-        icon: Globe01,
-        to: "ownerguide",
-        auto: true,
-    },
+    // The journey deliberately ends at the funnel review. "Set up the website" was a step
+    // here until 2026-09, deriving its state from the Setup Guide section — it was dropped
+    // because the AI website is no longer offered to every client as a matter of course;
+    // the team approaches the clients they want to build one for. The Setup Guide section
+    // itself stays, since its Netlify card is required of everyone.
 ];
 
 /** Sits above the funnel groups — not a funnel stage itself, just "home" (hero + the funnel explainer). */

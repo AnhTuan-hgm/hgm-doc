@@ -1859,24 +1859,9 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                           : step.detail,
                 };
             }
-            if (step.id === "website") {
-                const p = websiteSetupProgress(websiteSetup);
-                return {
-                    ...resolved,
-                    done: p.complete,
-                    progress: { value: p.done, total: p.total },
-                    detail: p.complete
-                        ? websiteSetup.ai_website === "yes"
-                            ? "Netlify and every website account confirmed — over to our web team."
-                            : "Netlify account confirmed — thank you."
-                        : websiteSetup.ai_website === "yes"
-                          ? `${p.done} of ${p.total} accounts confirmed.`
-                          : step.detail,
-                };
-            }
             return { ...resolved, done: journeyDone.includes(step.id), progress: null };
         });
-    }, [intakeSubmitted, onboardingSubmitted, intakeInfo, onboardingInfo, journeyDone, chatLink, folderLink, onboardingCallUrl, websiteSetup]);
+    }, [intakeSubmitted, onboardingSubmitted, intakeInfo, onboardingInfo, journeyDone, chatLink, folderLink, onboardingCallUrl]);
 
     const journeyDoneCount = journeySteps.filter((s) => s.done).length;
     /** First unfinished step — highlighted so a client can see what's next at a glance. */
@@ -3136,11 +3121,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                             {!isLocked &&
                                                                                 isTeam &&
                                                                                 (step.auto ? (
-                                                                                    <span className="text-xs text-quaternary">
-                                                                                        {step.id === "website"
-                                                                                            ? "Tracked from the Setup Guide"
-                                                                                            : "Tracked from the form itself"}
-                                                                                    </span>
+                                                                                    <span className="text-xs text-quaternary">Tracked from the form itself</span>
                                                                                 ) : (
                                                                                     <Button
                                                                                         size="sm"
