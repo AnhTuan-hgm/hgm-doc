@@ -320,4 +320,20 @@ export const SECTIONS = [OVERVIEW_ITEM, ...NAV_GROUPS.flatMap((g) => g.items), .
  */
 export const TEAM_ONLY_SECTIONS = new Set<SectionId>(NAV_GROUPS.flatMap((g) => g.items.filter((i) => i.teamOnly).map((i) => i.id)));
 
+/**
+ * The sections an AM can grant to one person, grouped as they appear in the side menu.
+ *
+ * Derived from the nav for the same reason TEAM_ONLY_SECTIONS is: a row added to the menu
+ * shows up here automatically, and a `teamOnly` row can never be offered by mistake. The
+ * off-menu sections come last under their own heading — they're reachable by search and
+ * `#hash`, so leaving them out would make the checklist quietly incomplete.
+ */
+export const ASSIGNABLE_SECTION_GROUPS: { label: string; items: { id: SectionId; label: string; soon?: boolean }[] }[] = [
+    ...NAV_GROUPS.map((g) => ({
+        label: g.label,
+        items: g.items.filter((i) => !i.teamOnly).map((i) => ({ id: i.id, label: i.label, soon: i.soon })),
+    })),
+    { label: "Other sections", items: HIDDEN_ITEMS.map((i) => ({ id: i.id, label: i.label })) },
+];
+
 export type SearchHit = { id: SectionId; label: string; sub?: string };

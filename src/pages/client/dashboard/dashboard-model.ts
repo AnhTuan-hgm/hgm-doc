@@ -23,6 +23,68 @@ export const STATUS_OPTIONS = ["Onboarding", "Active", "Paused"] as const;
 
 export const normEmail = (e: string) => e.trim().toLowerCase();
 
+/* ── Per-person access ───────────────────────────────────────────────────────
+   One row per person an AM has shared the dashboard with. Replaces the flat
+   `allowed_emails` + one shared password, which made every listed address
+   interchangeable: anyone holding the password could type anyone else's email,
+   so a per-person view would have been decorative. `allowed_emails` is still
+   written alongside as a derived mirror — the Netlify suggestion function and
+   the read-gating RLS policy to come both read that key.
+
+   Still UI-level, not a security boundary: the row is readable with the public
+   anon key until that policy lands, so this narrows what a person is SHOWN, not
+   what they could extract. Don't describe it to a client as more than that. */
+
+export type DashboardUser = {
+    email: string;
+    /** This person's own password. Empty falls back to the dashboard's shared one, so
+     *  the 49 rows written before this existed keep working untouched. */
+    password?: string;
+    /**
+     * Sections this person may see — an allowlist of SectionId, exactly like
+     * `client_visible` but for one address.
+     *
+     * Absent/null means "follow the dashboard default", which is NOT the same as `[]`
+     * ("this person sees Overview and nothing else"). Keeping the two distinct is what
+     * lets a section added later reach everyone on the default without an AM re-ticking
+     * every person on every dashboard.
+     */
+    sections?: string[] | null;
+};
+
+/** The access list as the UI works with it. A legacy row (allowed_emails only) upgrades
+ *  on read — no write, so merely opening a dashboard never rewrites its access. */
+export const readDashboardUsers = (content: { dashboard_users?: DashboardUser[]; allowed_emails?: string[] }): DashboardUser[] =>
+    content.dashboard_users ?? (content.allowed_emails ?? []).map((email) => ({ email }));
+
+/** The derived mirror written beside `dashboard_users` on every change. */
+export const usersToAllowedEmails = (users: DashboardUser[]): string[] => users.map((u) => u.email.trim()).filter(Boolean);
+
+/** The password this person signs in with: their own, else the dashboard's shared one.
+ *  Empty means they have no way in — the panel flags that rather than failing silently. */
+export const passwordFor = (user: DashboardUser, sharePassword: string): string => (user.password ?? "").trim() || sharePassword.trim();
+
+export const findDashboardUser = (users: DashboardUser[], email: string): DashboardUser | null =>
+    users.find((u) => normEmail(u.email) === normEmail(email)) ?? null;
+
+/**
+ * The section allowlist that applies to ONE viewer.
+ *
+ * A person given their own list uses it; everyone else follows the dashboard-wide list an
+ * AM sets with the eye toggles. `[]` is a real answer ("Overview only") and must not fall
+ * through to the default, which is why this tests for null-ish rather than emptiness — get
+ * that wrong and locking someone down to nothing silently shows them everything instead.
+ */
+export const sectionsForViewer = (user: DashboardUser | null, dashboardDefault: string[] | undefined): string[] =>
+    user?.sections ?? dashboardDefault ?? DEFAULT_CLIENT_VISIBLE;
+
+/** ABC-DEF-HGMS — the format the team shares client passwords in. The alphabet drops
+ *  I/L/O so a password read aloud on a call can't be mistyped. */
+export const genSharePassword = () => {
+    const grp = () => Array.from({ length: 3 }, () => "ABCDEFGHJKMNPQRSTUVWXYZ"[Math.floor(Math.random() * 23)]).join("");
+    return `${grp()}-${grp()}-HGMS`;
+};
+
 /**
  * Status pill colour on the CLIENT dashboard. Local on purpose — the team's Client List
  * keeps its own mapping, where telling Onboarding from Active still matters.

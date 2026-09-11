@@ -83,9 +83,18 @@ export default async (req: Request) => {
     }
 
     if (action === "create") {
-        // Suggesting requires the section to actually be shared with the client.
-        const visible = Array.isArray(data.client_visible) && (data.client_visible as unknown[]).includes("foundation");
-        if (!visible) return Response.json({ error: "Not allowed." }, { status: 403 });
+        // Suggesting requires the Master Brand section to actually be shared with THIS
+        // person. Access is per person now: their own section list wins where they have
+        // one, and only a caller with no list of their own falls back to the dashboard
+        // default. Read from the row, never from anything the browser sends.
+        const users = Array.isArray(data.dashboard_users) ? (data.dashboard_users as Record<string, unknown>[]) : [];
+        const me = users.find((u) => norm(u.email) === email);
+        const sections = Array.isArray(me?.sections)
+            ? (me.sections as unknown[])
+            : Array.isArray(data.client_visible)
+              ? (data.client_visible as unknown[])
+              : [];
+        if (!sections.includes("foundation")) return Response.json({ error: "Not allowed." }, { status: 403 });
 
         const items = Array.isArray(body.items) ? (body.items as Record<string, unknown>[]) : [];
         if (items.length === 0 || items.length > MAX_ITEMS) return Response.json({ error: "Bad items." }, { status: 400 });
