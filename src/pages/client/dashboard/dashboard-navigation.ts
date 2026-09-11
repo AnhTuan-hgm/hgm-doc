@@ -21,7 +21,6 @@ import {
     Mail01,
     MessageChatCircle,
     PlayCircle,
-    Repeat01,
     Target04,
     TrendUp01,
     Users01,
@@ -317,7 +316,6 @@ export const NAV_GROUPS: {
         items: [
             { id: "landing", label: "Landing Page", icon: Globe01 },
             { id: "flow", label: "Welcome Flow", icon: Mail01 },
-            { id: "repeatflow", label: "Repeat Booking Flow", icon: Repeat01, soon: true },
             { id: "pinnedposts", label: "Pinned Posts", icon: Camera01 },
             { id: "pinnedstories", label: "Pinned Stories", icon: Image03 },
             { id: "reels", label: "Example Reels", icon: PlayCircle },

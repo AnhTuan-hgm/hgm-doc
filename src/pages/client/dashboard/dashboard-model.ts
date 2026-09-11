@@ -370,11 +370,13 @@ export type SectionId =
     | "ghl"
     | "revenue"
     // Menu entries added with the client-facing side-menu rework. Landing, Pinned Posts and
-    // Example Reels have section bodies; Repeat Flow and Pinned Stories have none yet and
-    // render with the existing "Soon" treatment; Folder of Content is a link out rather
-    // than a section.
+    // Example Reels have section bodies; Pinned Stories has none yet and renders with the
+    // existing "Soon" treatment; Folder of Content is a link out rather than a section.
+    //
+    // "repeatflow" was here too until it was dropped from the menu in 2026-09. It never had
+    // a section body, so nothing was left behind — but an older row's visible_sections may
+    // still carry the string, where it now matches nothing and is ignored.
     | "landing"
-    | "repeatflow"
     | "pinnedposts"
     | "pinnedstories"
     | "reels"
