@@ -3138,7 +3138,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                                 (step.auto ? (
                                                                                     <span className="text-xs text-quaternary">
                                                                                         {step.id === "website"
-                                                                                            ? "Tracked from the Website Setup Guide"
+                                                                                            ? "Tracked from the Setup Guide"
                                                                                             : "Tracked from the form itself"}
                                                                                     </span>
                                                                                 ) : (
