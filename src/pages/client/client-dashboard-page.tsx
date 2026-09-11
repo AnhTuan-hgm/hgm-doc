@@ -131,6 +131,7 @@ import {
     phaseOfSection,
 } from "@/pages/client/dashboard/dashboard-navigation";
 import { ExampleReelsSection } from "@/pages/client/dashboard/example-reels";
+import { JourneyProgress } from "@/pages/client/dashboard/journey-progress";
 import {
     FOUNDATION_SECTIONS,
     LEGACY_FOUNDATION_FIELDS,
@@ -2905,13 +2906,20 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                     : "Where you are, and what happens next."}
                                                             </p>
                                                         </div>
-                                                        <div className="flex items-center gap-3">
-                                                            <ProgressBarCircle value={Math.round((journeyDoneCount / journeySteps.length) * 100)} size="xxs" />
-                                                            <span className="text-sm font-semibold text-secondary tabular-nums">
-                                                                {journeyDoneCount} of {journeySteps.length}
-                                                            </span>
-                                                        </div>
+                                                        <span className="text-sm font-semibold text-secondary tabular-nums">
+                                                            {journeyDoneCount} of {journeySteps.length}
+                                                        </span>
                                                     </div>
+
+                                                    {/* The launch meter. It replaces the small percentage ring that used to
+                                                        sit beside the heading: two readings of the same number is one too
+                                                        many, and the ring was the quieter of the two on the page a client
+                                                        opens to find out how close they are to going live. */}
+                                                    <JourneyProgress
+                                                        total={journeySteps.length}
+                                                        done={journeyDoneCount}
+                                                        nextLabel={journeySteps.find((s) => s.id === journeyCurrentId)?.label ?? null}
+                                                    />
 
                                                     <ol className="mt-6 grid list-none gap-0 p-0">
                                                         {journeySteps.map((step, i) => {

@@ -203,6 +203,96 @@ input[type="search"]::-webkit-search-cancel-button {
 /* Skeleton shimmer (/animation section 15)                                    */
 /* -------------------------------------------------------------------------- */
 /*
+ * The launch meter under "Your journey" (JourneyProgress).
+ *
+ * One ramp, reused three times — the bar's fill, the percentage figure, and the Launch
+ * medallion once everything is done — so the three read as one object rather than three
+ * coloured things that happen to sit together.
+ *
+ * It starts on the brand blue and walks to pink, which is the point: a flat brand bar is
+ * honest but says nothing about getting closer, while the ramp means a client who is 80%
+ * of the way is looking at a visibly different, warmer bar than the one they started with.
+ * Every stop is a theme variable, so it re-resolves in dark mode instead of staying a
+ * light-mode ramp on a dark panel.
+ */
+:root {
+    --journey-meter-ramp: linear-gradient(
+        90deg,
+        var(--color-bg-brand-solid) 0%,
+        var(--color-utility-brand-500) 30%,
+        var(--color-utility-indigo-500) 55%,
+        var(--color-utility-purple-500) 78%,
+        var(--color-utility-pink-500) 100%
+    );
+}
+
+/* The gradient is sized to the TRACK, not to the fill, so a stop keeps its colour as the
+   bar grows: at 40% the client sees the first 40% of the ramp, not a whole ramp squeezed
+   into 40% of the width. `background-attachment: fixed` can't do this (it resolves against
+   the viewport), hence the explicit multiple. */
+/* No `position` here on purpose: this file is unlayered, so it would beat the element's own
+   `absolute` utility and drop the fill out of the track. The utility supplies it. */
+.journey-meter-fill {
+    overflow: hidden;
+    background-image: var(--journey-meter-ramp);
+    background-size: var(--journey-meter-track, 100%) 100%;
+    background-repeat: no-repeat;
+}
+
+/* A slow sheen travelling the filled part. Slow (2.6s) and low-contrast on purpose: this
+   sits on a page a client reads, and anything faster turns a progress bar into a spinner
+   — "still loading" instead of "here is how far you are". */
+.journey-meter-fill::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: linear-gradient(90deg, transparent 0%, rgb(255 255 255 / 0.38) 50%, transparent 100%);
+    background-size: 40% 100%;
+    background-repeat: no-repeat;
+    animation: journey-meter-sheen 2.6s linear infinite;
+    pointer-events: none;
+}
+
+@keyframes journey-meter-sheen {
+    from {
+        background-position: -50% 0;
+    }
+    to {
+        background-position: 150% 0;
+    }
+}
+
+/* The medallion only lights up at 100%, so it gets the glow rather than the sheen — a
+   thing that has arrived, not a thing still moving. */
+.journey-meter-medallion {
+    box-shadow:
+        0 0 0 2px var(--color-bg-primary),
+        0 6px 18px -4px color-mix(in oklch, var(--color-utility-purple-500) 55%, transparent);
+}
+
+.journey-meter-medallion::after {
+    animation: none;
+    opacity: 0;
+}
+
+/* The percentage, painted with the same ramp. `text-fill-color` needs the -webkit- prefix
+   to work anywhere; the standard property is still not implemented outside it. */
+.journey-meter-figure {
+    background-image: var(--journey-meter-ramp);
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .journey-meter-fill::after {
+        animation: none;
+        opacity: 0;
+    }
+}
+
+/*
  * A loading placeholder's sweep. Linear, 1.6s, and both are deliberate: eased
  * motion reads as an object sliding past, and a skeleton is the opposite of an
  * object — it is an absence. Under about 1.2s it reads as urgency, which is
