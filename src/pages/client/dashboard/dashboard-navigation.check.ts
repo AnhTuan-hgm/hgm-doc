@@ -16,6 +16,7 @@
  */
 import assert from "node:assert/strict";
 import {
+    JOURNEY_STAGES,
     JOURNEY_STEPS,
     type JourneyStepId,
     isJourneyItemDone,
@@ -91,5 +92,30 @@ assert.deepEqual(toggleJourneyStepDone([other], other), []);
 /* 9. Ticking a piece twice returns to where it started — no key left duplicated. */
 const twice = toggleJourneyItemDone(toggleJourneyItemDone([], FUNNEL, items[1]), FUNNEL, items[1]);
 assert.deepEqual(twice, []);
+
+/* 10. Every journey step belongs to exactly one launch-meter stage. A step missing from
+       JOURNEY_STAGES would quietly stop counting towards launch — the list below would
+       still show it, and the bar would read 100% with work outstanding. */
+{
+    const placed = JOURNEY_STAGES.flatMap((stage) => stage.steps);
+    assert.equal(new Set(placed).size, placed.length, "a step is in more than one launch-meter stage");
+    for (const step of JOURNEY_STEPS) {
+        assert.ok(placed.includes(step.id), `step "${step.id}" is in no launch-meter stage, so it can never count towards launch`);
+    }
+    for (const id of placed) {
+        assert.ok(
+            JOURNEY_STEPS.some((step) => step.id === id),
+            `launch-meter stages name "${id}", which is not a journey step`,
+        );
+    }
+}
+
+/* 11. The last step is the one the rocket rides on, so it has to be the last stage's last
+       step — otherwise the rocket lands mid-bar. */
+{
+    const last = JOURNEY_STEPS[JOURNEY_STEPS.length - 1].id;
+    const lastStage = JOURNEY_STAGES[JOURNEY_STAGES.length - 1];
+    assert.equal(lastStage.steps[lastStage.steps.length - 1], last, "the journey's last step must end the last stage");
+}
 
 console.log("dashboard-navigation.check: all assertions passed");

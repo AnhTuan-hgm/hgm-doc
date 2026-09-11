@@ -87,6 +87,13 @@ export type JourneyLink = "chat" | "folder" | "onboarding_call";
 export const JOURNEY_STEPS: {
     id: JourneyStepId;
     label: string;
+    /**
+     * The name this step wears inside the launch meter's stage — a tenth of a bar, so
+     * one or two short words in caps and nothing longer. Required, not optional: a new
+     * step without one would render as a numbered blank in the tracker, and the compiler
+     * catching that is cheaper than spotting it on a client's dashboard.
+     */
+    short: string;
     /** Step-level summary line. Omit when the item(s) below already say everything needed. */
     detail?: string;
     icon: FC<{ className?: string }>;
@@ -128,6 +135,9 @@ export const JOURNEY_STEPS: {
          */
         id?: string;
         label: string;
+        /** The name this item wears inside the launch meter, where a cell is narrow.
+         *  Falls back to `label` — only a tickable item ever reaches the meter. */
+        short?: string;
         note?: string;
         link?: JourneyLink;
         action?: string;
@@ -146,6 +156,7 @@ export const JOURNEY_STEPS: {
     {
         id: "chat",
         label: "Join the Google Chat group",
+        short: "Join",
         detail: "This is our primary channel for updates — please join as soon as possible to stay in the loop on progress.",
         icon: MessageChatCircle,
         hrefFrom: "chat",
@@ -157,6 +168,7 @@ export const JOURNEY_STEPS: {
     {
         id: "form",
         label: "Fill in the Onboarding Form",
+        short: "Form",
         detail: "Your business details and the logins we need.",
         icon: ClipboardCheck,
         to: "intake",
@@ -165,6 +177,7 @@ export const JOURNEY_STEPS: {
     {
         id: "kickoff",
         label: "Kick-off Call",
+        short: "Kick-off",
         detail: "Pick a time that suits you and we'll take it from there.",
         icon: Calendar,
         // Booking opens only once the Onboarding form is in — the call is only useful if the
@@ -179,6 +192,7 @@ export const JOURNEY_STEPS: {
     {
         id: "vision",
         label: "Fill in the Brand Vision Form",
+        short: "Vision",
         detail: "How your brand should look, sound and feel.",
         icon: FileCheck02,
         to: "onboarding",
@@ -195,6 +209,7 @@ export const JOURNEY_STEPS: {
         // buttons to press.
         id: "resources",
         label: "Add your resources",
+        short: "Assets",
         icon: Folder,
         items: [
             {
@@ -211,6 +226,7 @@ export const JOURNEY_STEPS: {
     {
         id: "call",
         label: "Onboarding Call",
+        short: "Call",
         detail: "Book your onboarding call using the link below. Please join with a good Wi-Fi connection, and keep your phone and email handy so you can grab verification codes and approve access as your account manager walks you through it.",
         icon: Users01,
         hrefFrom: "onboarding_call",
@@ -243,11 +259,12 @@ export const JOURNEY_STEPS: {
     {
         id: "masterdoc",
         label: "Review the Master Brand",
+        short: "Master",
         detail: "Hosts, personas, properties and brand voice — the foundation everything else is built on.",
         icon: FileCheck02,
         to: "foundation",
     },
-    { id: "brandkit", label: "Review the Brand Kit", detail: "Colours, fonts and logo.", icon: Image01, to: "brand" },
+    { id: "brandkit", label: "Review the Brand Kit", short: "Brand kit", detail: "Colours, fonts and logo.", icon: Image01, to: "brand" },
     {
         // No `detail` line: it listed the same five pieces the items below now name one
         // by one, so it only said everything twice.
@@ -263,14 +280,15 @@ export const JOURNEY_STEPS: {
         // these items ARE those sections.
         id: "funnel",
         label: "Review the marketing funnel",
+        short: "Funnel",
         icon: Mail01,
         itemsTickable: true,
         items: [
-            { id: "landing", label: "Landing Page", to: "landing" },
-            { id: "flow", label: "Welcome Flow", to: "flow" },
-            { id: "pinnedposts", label: "Pinned Posts", to: "pinnedposts" },
-            { id: "pinnedstories", label: "Pinned Stories", to: "pinnedstories" },
-            { id: "reels", label: "Example Reels", to: "reels" },
+            { id: "landing", label: "Landing Page", short: "Landing", to: "landing" },
+            { id: "flow", label: "Welcome Flow", short: "Welcome", to: "flow" },
+            { id: "pinnedposts", label: "Pinned Posts", short: "Posts", to: "pinnedposts" },
+            { id: "pinnedstories", label: "Pinned Stories", short: "Stories", to: "pinnedstories" },
+            { id: "reels", label: "Example Reels", short: "Reels", to: "reels" },
         ],
     },
     {
@@ -278,11 +296,32 @@ export const JOURNEY_STEPS: {
         // confirmed and, if the client opted in to the AI website, every account it needs.
         id: "website",
         label: "Set up the website",
+        short: "Website",
         detail: "Create your Netlify hosting account, and tell us if you'd like an AI-built booking website.",
         icon: Globe01,
         to: "ownerguide",
         auto: true,
     },
+];
+
+/**
+ * The four stages the launch meter groups the journey under, and the steps in each.
+ *
+ * Not the same taxonomy as NAV_GROUPS: the menu is organised by where a thing LIVES on the
+ * dashboard, this is organised by what a client is doing at the time. "Get started" is
+ * deliberately wider than its name — it holds both calls and the asset upload as well as
+ * the two forms, because those all happen in the same opening stretch and a client who has
+ * booked their kick-off should not be looking at a stage still called "forms".
+ *
+ * Stage membership is by step id, so a reorder inside a stage costs nothing. Every journey
+ * step must appear in exactly one stage — dashboard-navigation.check.ts enforces that,
+ * since a step missing from here would quietly stop counting towards launch.
+ */
+export const JOURNEY_STAGES: { id: string; label: string; steps: JourneyStepId[] }[] = [
+    { id: "start", label: "Get started", steps: ["chat", "form", "kickoff", "vision", "resources", "call"] },
+    { id: "foundation", label: "Brand foundation", steps: ["masterdoc", "brandkit"] },
+    { id: "funnel", label: "Marketing funnel", steps: ["funnel"] },
+    { id: "live", label: "Live", steps: ["website"] },
 ];
 
 /**

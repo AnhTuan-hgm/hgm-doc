@@ -118,6 +118,7 @@ import {
     uid,
 } from "@/pages/client/dashboard/dashboard-model";
 import {
+    JOURNEY_STAGES,
     JOURNEY_STEPS,
     type JourneyLink,
     type JourneyStepId,
@@ -1908,26 +1909,61 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     const journeyCurrentId = journeySteps.find((s) => !s.done)?.id ?? null;
 
     /**
-     * The launch meter's arithmetic, which is NOT the step count.
+     * The launch meter's cells and the stages bracketing them.
      *
-     * A step made of tickable items is worth one unit per item, so each funnel review
-     * moves the bar on its own rather than five weeks of work landing as a single jump.
-     * Every other step stays worth exactly one — nothing else here has sub-parts the team
-     * ticks, and giving the forms partial credit would put the meter and the "x of n
-     * steps" count beside it into permanent disagreement over the same client.
+     * One cell per thing a client can finish, NOT per step: a step ticked piece by piece
+     * contributes a cell per piece, which is what makes the Marketing funnel stage the long
+     * one and what lets a single review move the bar. Every cell is worth the same, so the
+     * bar's fill and the percentage above it are the same number.
+     *
+     * A cell fills fractionally wherever there is something real to count — a part-answered
+     * form, the accounts confirmed in the Setup Guide. A made-up fraction is never invented:
+     * a step with nothing to count is 0 or 1.
      */
-    const journeyUnits = useMemo(
-        () =>
-            journeySteps.reduce(
-                (acc, step) => {
-                    const weight = step.itemsTickable && step.progress ? step.progress.total : 1;
-                    const value = step.itemsTickable && step.progress ? step.progress.value : step.done ? 1 : 0;
-                    return { value: acc.value + value, total: acc.total + weight };
+    const { journeyCells, journeyGroups } = useMemo(() => {
+        const fractionOf = (step: (typeof journeySteps)[number]) =>
+            step.done ? 1 : step.progress && step.progress.total > 0 ? step.progress.value / step.progress.total : 0;
+
+        const cellsFor = (step: (typeof journeySteps)[number]) => {
+            const isLast = step.id === JOURNEY_STEPS[JOURNEY_STEPS.length - 1].id;
+            if (step.itemsTickable && step.items?.length) {
+                const nextUp = step.items.findIndex((item) => !item.done);
+                return step.items.map((item, i) => ({
+                    id: `${step.id}:${item.id ?? item.label}`,
+                    short: item.short ?? item.label,
+                    fraction: item.done ? 1 : 0,
+                    // The piece a client is on, not the whole step: the beam in the list
+                    // below marks the step, this marks the review inside it.
+                    current: step.id === journeyCurrentId && i === nextUp,
+                    rocket: false,
+                }));
+            }
+            return [
+                {
+                    id: step.id,
+                    short: step.short,
+                    fraction: fractionOf(step),
+                    current: step.id === journeyCurrentId,
+                    // The journey's last step IS the destination, so it wears the rocket
+                    // rather than the bar growing an extra cell nobody can tick.
+                    rocket: isLast,
                 },
-                { value: 0, total: 0 },
-            ),
-        [journeySteps],
-    );
+            ];
+        };
+
+        const byId = new Map(journeySteps.map((step) => [step.id, step]));
+        const cells: ReturnType<typeof cellsFor> = [];
+        const groups = JOURNEY_STAGES.map((stage) => {
+            const before = cells.length;
+            for (const id of stage.steps) {
+                const step = byId.get(id);
+                if (step) cells.push(...cellsFor(step));
+            }
+            return { id: stage.id, label: stage.label, cells: cells.length - before };
+        }).filter((group) => group.cells > 0);
+
+        return { journeyCells: cells, journeyGroups: groups };
+    }, [journeySteps, journeyCurrentId]);
 
     /** "Up next", named down to the piece where a step has several. */
     const journeyNextLabel = useMemo(() => {
@@ -2970,8 +3006,8 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                         many, and the ring was the quieter of the two on the page a client
                                                         opens to find out how close they are to going live. */}
                                                     <JourneyProgress
-                                                        value={journeyUnits.value}
-                                                        max={journeyUnits.total}
+                                                        cells={journeyCells}
+                                                        groups={journeyGroups}
                                                         stepsDone={journeyDoneCount}
                                                         stepsTotal={journeySteps.length}
                                                         nextLabel={journeyNextLabel}
