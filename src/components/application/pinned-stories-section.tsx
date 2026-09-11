@@ -1509,6 +1509,80 @@ export const PinnedStoriesSection = ({
                             </div>
                         )}
 
+                        {/* The live set, highlight by highlight — the same list the AM arranges, read-only. Every
+                            thumbnail plays that slide in the phone, so the client can find a slide without tapping
+                            through, and the note button then targets it. */}
+                        {live && view === "live" && (
+                            <div className="flex flex-col rounded-2xl bg-primary ring-1 ring-secondary">
+                                <div className="border-b border-secondary px-5 py-4">
+                                    <p className="text-md font-semibold text-primary">{isTeam ? "What the client sees" : "Your highlights"}</p>
+                                    <p className="text-sm text-pretty text-tertiary">
+                                        {live.highlights.length} highlight{live.highlights.length === 1 ? "" : "s"}, {totalSlides(live.highlights)} slides. Tap
+                                        a slide to see it on the phone.
+                                    </p>
+                                </div>
+                                <div className="flex flex-col divide-y divide-border-secondary">
+                                    {live.highlights.map((h) => {
+                                        const frames = storyFrames(h);
+                                        return (
+                                            <div key={h.id} className="flex flex-col gap-3 px-5 py-4">
+                                                <div className="flex items-center gap-3">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => frames.length && setPosition({ highlightId: h.id, slide: 0 })}
+                                                        className="flex size-12 shrink-0 items-center justify-center rounded-full ring-1 ring-primary ring-offset-2 ring-offset-bg-primary transition duration-100 ease-linear hover:ring-brand"
+                                                        aria-label={`Play ${h.title}`}
+                                                    >
+                                                        <span className="size-11 overflow-hidden rounded-full bg-secondary">
+                                                            {coverOf(h) && <img src={coverOf(h)} alt="" className="size-full object-cover" />}
+                                                        </span>
+                                                    </button>
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="text-sm font-semibold text-primary">{h.title || "Untitled"}</p>
+                                                        <p className="text-xs text-quaternary">
+                                                            {frames.length} slide{frames.length === 1 ? "" : "s"}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <div className="-m-1 flex gap-2 overflow-x-auto p-1 pb-2">
+                                                    {frames.map((s, si) => {
+                                                        const active = position.highlightId === h.id && position.slide === si;
+                                                        const notes = commentCountFor(s.id);
+                                                        return (
+                                                            <div key={s.id} className="relative w-[62px] shrink-0">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setPosition({ highlightId: h.id, slide: si })}
+                                                                    className={cx(
+                                                                        "block aspect-9/16 w-full overflow-hidden rounded-lg bg-secondary ring-1 transition duration-100 ease-linear",
+                                                                        active ? "ring-2 ring-brand" : "ring-secondary hover:ring-primary",
+                                                                    )}
+                                                                    aria-label={`Slide ${si + 1} of ${h.title}`}
+                                                                >
+                                                                    <SlideThumb slide={s} className="pointer-events-none" />
+                                                                </button>
+                                                                <span className="pointer-events-none absolute top-1 left-1 rounded bg-primary-solid/70 px-1 text-[10px] font-semibold text-white tabular-nums">
+                                                                    {si + 1}
+                                                                </span>
+                                                                {notes > 0 && (
+                                                                    <span
+                                                                        className="pointer-events-none absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-solid px-1 text-[10px] font-semibold text-white tabular-nums"
+                                                                        aria-label={`${notes} note${notes === 1 ? "" : "s"}`}
+                                                                    >
+                                                                        {notes}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+
                         {!hasSomething && isTeam && draft && view === "draft" && draft.highlights.length === 0 && draft.unassigned.length === 0 && (
                             <p className="text-sm text-quaternary">Nothing imported yet.</p>
                         )}
