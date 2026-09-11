@@ -6207,7 +6207,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                 {activeSection === "ownerguide" && (
                                                     <Reveal>
                                                         <SectionEyebrow section={activeSection} />
-                                                        <SectionHeading>Website Setup Guide</SectionHeading>
+                                                        <SectionHeading>Setup Guide</SectionHeading>
                                                         <WebsiteSetupSection
                                                             setup={websiteSetup}
                                                             onChange={updateWebsiteSetup}
