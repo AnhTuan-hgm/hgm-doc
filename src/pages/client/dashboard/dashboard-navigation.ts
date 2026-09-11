@@ -323,9 +323,9 @@ export const NAV_GROUPS: {
             // drive, the owner guide opens THAT client's guide (never the shared
             // template). Each falls back to "Soon" until its target exists.
             { id: "contentfolder", label: "Folder of Content", icon: Folder },
-            // Shortened from "Website Setup — Owner guide": that truncated to
-            // "Website Setup — Ow…" at the 276px sidebar width.
-            { id: "ownerguide", label: "Website Setup Guide", icon: BookOpen01 },
+            // Shortened twice for the 276px sidebar: "Website Setup — Owner guide" truncated
+            // to "Website Setup — Ow…", and "Website Setup Guide" to "Website Setup Gui…".
+            { id: "ownerguide", label: "Setup Guide", icon: BookOpen01 },
         ],
     },
 ];

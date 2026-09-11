@@ -1035,9 +1035,10 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
        the thing you grab is the thing you see. Width lives in one place and the content
        is simply flex-1, so the two cannot drift apart.
 
-       Clamp measured on this page rather than picked: below RAIL_MIN "Pinned Posts /
-       Story" and "Website Setup Guide" start to truncate; past RAIL_MAX the reading
-       column on a 1280px laptop is narrower than the menu beside it. */
+       Clamp measured on this page rather than picked: below RAIL_MIN the longest rows
+       (then "Pinned Posts / Story" and "Website Setup Guide", since shortened) start to
+       truncate; past RAIL_MAX the reading column on a 1280px laptop is narrower than the
+       menu beside it. Kept as the floor after those renames — it is now slack, not tight. */
     const RAIL_DEFAULT = 276;
     const RAIL_MIN = 240;
     const RAIL_MAX = 420;
