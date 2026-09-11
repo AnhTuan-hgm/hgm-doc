@@ -334,9 +334,10 @@ export const NAV_GROUPS: {
             // A real section since 2026-09: the required Netlify account plus the AI
             // website opt-in (website-setup-section.tsx). It used to be a link straight
             // to the client's owner guide; the section now links there itself, once one
-            // exists. Shortened from "Website Setup — Owner guide": that truncated to
-            // "Website Setup — Ow…" at the 276px sidebar width.
-            { id: "ownerguide", label: "Website Setup Guide", icon: BookOpen01 },
+            // exists. Shortened twice for the 276px sidebar: "Website Setup — Owner guide"
+            // truncated to "Website Setup — Ow…", then "Website Setup Guide" to
+            // "Website Setup Gui…".
+            { id: "ownerguide", label: "Setup Guide", icon: BookOpen01 },
         ],
     },
 ];

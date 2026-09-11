@@ -280,7 +280,7 @@ const DASHBOARD_GROUPS: { group: string; items: { label: string; note: string }[
         items: [
             { label: "Folder of Content", note: "Opens the client's content drive — the link lives in Brand Kit's folder field." },
             {
-                label: "Website Setup Guide",
+                label: "Setup Guide",
                 note: "Asks every client for a Netlify account in their own name (required), then offers the AI-built booking website. A yes reveals the accounts it needs — Supabase, Resend, Stripe, PMS, registrar, Cloudflare — as account emails only; logins are handed over in that client's own owner guide, which the section links to once it exists. Shown to clients by default.",
             },
             {
