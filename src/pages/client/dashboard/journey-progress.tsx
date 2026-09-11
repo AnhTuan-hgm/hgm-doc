@@ -11,22 +11,28 @@ import { cx } from "@/utils/cx";
  * segment every time a step is ticked. The steps list below it explains WHAT is left;
  * this only has to answer "how far along am I, and what am I heading towards".
  *
- * The bar is divided into one segment per journey step, so the fill lands on a tick
- * mark each time — a client who just finished a step can see which notch moved. The
- * final notch is the medallion itself: 100% is Launch, it is not an eleventh step to
- * tick off, so nothing here writes to `content.journey_done`.
+ * The bar is divided into one segment per UNIT, and a unit is not always a step: a step
+ * the team ticks piece by piece (the five funnel reviews) is worth one unit per piece, so
+ * each review moves the bar on its own. That is why the segment count and the "x of n
+ * steps" line next to it are different numbers — the line counts steps, the bar counts
+ * everything that can be ticked. The final notch is the medallion itself: 100% is Launch,
+ * it is not an extra step to tick off, so nothing here writes to `content.journey_done`.
  */
 export const JourneyProgress: FC<{
-    /** Total journey steps — the bar's denominator and its number of segments. */
-    total: number;
-    /** How many are done. */
-    done: number;
-    /** Label of the first unfinished step, or null once everything is done. */
+    /** Units done — see above; not the step count. */
+    value: number;
+    /** Units in the whole journey: the bar's denominator and its number of segments. */
+    max: number;
+    /** Steps done, for the line beside the percentage. */
+    stepsDone: number;
+    /** Steps in the journey. */
+    stepsTotal: number;
+    /** What's next, down to the piece where a step has several. Null once done. */
     nextLabel?: string | null;
-}> = ({ total, done, nextLabel }) => {
-    const safeTotal = Math.max(total, 1);
-    const percent = Math.round((done / safeTotal) * 100);
-    const complete = done >= safeTotal && total > 0;
+}> = ({ value, max, stepsDone, stepsTotal, nextLabel }) => {
+    const safeMax = Math.max(max, 1);
+    const percent = Math.round((value / safeMax) * 100);
+    const complete = value >= safeMax && max > 0;
 
     return (
         <div className="relative mt-5 overflow-hidden rounded-2xl bg-secondary p-4 ring-1 ring-secondary md:p-5">
@@ -46,7 +52,7 @@ export const JourneyProgress: FC<{
                     ) : (
                         <>
                             <span className="tabular-nums">
-                                {done} of {safeTotal} steps
+                                {stepsDone} of {stepsTotal} steps
                             </span>
                             {nextLabel ? ` · Up next: ${nextLabel}` : null}
                         </>
@@ -57,9 +63,9 @@ export const JourneyProgress: FC<{
             <div className="mt-3.5 flex items-center gap-3">
                 <div
                     role="progressbar"
-                    aria-valuenow={done}
+                    aria-valuenow={value}
                     aria-valuemin={0}
-                    aria-valuemax={safeTotal}
+                    aria-valuemax={safeMax}
                     aria-label="Progress to launch"
                     className="relative h-3 flex-1 overflow-hidden rounded-full bg-quaternary"
                 >
@@ -79,8 +85,8 @@ export const JourneyProgress: FC<{
                     />
                     {/* One notch per completed segment boundary. The last boundary is the
                         medallion, so this stops one short. */}
-                    {Array.from({ length: safeTotal - 1 }, (_, i) => {
-                        const at = ((i + 1) / safeTotal) * 100;
+                    {Array.from({ length: safeMax - 1 }, (_, i) => {
+                        const at = ((i + 1) / safeMax) * 100;
                         return (
                             <span
                                 key={i}

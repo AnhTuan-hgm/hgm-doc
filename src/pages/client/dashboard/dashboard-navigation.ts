@@ -112,13 +112,36 @@ export const JOURNEY_STEPS: {
      */
     pendingNote?: string;
     /**
-     * Sub-items: the several separate things one step actually asks for. Deliberately
-     * NOT tickable — none of these are states the app can observe, and an empty box
-     * against a job the client already did reads as a failure.
+     * Sub-items: the several separate things one step actually asks for.
+     *
+     * Tickable only where `itemsTickable` says so. The default is deliberate: most of
+     * these are states the app cannot observe — whether a client is logged in to TikTok
+     * is not ours to know — and an empty box against a job they already did reads as a
+     * failure. A step only earns tick boxes when the team itself is the one doing the
+     * observing, which today means the funnel reviews.
      */
-    items?: { label: string; note?: string; link?: JourneyLink; action?: string }[];
+    items?: {
+        /**
+         * Stable id, required once the step is `itemsTickable`. Stored as
+         * `${stepId}:${itemId}` in content.journey_done, so an item keeps its tick
+         * through a reorder or a relabel — the same reason steps are stored by id.
+         */
+        id?: string;
+        label: string;
+        note?: string;
+        link?: JourneyLink;
+        action?: string;
+        /** Section this item opens, for items that ARE a section of the dashboard. */
+        to?: SectionId;
+    }[];
     /** Heading above `items`, when the list needs naming. */
     itemsTitle?: string;
+    /**
+     * Each item is ticked on its own by an AM, and the step is done when all of them are.
+     * The launch meter weights such a step by its item count, so every single tick moves
+     * the bar instead of five reviews landing as one jump at the end.
+     */
+    itemsTickable?: true;
 }[] = [
     {
         id: "chat",
@@ -228,16 +251,26 @@ export const JOURNEY_STEPS: {
     {
         // No `detail` line: it listed the same five pieces the items below now name one
         // by one, so it only said everything twice.
+        //
+        // The one step that is really five. Each piece is built, sent and reviewed on its
+        // own over several weeks, so a single tick at the end left a client watching the
+        // longest stretch of their journey with nothing moving. Ticked per item instead,
+        // and the step falls out of the five.
+        //
+        // No step-level `to` any more: every item now opens its own section, and a sixth
+        // Open button landing on one arbitrary one of the five only asks the client which
+        // button they were supposed to press. Item ids are the SectionIds on purpose —
+        // these items ARE those sections.
         id: "funnel",
         label: "Review the marketing funnel",
         icon: Mail01,
-        to: "flow",
+        itemsTickable: true,
         items: [
-            { label: "Landing Page" },
-            { label: "Welcome Flow" },
-            { label: "Pinned Posts" },
-            { label: "Pinned Stories" },
-            { label: "Example Reels" },
+            { id: "landing", label: "Landing Page", to: "landing" },
+            { id: "flow", label: "Welcome Flow", to: "flow" },
+            { id: "pinnedposts", label: "Pinned Posts", to: "pinnedposts" },
+            { id: "pinnedstories", label: "Pinned Stories", to: "pinnedstories" },
+            { id: "reels", label: "Example Reels", to: "reels" },
         ],
     },
     {
@@ -251,6 +284,65 @@ export const JOURNEY_STEPS: {
         auto: true,
     },
 ];
+
+/**
+ * ── Journey completion, as stored ──
+ *
+ * All of it is ids in `content.journey_done`, never positions: the journey has been
+ * reordered twice, and a client's recorded progress has to survive the next one.
+ *
+ * A step ticked piece by piece stores one key per piece, `${stepId}:${itemId}`. The bare
+ * step id is still honoured wherever those keys are read, because rows ticked before the
+ * funnel was broken into five carry only "funnel" — reading it as "not started" would
+ * un-finish a step for every client who already got there.
+ *
+ * Pure and free of React on purpose: dashboard-navigation.check.ts exercises these, and
+ * the legacy-row cases below are exactly the kind that corrupt a client's progress
+ * quietly if they ever drift.
+ */
+export const journeyItemKey = (stepId: JourneyStepId, itemId: string) => `${stepId}:${itemId}`;
+
+/** A step's item ids, falling back to the label for an item that never needed one. */
+export const journeyItemIds = (stepId: JourneyStepId): string[] =>
+    (JOURNEY_STEPS.find((s) => s.id === stepId)?.items ?? []).map((item) => item.id ?? item.label);
+
+export const isJourneyItemDone = (done: readonly string[], stepId: JourneyStepId, itemId: string) =>
+    done.includes(stepId) || done.includes(journeyItemKey(stepId, itemId));
+
+/**
+ * The step-level tick.
+ *
+ * For a step made of tickable items this is only the all-at-once shortcut — the step has
+ * no state of its own, so it writes the item keys rather than the step id. Clearing has to
+ * drop the legacy bare id as well, or every item would read done again the moment it did.
+ */
+export const toggleJourneyStepDone = (done: readonly string[], stepId: JourneyStepId): string[] => {
+    const step = JOURNEY_STEPS.find((s) => s.id === stepId);
+    if (step?.itemsTickable && step.items?.length) {
+        const keys = journeyItemIds(stepId).map((itemId) => journeyItemKey(stepId, itemId));
+        const allDone = done.includes(stepId) || keys.every((k) => done.includes(k));
+        const without = done.filter((x) => x !== stepId && !keys.includes(x));
+        return allDone ? without : [...without, ...keys];
+    }
+    return done.includes(stepId) ? done.filter((x) => x !== stepId) : [...done, stepId];
+};
+
+/**
+ * One item's tick.
+ *
+ * On a legacy row the bare step id is expanded into the other items' keys first: dropping
+ * it alone would untick all five when the AM asked to untick one.
+ */
+export const toggleJourneyItemDone = (done: readonly string[], stepId: JourneyStepId, itemId: string): string[] => {
+    const key = journeyItemKey(stepId, itemId);
+    if (done.includes(stepId)) {
+        const others = journeyItemIds(stepId)
+            .map((id) => journeyItemKey(stepId, id))
+            .filter((k) => k !== key);
+        return [...done.filter((x) => x !== stepId), ...others];
+    }
+    return done.includes(key) ? done.filter((x) => x !== key) : [...done, key];
+};
 
 /** Sits above the funnel groups — not a funnel stage itself, just "home" (hero + the funnel explainer). */
 export const OVERVIEW_ITEM = { id: "overview" as const, label: "Overview", icon: LayoutAlt01 };
