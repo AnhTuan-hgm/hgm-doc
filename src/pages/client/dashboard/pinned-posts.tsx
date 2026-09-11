@@ -1137,7 +1137,9 @@ export const PinnedPostsSection = ({
 
             <div className="mt-8 grid gap-10 lg:grid-cols-[280px_minmax(0,1fr)] lg:gap-12">
                 {/* ── The phone: how the profile opens for a guest ── */}
-                <div className="flex flex-col items-center lg:sticky lg:top-8 lg:self-start">
+                {/* Not sticky: the editor below runs long (tray plus three slots), and a phone that
+                    follows the scroll covers what the AM is dragging past. It scrolls with the page. */}
+                <div className="flex flex-col items-center lg:self-start">
                     <PinnedPhone profile={igProfile} />
                     <p className="mt-4 max-w-[260px] text-center text-xs text-quaternary">
                         How <span className="font-medium text-tertiary">@{igProfile.handle}</span> opens for a guest — the pinned posts are the first three
