@@ -21,6 +21,7 @@ import {
     Mail01,
     MessageChatCircle,
     PlayCircle,
+    Rocket02,
     Target04,
     TrendUp01,
     Users01,
@@ -63,7 +64,7 @@ export type PhaseId = keyof typeof PHASES;
  * AM tick stored in content.journey_done — calls and reviews happen off-platform and
  * there is nothing to infer them from.
  */
-export type JourneyStepId = "chat" | "form" | "kickoff" | "call" | "vision" | "masterdoc" | "brandkit" | "funnel" | "resources" | "website";
+export type JourneyStepId = "chat" | "form" | "kickoff" | "call" | "vision" | "masterdoc" | "brandkit" | "funnel" | "resources" | "launch";
 
 /** Dustin's strategy-call booking page, linked from the Kick-off Call step. */
 export const KICKOFF_CALENDLY = "https://calendly.com/dustin-d-baker/strategy";
@@ -292,15 +293,21 @@ export const JOURNEY_STEPS: {
         ],
     },
     {
-        // Derived from the Website Setup Guide section: done once the Netlify account is
-        // confirmed and, if the client opted in to the AI website, every account it needs.
-        id: "website",
-        label: "Set up the website",
-        short: "Website",
-        detail: "Create your Netlify hosting account, and tell us if you'd like an AI-built booking website.",
-        icon: Globe01,
-        to: "ownerguide",
-        auto: true,
+        // Closes the journey on what the client actually signed up for, rather than on a
+        // task of theirs. Nothing on the dashboard can observe a launch, so an AM ticks it.
+        //
+        // Replaced "Set up the website", dropped in 2026-09: the AI website is no longer
+        // offered to every client as a matter of course, the team approaches the ones they
+        // want to build for. The Setup Guide section stays — its Netlify card is required
+        // of everyone.
+        //
+        // Being last, this is the step the launch meter's rocket rides on. Its `short` is
+        // never drawn — the rocket wears no name — but the type asks every step for one.
+        id: "launch",
+        label: "Marketing Launch",
+        short: "Launch",
+        detail: "It's go time! Ads running, content posting, emails sending. Now we let the data come in and optimize from there.",
+        icon: Rocket02,
     },
 ];
 
@@ -321,7 +328,7 @@ export const JOURNEY_STAGES: { id: string; label: string; steps: JourneyStepId[]
     { id: "start", label: "Get started", steps: ["chat", "form", "kickoff", "vision", "resources", "call"] },
     { id: "foundation", label: "Brand foundation", steps: ["masterdoc", "brandkit"] },
     { id: "funnel", label: "Marketing funnel", steps: ["funnel"] },
-    { id: "live", label: "Live", steps: ["website"] },
+    { id: "live", label: "Live", steps: ["launch"] },
 ];
 
 /**
@@ -500,5 +507,22 @@ export const SECTIONS = [OVERVIEW_ITEM, ...NAV_GROUPS.flatMap((g) => g.items), .
  * search box or a pasted deep link as a way in that somebody forgot to close.
  */
 export const TEAM_ONLY_SECTIONS = new Set<SectionId>(NAV_GROUPS.flatMap((g) => g.items.filter((i) => i.teamOnly).map((i) => i.id)));
+
+/**
+ * The sections an AM can grant to one person, grouped as they appear in the side menu.
+ *
+ * Derived from the nav for the same reason TEAM_ONLY_SECTIONS is: a row added to the menu
+ * shows up here automatically, and a `teamOnly` row can never be offered by mistake.
+ *
+ * HIDDEN_ITEMS is deliberately left out. Those sections aren't on anybody's menu, so an AM
+ * choosing what one person sees has no reason to meet them — and the effect of omitting
+ * them is the safe one: a person on a custom list simply never gets Revenue, Website or the
+ * rest, by search or `#hash` either. They still reach anyone left on the dashboard default,
+ * which is where `client_visible` and the eye toggles already govern them.
+ */
+export const ASSIGNABLE_SECTION_GROUPS: { label: string; items: { id: SectionId; label: string; soon?: boolean }[] }[] = NAV_GROUPS.map((g) => ({
+    label: g.label,
+    items: g.items.filter((i) => !i.teamOnly).map((i) => ({ id: i.id, label: i.label, soon: i.soon })),
+}));
 
 export type SearchHit = { id: SectionId; label: string; sub?: string };

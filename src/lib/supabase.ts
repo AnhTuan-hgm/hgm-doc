@@ -338,7 +338,22 @@ export interface DashboardContent {
      */
     allowed_emails?: string[];
     /**
+     * The access list proper: one row per person, each with their own password and their
+     * own set of sections. `allowed_emails` above is the derived mirror of the addresses
+     * here, kept in step on every write because the Netlify suggestion function and the
+     * read-gating RLS policy to come both read that flatter key.
+     *
+     * Absent on rows written before per-person access existed — those upgrade on read from
+     * `allowed_emails`, so an old row keeps behaving exactly as it did. Typed structurally
+     * rather than as DashboardUser to keep this module free of page imports.
+     */
+    dashboard_users?: { email: string; password?: string; sections?: string[] | null }[];
+    /**
      * Shared password the client types alongside their email to open this dashboard.
+     *
+     * Now the FALLBACK: a person with their own password uses theirs, and this covers
+     * everyone who hasn't been given one. Clearing it is safe only once every listed
+     * person has a password of their own.
      *
      * Same mechanism as owner_guides.share_password, which is already in production: the
      * value is compared in the browser, so it gates the UI rather than the data. Anyone who

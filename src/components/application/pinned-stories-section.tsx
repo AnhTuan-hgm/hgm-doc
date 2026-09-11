@@ -839,7 +839,7 @@ export const PinnedStoriesSection = ({
                                     </div>
                                 )}
                             </div>
-                            <div className="flex gap-3 overflow-x-auto pb-1">
+                            <div className="-m-1 flex gap-3 overflow-x-auto p-1 pb-2">
                                 {draft.unassigned.map((s) => {
                                     const picked = coverPicks.has(s.id);
                                     return (
@@ -925,21 +925,45 @@ export const PinnedStoriesSection = ({
 
             {/* ── The phone + its side panel ── */}
             {(live || (isTeam && draft)) && (
-                <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(260px,320px)_1fr]">
-                    {/* Phone */}
-                    <div className="flex flex-col items-center gap-4">
-                        <PhoneFrame label="Pinned stories" className="w-[248px] sm:w-[280px]">
-                            <StoryPlayer
-                                highlights={shownHighlights}
-                                position={position}
-                                onPosition={setPosition}
-                                profile={igProfile}
-                                onReply={!isTeam && live && review.status !== "approved" && clientEmail ? openNote : undefined}
-                                replyLabel="Leave a note on this slide"
-                                commentCountFor={commentCountFor}
-                            />
-                        </PhoneFrame>
-                        <p className="max-w-[300px] text-center text-xs text-pretty text-quaternary">
+                <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(260px,320px)_1fr] xl:grid-cols-[440px_1fr]">
+                    {/* Phone — on wide screens it sits to the right of its column, leaving room for the pointer beside it. */}
+                    <div className="flex flex-col items-center gap-4 xl:items-end">
+                        <div className="relative">
+                            {/* A hand-drawn pointer at the highlight circles, the cue the section is about. Decorative;
+                                the caption under the phone says the same thing on smaller screens. */}
+                            {!position.highlightId && hasSomething && (
+                                <div
+                                    aria-hidden="true"
+                                    className="pointer-events-none absolute top-[40%] right-full mr-2 hidden w-[140px] flex-col items-start gap-1 xl:flex"
+                                >
+                                    <svg
+                                        viewBox="0 0 120 80"
+                                        className="ml-6 h-[64px] w-[96px] text-fg-quaternary"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2.5"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                    >
+                                        <path d="M8 74 C 22 46, 52 22, 106 14" />
+                                        <path d="M90 6 L 106 14 L 96 28" />
+                                    </svg>
+                                    <p className="max-w-[120px] text-xs leading-snug text-tertiary italic">Tap a highlight circle to play it</p>
+                                </div>
+                            )}
+                            <PhoneFrame label="Pinned stories" className="w-[248px] sm:w-[280px]">
+                                <StoryPlayer
+                                    highlights={shownHighlights}
+                                    position={position}
+                                    onPosition={setPosition}
+                                    profile={igProfile}
+                                    onReply={!isTeam && live && review.status !== "approved" && clientEmail ? openNote : undefined}
+                                    replyLabel="Leave a note on this slide"
+                                    commentCountFor={commentCountFor}
+                                />
+                            </PhoneFrame>
+                        </div>
+                        <p className={cx("max-w-[300px] text-center text-xs text-pretty text-quaternary", !position.highlightId && "xl:hidden")}>
                             {position.highlightId
                                 ? "Tap the right side to go forward, the left to go back. Hold to pause."
                                 : "Tap a highlight circle to play it."}
@@ -1111,7 +1135,7 @@ export const PinnedStoriesSection = ({
                                                         />
                                                     )}
                                                 </div>
-                                                <div className="flex gap-2 overflow-x-auto pb-1">
+                                                <div className="-m-1 flex gap-2 overflow-x-auto p-1 pb-2">
                                                     {h.slides.map((s, si) => {
                                                         // With no explicit cover the first page is the icon only; the rest play as 1, 2, 3…
                                                         const isIconOnly = firstSlideIsCover(h) && si === 0;
@@ -1482,6 +1506,80 @@ export const PinnedStoriesSection = ({
                                         <p className="px-6 py-4 text-sm text-quaternary">We'll publish an updated set here once your notes are in.</p>
                                     </div>
                                 )}
+                            </div>
+                        )}
+
+                        {/* The live set, highlight by highlight — the same list the AM arranges, read-only. Every
+                            thumbnail plays that slide in the phone, so the client can find a slide without tapping
+                            through, and the note button then targets it. */}
+                        {live && view === "live" && (
+                            <div className="flex flex-col rounded-2xl bg-primary ring-1 ring-secondary">
+                                <div className="border-b border-secondary px-5 py-4">
+                                    <p className="text-md font-semibold text-primary">{isTeam ? "What the client sees" : "Your highlights"}</p>
+                                    <p className="text-sm text-pretty text-tertiary">
+                                        {live.highlights.length} highlight{live.highlights.length === 1 ? "" : "s"}, {totalSlides(live.highlights)} slides. Tap
+                                        a slide to see it on the phone.
+                                    </p>
+                                </div>
+                                <div className="flex flex-col divide-y divide-border-secondary">
+                                    {live.highlights.map((h) => {
+                                        const frames = storyFrames(h);
+                                        return (
+                                            <div key={h.id} className="flex flex-col gap-3 px-5 py-4">
+                                                <div className="flex items-center gap-3">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => frames.length && setPosition({ highlightId: h.id, slide: 0 })}
+                                                        className="flex size-12 shrink-0 items-center justify-center rounded-full ring-1 ring-primary ring-offset-2 ring-offset-bg-primary transition duration-100 ease-linear hover:ring-brand"
+                                                        aria-label={`Play ${h.title}`}
+                                                    >
+                                                        <span className="size-11 overflow-hidden rounded-full bg-secondary">
+                                                            {coverOf(h) && <img src={coverOf(h)} alt="" className="size-full object-cover" />}
+                                                        </span>
+                                                    </button>
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="text-sm font-semibold text-primary">{h.title || "Untitled"}</p>
+                                                        <p className="text-xs text-quaternary">
+                                                            {frames.length} slide{frames.length === 1 ? "" : "s"}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <div className="-m-1 flex gap-2 overflow-x-auto p-1 pb-2">
+                                                    {frames.map((s, si) => {
+                                                        const active = position.highlightId === h.id && position.slide === si;
+                                                        const notes = commentCountFor(s.id);
+                                                        return (
+                                                            <div key={s.id} className="relative w-[62px] shrink-0">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setPosition({ highlightId: h.id, slide: si })}
+                                                                    className={cx(
+                                                                        "block aspect-9/16 w-full overflow-hidden rounded-lg bg-secondary ring-1 transition duration-100 ease-linear",
+                                                                        active ? "ring-2 ring-brand" : "ring-secondary hover:ring-primary",
+                                                                    )}
+                                                                    aria-label={`Slide ${si + 1} of ${h.title}`}
+                                                                >
+                                                                    <SlideThumb slide={s} className="pointer-events-none" />
+                                                                </button>
+                                                                <span className="pointer-events-none absolute top-1 left-1 rounded bg-primary-solid/70 px-1 text-[10px] font-semibold text-white tabular-nums">
+                                                                    {si + 1}
+                                                                </span>
+                                                                {notes > 0 && (
+                                                                    <span
+                                                                        className="pointer-events-none absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-solid px-1 text-[10px] font-semibold text-white tabular-nums"
+                                                                        aria-label={`${notes} note${notes === 1 ? "" : "s"}`}
+                                                                    >
+                                                                        {notes}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         )}
 

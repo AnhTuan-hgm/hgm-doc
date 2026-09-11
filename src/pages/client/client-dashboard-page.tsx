@@ -74,6 +74,7 @@ import { readableTextOn, rgbString, wcagLabel } from "@/pages/client/dashboard/c
 import {
     ClientSearchBar,
     DashboardAccessGate,
+    DashboardAccessPanel,
     EyeGlyph,
     EyeOffGlyph,
     SectionEyebrow,
@@ -86,6 +87,7 @@ import {
     type BrandColor,
     DEFAULT_CLIENT_VISIBLE,
     DEFAULT_FOUNDATION,
+    type DashboardUser,
     EMPTY_PINNED_POSTS,
     type ExampleReel,
     type FocusProperty,
@@ -107,15 +109,20 @@ import {
     emptyPersona,
     emptyWebsiteLink,
     filled,
+    findDashboardUser,
     handleFromProfileUrl,
     isTemplatePalette,
     isUntouchedBrandKit,
     mergeContent,
     mergeFoundationDraft,
     normEmail,
+    passwordFor,
+    readDashboardUsers,
+    sectionsForViewer,
     slugify,
     statusColor,
     uid,
+    usersToAllowedEmails,
 } from "@/pages/client/dashboard/dashboard-model";
 import {
     JOURNEY_STAGES,
@@ -261,7 +268,8 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
        Preview should change what you SEE, never whether you're allowed in.
 
        The template page has no client and no allowlist, so it's team-only. */
-    const allowedEmails = content.allowed_emails ?? [];
+    const dashboardUsers = useMemo(() => readDashboardUsers(content), [content.dashboard_users, content.allowed_emails]);
+    const allowedEmails = useMemo(() => usersToAllowedEmails(dashboardUsers), [dashboardUsers]);
     const viewerEmail = user?.email ? normEmail(user.email) : "";
     const isAllowedClient = !!viewerEmail && allowedEmails.some((e) => normEmail(e) === viewerEmail);
 
@@ -278,10 +286,17 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
      */
     const sharePassword = (content.share_password ?? "").trim();
     /**
-     * Armed only when BOTH an allowlist and a password exist. Requiring one without the
-     * other would lock the client out of their own dashboard with no way in.
+     * Armed as soon as ONE listed person has a password they can get in with — their own,
+     * or the shared one as a fallback.
+     *
+     * Deliberately not "every person has one". A second address added without a password
+     * would then silently re-open the whole dashboard to the internet, which is far worse
+     * than that one person having to ask for their password. The access panel flags anyone
+     * stranded in red instead. For a row written before per-person passwords existed the
+     * two rules agree exactly: everyone falls back to the shared one, so it arms on the
+     * same condition it always did.
      */
-    const gateArmed = allowedEmails.some((e) => e.trim()) && !!sharePassword;
+    const gateArmed = dashboardUsers.some((u) => u.email.trim() && passwordFor(u, sharePassword));
 
     // Unlock survives navigation within the tab, not a new one — same lifetime as the
     // owner-guide share gate (sessionStorage, keyed per slug). Stored as JSON carrying
@@ -316,7 +331,27 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
 
     const hasAccess = signedInAsTeam || isTemplate || !gateArmed || clientUnlocked || isAllowedClient;
 
-    const updateAllowedEmails = (next: string[]) => setContent((c) => ({ ...c, allowed_emails: next }));
+    /** Which listed person is looking, when we know. Null for the team, the template, an
+     *  ungated dashboard, and a legacy `"1"` unlock that carries no address. */
+    const viewerUser = identityEmail ? findDashboardUser(dashboardUsers, identityEmail) : null;
+
+    /* ── Per-client section visibility ──
+       Two separate ideas, deliberately not conflated:
+         • notBuilt      — no section body exists yet. Nobody can open it, team included.
+         • hiddenFromClient — the section works, but this viewer hasn't been shown it.
+       The team always sees and can open everything that exists; the client sees "Soon"
+       until it's revealed to them.
+
+       Which list applies depends on WHO is looking. A person given their own list uses it;
+       everyone else follows the dashboard-wide one an AM sets with the eye toggles. An
+       empty own-list is a real answer ("Overview only") and must not fall through to the
+       default — see sectionsForViewer, where that rule lives and is self-checked. */
+    const clientVisible = sectionsForViewer(viewerUser, content.client_visible);
+
+    /** Single writer for the access list. `allowed_emails` is written alongside as a derived
+     *  mirror: the Netlify suggestion function and the read-gating RLS policy to come both
+     *  read that flatter key, so the two must never be allowed to drift. */
+    const updateDashboardUsers = (next: DashboardUser[]) => setContent((c) => ({ ...c, dashboard_users: next, allowed_emails: usersToAllowedEmails(next) }));
     const updateSharePassword = (next: string) => setContent((c) => ({ ...c, share_password: next }));
 
     // Side-menu logo + background uploads — click-to-upload in edit mode, compressed to WebP.
@@ -771,10 +806,13 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     const [sendState, setSendState] = useState<"idle" | "sending" | "sent" | "error">("idle");
     /** What actually went wrong, so a failed send says why instead of "try again". */
     const [sendError, setSendError] = useState("");
-    const foundationRevealed = (content.client_visible ?? DEFAULT_CLIENT_VISIBLE).includes("foundation");
+    // Each one reads the list that applies to THIS viewer, not the dashboard-wide one — a
+    // person narrowed to their own sections must not be offered feedback on a section they
+    // can't open. The Netlify function re-checks the same way.
+    const foundationRevealed = clientVisible.includes("foundation");
     /** The Welcome Email Flow shares the table: a client comments on emails the same way. */
-    const flowRevealed = (content.client_visible ?? DEFAULT_CLIENT_VISIBLE).includes("flow");
-    const pinnedRevealed = (content.client_visible ?? DEFAULT_CLIENT_VISIBLE).includes("pinnedposts");
+    const flowRevealed = clientVisible.includes("flow");
+    const pinnedRevealed = clientVisible.includes("pinnedposts");
 
     const refreshSuggestions = useCallback(async () => {
         if (!slug || isTemplate) return;
@@ -1168,13 +1206,6 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
         }, 800);
     };
 
-    /* ── Per-client section visibility ──
-       Two separate ideas, deliberately not conflated:
-         • notBuilt      — no section body exists yet. Nobody can open it, team included.
-         • hiddenFromClient — the section works, but this client hasn't been shown it.
-       The team always sees and can open everything that exists; the client sees "Soon"
-       until an AM reveals the row with the eye toggle in edit mode. */
-    const clientVisible = content.client_visible ?? DEFAULT_CLIENT_VISIBLE;
     // Overview is the main dashboard — always visible, never hideable, so a client can
     // never end up with nowhere to land. Same reasoning as the owner guide, where the
     // Welcome and Review steps can't be hidden either.
@@ -1872,24 +1903,9 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                           : step.detail,
                 };
             }
-            if (step.id === "website") {
-                const p = websiteSetupProgress(websiteSetup);
-                return {
-                    ...resolved,
-                    done: p.complete,
-                    progress: { value: p.done, total: p.total },
-                    detail: p.complete
-                        ? websiteSetup.ai_website === "yes"
-                            ? "Netlify and every website account confirmed — over to our web team."
-                            : "Netlify account confirmed — thank you."
-                        : websiteSetup.ai_website === "yes"
-                          ? `${p.done} of ${p.total} accounts confirmed.`
-                          : step.detail,
-                };
-            }
             // A step built from tickable items has no state of its own: it is done when
             // all of them are, and its progress is the count — which is what gives the
-            // launch meter a denominator to weight it by.
+            // launch meter a cell per piece.
             if (step.itemsTickable && resolved.items?.length) {
                 const total = resolved.items.length;
                 const value = resolved.items.filter((item) => item.done).length;
@@ -1902,7 +1918,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
             }
             return { ...resolved, done: journeyDone.includes(step.id), progress: null };
         });
-    }, [intakeSubmitted, onboardingSubmitted, intakeInfo, onboardingInfo, journeyDone, chatLink, folderLink, onboardingCallUrl, websiteSetup]);
+    }, [intakeSubmitted, onboardingSubmitted, intakeInfo, onboardingInfo, journeyDone, chatLink, folderLink, onboardingCallUrl]);
 
     const journeyDoneCount = journeySteps.filter((s) => s.done).length;
     /** First unfinished step — highlighted so a client can see what's next at a glance. */
@@ -1917,8 +1933,8 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
      * bar's fill and the percentage above it are the same number.
      *
      * A cell fills fractionally wherever there is something real to count — a part-answered
-     * form, the accounts confirmed in the Setup Guide. A made-up fraction is never invented:
-     * a step with nothing to count is 0 or 1.
+     * form, a funnel piece reviewed. A made-up fraction is never invented: a step with
+     * nothing to count is 0 or 1.
      */
     const { journeyCells, journeyGroups } = useMemo(() => {
         const fractionOf = (step: (typeof journeySteps)[number]) =>
@@ -2110,9 +2126,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
         );
     }
     if (!hasAccess)
-        return (
-            <DashboardAccessGate allowedEmails={allowedEmails} sharePassword={sharePassword} onUnlock={unlockDashboard} backgroundUrl={content.login_bg_url} />
-        );
+        return <DashboardAccessGate users={dashboardUsers} sharePassword={sharePassword} onUnlock={unlockDashboard} backgroundUrl={content.login_bg_url} />;
 
     return (
         <>
@@ -2818,162 +2832,94 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                 )}
 
                                                 {/* ── Who can open this dashboard (team, edit mode) ──
-                                                    The access allowlist. Without a way to fill this in, turning on the
-                                                    sign-in gate would lock every client out, so it lives right at the top
-                                                    of Overview where an AM can't miss it. */}
+                                                    Access is per person: each address carries its own password and its own
+                                                    set of sections. Without a way to fill this in, turning on the sign-in
+                                                    gate would lock every client out, so it lives right at the top of
+                                                    Overview where an AM can't miss it. */}
                                                 {isTeam && !isLocked && !isTemplate && (
-                                                    <div className="mt-8 rounded-xl bg-secondary p-5 ring-1 ring-secondary">
-                                                        <p className="text-sm font-semibold text-primary">Who can open this dashboard</p>
-                                                        <p className="mt-1 text-sm text-pretty text-tertiary">
-                                                            Anyone at @hiddengem.media always has access. Add the client's email addresses here — they'll sign
-                                                            in with Google using one of them. An address that isn't listed can sign in but sees nothing.
-                                                        </p>
-                                                        <div className="mt-4 flex flex-col gap-2">
-                                                            {allowedEmails.map((addr, i) => (
-                                                                <div key={`${addr}-${i}`} className="flex items-center gap-2">
-                                                                    <input
-                                                                        type="email"
-                                                                        value={addr}
-                                                                        placeholder="client@example.com"
-                                                                        onChange={(e) =>
-                                                                            updateAllowedEmails(allowedEmails.map((x, j) => (j === i ? e.target.value : x)))
-                                                                        }
-                                                                        className="min-w-0 flex-1 rounded-lg bg-primary px-3 py-2 text-sm text-primary ring-1 ring-secondary outline-none focus:ring-brand"
-                                                                    />
-                                                                    <button
-                                                                        type="button"
-                                                                        aria-label={`Remove ${addr || "this address"}`}
-                                                                        onClick={() => updateAllowedEmails(allowedEmails.filter((_, j) => j !== i))}
-                                                                        className={removeButton}
-                                                                    >
-                                                                        <Trash01 className="size-4" aria-hidden="true" />
-                                                                    </button>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                        <div className="mt-3">
-                                                            <Button
-                                                                size="sm"
-                                                                color="secondary"
-                                                                iconLeading={Plus}
-                                                                onClick={() => updateAllowedEmails([...allowedEmails, ""])}
-                                                            >
-                                                                Add an email
-                                                            </Button>
-                                                        </div>
+                                                    <>
+                                                        <DashboardAccessPanel
+                                                            users={dashboardUsers}
+                                                            sharePassword={sharePassword}
+                                                            defaultSections={content.client_visible ?? DEFAULT_CLIENT_VISIBLE}
+                                                            onChangeUsers={updateDashboardUsers}
+                                                            onChangeSharePassword={updateSharePassword}
+                                                        />
 
-                                                        <div className="mt-4 border-t border-secondary pt-4">
-                                                            <p className="text-sm font-medium text-secondary">Shared password</p>
-                                                            <p className="mt-1 text-xs text-pretty text-tertiary">
-                                                                The client types this alongside their email. Send it to them separately from the link.
-                                                            </p>
-                                                            <div className="mt-2 flex items-center gap-2">
+                                                        <div className="mt-4 rounded-xl bg-secondary p-5 ring-1 ring-secondary">
+                                                            <div>
+                                                                <p className="text-sm font-medium text-secondary">Sign-in background</p>
+                                                                <p className="mt-1 text-xs text-pretty text-tertiary">
+                                                                    Image or video URL shown behind this client's sign-in card, so each client can look
+                                                                    different. Leave empty for the default leaf-shadow loop.
+                                                                </p>
                                                                 <input
                                                                     type="text"
-                                                                    value={content.share_password ?? ""}
-                                                                    placeholder="Set a password"
-                                                                    onChange={(e) => updateSharePassword(e.target.value)}
-                                                                    className="min-w-0 flex-1 rounded-lg bg-primary px-3 py-2 font-mono text-sm text-primary ring-1 ring-secondary outline-none focus:ring-brand"
+                                                                    value={content.login_bg_url ?? ""}
+                                                                    placeholder="https://… .jpg or .webm — empty for the default"
+                                                                    onChange={(e) => setContent((c) => ({ ...c, login_bg_url: e.target.value }))}
+                                                                    className="mt-2 w-full rounded-lg bg-primary px-3 py-2 text-sm text-primary ring-1 ring-secondary outline-none focus:ring-brand"
                                                                 />
-                                                                <Button
-                                                                    size="sm"
-                                                                    color="secondary"
-                                                                    iconLeading={Copy01}
-                                                                    onClick={() => void navigator.clipboard.writeText(content.share_password ?? "")}
-                                                                >
-                                                                    Copy
-                                                                </Button>
                                                             </div>
-                                                            {/* The gate needs BOTH halves — say which one is missing rather than
-                                                                leaving an AM wondering why nothing is locked. */}
-                                                            {!gateArmed && (
-                                                                <p className="mt-2 text-xs text-warning-primary">
-                                                                    {!allowedEmails.some((e) => e.trim()) && !sharePassword
-                                                                        ? "Not locked yet — add an email and a password."
-                                                                        : !sharePassword
-                                                                          ? "Not locked yet — set a password."
-                                                                          : "Not locked yet — add at least one email."}
-                                                                </p>
-                                                            )}
-                                                            {gateArmed && (
-                                                                <p className="mt-2 text-xs text-success-primary">
-                                                                    Locked. Only the emails above can open this dashboard, with this password.
-                                                                </p>
-                                                            )}
-                                                        </div>
 
-                                                        <div className="mt-4 border-t border-secondary pt-4">
-                                                            <p className="text-sm font-medium text-secondary">Sign-in background</p>
-                                                            <p className="mt-1 text-xs text-pretty text-tertiary">
-                                                                Image or video URL shown behind this client's sign-in card, so each client can look different.
-                                                                Leave empty for the default leaf-shadow loop.
-                                                            </p>
-                                                            <input
-                                                                type="text"
-                                                                value={content.login_bg_url ?? ""}
-                                                                placeholder="https://… .jpg or .webm — empty for the default"
-                                                                onChange={(e) => setContent((c) => ({ ...c, login_bg_url: e.target.value }))}
-                                                                className="mt-2 w-full rounded-lg bg-primary px-3 py-2 text-sm text-primary ring-1 ring-secondary outline-none focus:ring-brand"
-                                                            />
-                                                        </div>
-
-                                                        {/* ── Onboarding links ──
+                                                            {/* ── Onboarding links ──
                                                             The three per-client URLs the journey hands the client, together and
                                                             next to the journey that consumes them. The content folder is also
                                                             editable inside Brand Kit — same field, and that section is a long
                                                             way from the step that asks for it, which is why nobody fills it in.
                                                             Empty is safe everywhere: the step drops the button, it never shows
                                                             a dead one. */}
-                                                        <div className="mt-4 border-t border-secondary pt-4">
-                                                            <p className="text-sm font-medium text-secondary">Onboarding links</p>
-                                                            <p className="mt-1 text-xs text-pretty text-tertiary">
-                                                                What the client is sent to after the Kick-off Call. Each one appears on its journey step as soon
-                                                                as it's filled in.
-                                                            </p>
-                                                            <div className="mt-2 grid gap-2">
-                                                                {(
-                                                                    [
-                                                                        {
-                                                                            key: "chat" as const,
-                                                                            label: "Google Chat room",
-                                                                            placeholder: "https://chat.google.com/room/…",
-                                                                            value: content.chat_link ?? "",
-                                                                            set: (v: string) => setContent((c) => ({ ...c, chat_link: v })),
-                                                                        },
-                                                                        {
-                                                                            key: "folder" as const,
-                                                                            label: "Content folder (photos & video)",
-                                                                            placeholder: "https://drive.google.com/…",
-                                                                            value: content.brand.folder_link,
-                                                                            set: (v: string) => patchBrand({ folder_link: v }),
-                                                                        },
-                                                                        {
-                                                                            key: "call" as const,
-                                                                            label: "Onboarding Call booking page",
-                                                                            placeholder: "https://calendly.com/your-name/onboarding",
-                                                                            value: content.onboarding_call_url ?? "",
-                                                                            set: (v: string) => setContent((c) => ({ ...c, onboarding_call_url: v })),
-                                                                        },
-                                                                    ] as const
-                                                                ).map((row) => (
-                                                                    <label key={row.key} className="grid gap-1">
-                                                                        <span className="text-xs text-tertiary">{row.label}</span>
-                                                                        <input
-                                                                            type="text"
-                                                                            value={row.value}
-                                                                            placeholder={row.placeholder}
-                                                                            onChange={(e) => row.set(e.target.value)}
-                                                                            className="w-full rounded-lg bg-primary px-3 py-2 text-sm text-primary ring-1 ring-secondary outline-none focus:ring-brand"
-                                                                        />
-                                                                    </label>
-                                                                ))}
+                                                            <div className="mt-4 border-t border-secondary pt-4">
+                                                                <p className="text-sm font-medium text-secondary">Onboarding links</p>
+                                                                <p className="mt-1 text-xs text-pretty text-tertiary">
+                                                                    What the client is sent to after the Kick-off Call. Each one appears on its journey step as
+                                                                    soon as it's filled in.
+                                                                </p>
+                                                                <div className="mt-2 grid gap-2">
+                                                                    {(
+                                                                        [
+                                                                            {
+                                                                                key: "chat" as const,
+                                                                                label: "Google Chat room",
+                                                                                placeholder: "https://chat.google.com/room/…",
+                                                                                value: content.chat_link ?? "",
+                                                                                set: (v: string) => setContent((c) => ({ ...c, chat_link: v })),
+                                                                            },
+                                                                            {
+                                                                                key: "folder" as const,
+                                                                                label: "Content folder (photos & video)",
+                                                                                placeholder: "https://drive.google.com/…",
+                                                                                value: content.brand.folder_link,
+                                                                                set: (v: string) => patchBrand({ folder_link: v }),
+                                                                            },
+                                                                            {
+                                                                                key: "call" as const,
+                                                                                label: "Onboarding Call booking page",
+                                                                                placeholder: "https://calendly.com/your-name/onboarding",
+                                                                                value: content.onboarding_call_url ?? "",
+                                                                                set: (v: string) => setContent((c) => ({ ...c, onboarding_call_url: v })),
+                                                                            },
+                                                                        ] as const
+                                                                    ).map((row) => (
+                                                                        <label key={row.key} className="grid gap-1">
+                                                                            <span className="text-xs text-tertiary">{row.label}</span>
+                                                                            <input
+                                                                                type="text"
+                                                                                value={row.value}
+                                                                                placeholder={row.placeholder}
+                                                                                onChange={(e) => row.set(e.target.value)}
+                                                                                className="w-full rounded-lg bg-primary px-3 py-2 text-sm text-primary ring-1 ring-secondary outline-none focus:ring-brand"
+                                                                            />
+                                                                        </label>
+                                                                    ))}
+                                                                </div>
+                                                                <p className="mt-2 text-xs text-pretty text-quaternary">
+                                                                    The booking page is this client's own Account Manager's — there's no shared default, since
+                                                                    one would send every client to the same person.
+                                                                </p>
                                                             </div>
-                                                            <p className="mt-2 text-xs text-pretty text-quaternary">
-                                                                The booking page is this client's own Account Manager's — there's no shared default, since one
-                                                                would send every client to the same person.
-                                                            </p>
                                                         </div>
-                                                    </div>
+                                                    </>
                                                 )}
 
                                                 {/* ── Your journey ──
@@ -3301,9 +3247,7 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                                                 isTeam &&
                                                                                 (step.auto ? (
                                                                                     <span className="text-xs text-quaternary">
-                                                                                        {step.id === "website"
-                                                                                            ? "Tracked from the Setup Guide"
-                                                                                            : "Tracked from the form itself"}
+                                                                                        Tracked from the form itself
                                                                                     </span>
                                                                                 ) : (
                                                                                     <Button
@@ -4147,8 +4091,8 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
                                                             </div>
                                                             <SectionHeading>Master Brand Document</SectionHeading>
                                                             <p className="mt-3 text-md text-tertiary">
-                                                                This is where it starts. It's what your Welcome Emails, chat widget, and every future AI feature
-                                                                read from, so the more complete it is, the smarter everything downstream gets.
+                                                                Everything you share here is what we build your deliverables from, so it's worth taking the time
+                                                                to get it complete and correct. It's also what your emails and AI tools read from.
                                                                 {!isTeam && " Spot something off? Suggest an edit and your account manager will review it."}
                                                             </p>
 

@@ -174,6 +174,37 @@ const PinnedPhone = ({ profile }: { profile: IgProfile }) => (
     </PhoneFrame>
 );
 
+/* ── Callout ─────────────────────────────────────────────────────────────── */
+
+/**
+ * A hand-drawn arrow from the caption up into the first row of the grid — "these three
+ * tiles". Drawn in the phone's own width units (a 248-wide frame is 511 tall; the caption
+ * sits below), so it scales with the frame at every breakpoint and the stroke stays even.
+ * It bows out to the right of the bezel by ~40px, which is inside the gap to the post
+ * cards on large screens. The first row starts between 57% and 62% of the screen and is
+ * 20% tall, so aiming at 66% lands inside it whatever the bio length. Decorative only.
+ */
+const PinnedCallout = () => (
+    <svg
+        viewBox="0 0 248 600"
+        aria-hidden="true"
+        className="pointer-events-none absolute top-0 left-1/2 aspect-[248/600] w-[248px] -translate-x-1/2 overflow-visible text-fg-secondary sm:w-[280px]"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.25"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+    >
+        {/* A page-coloured halo under the stroke keeps the head legible where it crosses a photo. */}
+        <g className="stroke-(--color-bg-primary)" strokeWidth="6">
+            <path d="M232 524 C296 512, 296 400, 226 344" />
+            <path d="M226 344 L235.9 345.5 M226 344 L229.6 353.3" />
+        </g>
+        <path d="M232 524 C296 512, 296 400, 226 344" />
+        <path d="M226 344 L235.9 345.5 M226 344 L229.6 353.3" />
+    </svg>
+);
+
 /* ── Slide viewer ────────────────────────────────────────────────────────── */
 
 /**
@@ -1137,12 +1168,15 @@ export const PinnedPostsSection = ({
 
             <div className="mt-8 grid gap-10 lg:grid-cols-[280px_minmax(0,1fr)] lg:gap-12">
                 {/* ── The phone: how the profile opens for a guest ── */}
-                <div className="flex flex-col items-center lg:sticky lg:top-8 lg:self-start">
+                {/* Not sticky: the editor below runs long (tray plus three slots), and a phone that
+                    follows the scroll covers what the AM is dragging past. It scrolls with the page. */}
+                <div className="relative flex flex-col items-center lg:self-start">
                     <PinnedPhone profile={igProfile} />
                     <p className="mt-4 max-w-[260px] text-center text-xs text-quaternary">
                         How <span className="font-medium text-tertiary">@{igProfile.handle}</span> opens for a guest — the pinned posts are the first three
                         tiles.
                     </p>
+                    {filled.length > 0 && <PinnedCallout />}
                 </div>
 
                 {/* ── The posts ── */}
