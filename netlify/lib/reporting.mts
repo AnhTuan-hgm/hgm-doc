@@ -233,5 +233,11 @@ export const cleanDate = (v: unknown): string | null => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
     const d = new Date(`${s}T00:00:00Z`);
     if (Number.isNaN(d.getTime())) return null;
+    // A shape check is not a date check. new Date("2026-11-31T00:00:00Z") does
+    // not fail: it rolls over to 1 December, so a typo passed validation here
+    // and was then rejected by Postgres, which surfaced as a 500 and lost the
+    // client's whole submission. Round-tripping is what actually asks Javascript
+    // whether the day exists.
+    if (d.toISOString().slice(0, 10) !== s) return null;
     return s;
 };

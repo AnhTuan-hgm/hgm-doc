@@ -246,7 +246,7 @@ const resolveIdentity = async (slug: string, fallbackName: string): Promise<Iden
     return { clientName, portalClientId, tenantId, notes };
 };
 
-/** One field, capped, for whoever picks the ticket up. `route_error` is the only free-text
+/** One field, capped, for whoever picks the ticket up. `intake_notes` is the only free-text
  *  column on the row a human reads, and routing overwrites it with its own reason if it
  *  later fails, which is the right precedence: a live routing failure matters more than a
  *  mapping gap recorded on receipt. */
@@ -268,6 +268,12 @@ const asNote = (notes: string[]): string | null => {
  * brain's side of that contract (`routed_at` is its guard), which is why calling this twice
  * is safe and why the sweep can call it again for anything still `received`.
  */
+/** How long into the request images may still be going to Drive. The rest of
+ *  the 26s belongs to the write-back that records where they went, the handoff
+ *  to the brain, and the response. Anything not uploaded by then is diverted to
+ *  Supabase Storage, which is quick, and the note says so. */
+const IMAGE_BUDGET_MS = 16_000;
+
 const tellTheBrain = async (ticketId: string): Promise<void> => {
     if (!BRAIN_TICKET_URL || !BRAIN_API_KEY) {
         console.error("[ticket-create] BRAIN_TICKETS_RECEIVED_URL / BRAIN_API_KEY are not set - ticket left for the sweep", ticketId);
@@ -302,6 +308,11 @@ interface CreateBody {
 }
 
 export default async (req: Request) => {
+    // One clock for the whole request. Netlify kills a synchronous function at
+    // 26 seconds and everything below shares that budget, so the parts that can
+    // overrun are measured from HERE rather than from wherever they happen to
+    // start.
+    const startedAt = Date.now();
     if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
 
     const parsed = await readJson<CreateBody>(req);
@@ -413,7 +424,10 @@ export default async (req: Request) => {
                 property: property || null,
                 needed_by: neededBy,
                 image_count: 0,
-                route_error: asNote(identity.notes),
+                // Intake observations, NOT a routing failure. route_error belongs to the
+                // brain, and its sweep finds new arrivals with route_error IS NULL, so a
+                // note written there put every ticket in the wrong half of that triage.
+                intake_notes: asNote(identity.notes),
             })
             .select(TICKET_COLUMNS)
             .single();
@@ -442,20 +456,27 @@ export default async (req: Request) => {
             // uploadTicketImages never throws and says honestly where the images ended up.
             // The try/catch is for the module failing to load at all, not for its logic.
             try {
-                const stored = await uploadTicketImages({ clientName: identity.clientName, reference: row.reference, images });
+                const stored = await uploadTicketImages({
+                    clientName: identity.clientName,
+                    reference: row.reference,
+                    images,
+                    // Leaves room for the write-back below, the brain handoff and
+                    // the response itself, all inside the platform's 26s.
+                    deadline: startedAt + IMAGE_BUDGET_MS,
+                });
                 const patch: Record<string, unknown> = { image_count: stored.uploaded, updated_at: new Date().toISOString() };
                 if (stored.folderUrl) patch.drive_folder_url = stored.folderUrl;
                 // A human step is owed only when something is not where it should be. The
                 // note joins whatever resolveIdentity already left, so one field answers
                 // "what does somebody have to do about this ticket".
-                if (stored.note) patch.route_error = asNote([...identity.notes, stored.note]);
+                if (stored.note) patch.intake_notes = asNote([...identity.notes, stored.note]);
 
                 const { error: patchErr } = await db.from("tickets").update(patch).eq("id", row.id);
                 if (patchErr) {
                     console.error("[ticket-create] could not record where the images went", patchErr.message, row.reference);
                 } else {
                     // The answer has to match the row that is now stored, not the one that
-                    // was inserted a moment ago. route_error stays off it: it is a note for
+                    // was inserted a moment ago. intake_notes stays off it: it is a note for
                     // the team and TICKET_COLUMNS has never carried it.
                     row.image_count = stored.uploaded;
                     if (stored.folderUrl) row.drive_folder_url = stored.folderUrl;

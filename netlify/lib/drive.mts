@@ -501,7 +501,19 @@ export const signedTicketImageUrls = async (clientName: string, reference: strin
  * Never throws. A caller that gets `uploaded: 0` should still create the ticket
  * and should put `note` in front of the team, not the client.
  */
-export const uploadTicketImages = async (opts: { clientName: string; reference: string; images: TicketImage[] }): Promise<TicketImageResult> => {
+export const uploadTicketImages = async (opts: {
+    clientName: string;
+    reference: string;
+    images: TicketImage[];
+    /** Absolute epoch ms this must be finished by. The CALLER owns this clock,
+     *  because by the time execution reaches here the request has already spent
+     *  time on the auth round trip, the duplicate check and the insert, and a
+     *  budget started at this line would be a budget that does not know how late
+     *  it already is. Omitted, it falls back to a fixed window from now, which
+     *  is the old behaviour and is only correct for a caller that has done
+     *  nothing else. */
+    deadline?: number;
+}): Promise<TicketImageResult> => {
     const { clientName, reference } = opts;
     const incoming = Array.isArray(opts.images) ? opts.images : [];
     if (incoming.length === 0) return { folderUrl: null, uploaded: 0, pending: false, note: "" };
@@ -587,10 +599,15 @@ export const uploadTicketImages = async (opts: { clientName: string; reference: 
        fallback store rather than being dropped, and the note says how many. */
     let uploaded = 0;
     const leftovers: { index: number; image: PreparedImage }[] = [];
-    // Netlify gives a synchronous function 26 seconds, all in. Uploading until
-    // the platform kills the process would lose the ticket as well as the
-    // images, so the remainder is diverted to Storage, which is far quicker.
-    const deadline = Date.now() + 18_000;
+    // Netlify gives a synchronous function 26 seconds, ALL IN - the auth check,
+    // the duplicate scan, the insert and the Drive handshake above all come out
+    // of the same 26. That is why this takes the caller's deadline: measured
+    // from here, an 18s window could not be met, because driveTarget() alone
+    // exchanges a JWT for a token and resolves a folder before the first byte is
+    // uploaded. Overrunning does not just lose the images, it kills the process
+    // holding the response, so the client is told nothing was saved when in fact
+    // the ticket exists.
+    const deadline = opts.deadline ?? Date.now() + 18_000;
 
     for (let i = 0; i < prepared.length; i += 1) {
         if (Date.now() > deadline) {
