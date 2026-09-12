@@ -129,6 +129,7 @@ import {
     type JourneyLink,
     type JourneyStepId,
     KICKOFF_CALENDLY,
+    LINK_ONLY_SECTIONS,
     NAV_GROUPS,
     OVERVIEW_ITEM,
     type PhaseId,
@@ -425,7 +426,14 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
         const h = window.location.hash.replace("#", "");
         // "Soon" ids are in SECTIONS but have no section body yet, so honouring a hash
         // for one would render an empty page. Same exclusion the search index uses.
-        if (h && SECTIONS.some((s) => s.id === h && !("soon" in s && s.soon))) setActiveSection(h as SectionId);
+        //
+        // LINK_ONLY_SECTIONS is excluded for the same reason and a second one: those rows
+        // are links out (the content drive, the help centre), so there is nothing here to
+        // deep-link INTO, and honouring the hash by following the link would mean a URL
+        // ending "#help" silently threw the client off the dashboard on load.
+        if (h && SECTIONS.some((s) => s.id === h && !("soon" in s && s.soon)) && !LINK_ONLY_SECTIONS.has(h as SectionId)) {
+            setActiveSection(h as SectionId);
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -1170,7 +1178,11 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     }, [clientName]);
 
     /** True when a link-type nav row has nowhere to go yet — shown as "Soon". */
-    const navTargetMissing = (id: SectionId) => id === "contentfolder" && !content.brand.folder_link.trim();
+    const navTargetMissing = (id: SectionId) =>
+        (id === "contentfolder" && !content.brand.folder_link.trim()) ||
+        // The help centre is per-client and its URL is built from the slug, so the template
+        // copy of this page (which has no client behind it) has nowhere to send anyone.
+        (id === "help" && (!slug || isTemplate));
 
     /* ── Website Setup Guide answers ──
        Always merged, so the section and the badge never see a missing block. The team's
@@ -1204,7 +1216,23 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     // Overview is the main dashboard — always visible, never hideable, so a client can
     // never end up with nowhere to land. Same reasoning as the owner guide, where the
     // Welcome and Review steps can't be hidden either.
-    const revealedToClient = (id: SectionId) => id === "overview" || (!TEAM_ONLY_SECTIONS.has(id) && clientVisible.includes(id));
+    /**
+     * Overview and the Help Centre are the two rows that are never behind the eye toggle.
+     *
+     * Every other row is a deliverable an AM reveals when it actually ships, which is why the
+     * default is hidden. The help centre is not a deliverable: it is how a client tells us
+     * something is wrong with one. Leaving it on the toggle would mean every dashboard that
+     * already exists shows it as "Soon" and refuses to open, and the one client most in need
+     * of it - someone whose work has not landed yet - is the one least likely to have been
+     * granted it.
+     *
+     * It is safe to leave ungated here because this predicate only decides what is SHOWN.
+     * The help centre re-proves the caller server-side on every single call (verifyCaller in
+     * netlify/lib/reporting.mts) and refuses a dashboard whose access list is empty, saying
+     * so on screen. An always-visible row therefore reveals a door, never what is behind it.
+     */
+    const revealedToClient = (id: SectionId) =>
+        id === "overview" || id === "help" || (!TEAM_ONLY_SECTIONS.has(id) && clientVisible.includes(id));
     const toggleClientVisible = (id: SectionId) =>
         setContent((c) => {
             const cur = c.client_visible ?? DEFAULT_CLIENT_VISIBLE;
@@ -1338,11 +1366,25 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
     /** True when the open section lives in this group — drives the group row's chip. */
     const groupHoldsActive = (phase: string) => (NAV_GROUPS.find((g) => g.phase === phase)?.items ?? []).some((s) => s.id === activeSection);
 
-    /** Nav rows are section switches, bar Folder of Content, which is a link out. */
+    /** Nav rows are section switches, bar the two link rows: Folder of Content and Help Centre. */
     const openNavItem = (id: SectionId) => {
         if (id === "contentfolder") {
             const url = content.brand.folder_link.trim();
             if (url) window.open(url, "_blank", "noopener,noreferrer");
+            return;
+        }
+        if (id === "help") {
+            // Guarded rather than trusting the caller: the menu row is already disabled when
+            // there is no client behind this page (navTargetMissing), but search reaches the
+            // same opener without that check, and an unguarded navigate would send the
+            // template copy to "//help".
+            if (!slug || isTemplate) return;
+            // Same tab and an SPA navigate, unlike Folder of Content. The help centre is part
+            // of the portal rather than somewhere else we are sending them, it reads the same
+            // `cd_unlock_${slug}` this page wrote so the client is asked for one field instead
+            // of two, and it has a Dashboard link straight back. Opening it in a new tab would
+            // break all three.
+            navigate(`/${slug}/help`);
             return;
         }
         setActiveSection(id);
@@ -2191,7 +2233,13 @@ export const ClientDashboardPage = ({ slug, initialClientName = "", initialClien
 
                             {/* Dashboard search — client-scoped, directly under the identity block */}
                             <div className="px-3 pt-3">
-                                <ClientSearchBar hits={searchHits} onSelect={setActiveSection} />
+                                {/* openNavItem, not setActiveSection: two rows in the menu are links
+                                    rather than sections (Folder of Content, Help Centre) and have no
+                                    body to switch to. Selecting one here used to set activeSection to
+                                    an id nothing renders, leaving a blank content area with no way
+                                    back except the menu. Routed through the same opener the menu uses,
+                                    a searched link opens the thing it names. */}
+                                <ClientSearchBar hits={searchHits} onSelect={openNavItem} />
                             </div>
 
                             {/* Overview — pinned above the groups as the client's main dashboard. Never

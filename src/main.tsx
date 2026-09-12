@@ -8,6 +8,7 @@ import { useAuthUser } from "@/hooks/use-auth-user";
 import { ChatWidgetScreen } from "@/pages/client/chat-widget-screen";
 import { ClientOnboardingFormPage } from "@/pages/client/client-onboarding-form-page";
 import { ClientScreen } from "@/pages/client/client-screen";
+import { HelpCenterScreen } from "@/pages/client/help/help-center-screen";
 import { HostOnboardingFormPage } from "@/pages/client/host-onboarding-form-page";
 import { OwnerGuideScreen } from "@/pages/client/owner-guide-screen";
 import { PopupPage } from "@/pages/client/popup-page";
@@ -233,6 +234,19 @@ createRoot(document.getElementById("root")!).render(
                         <Route path="/sample" element={<SampleScreen />} />
                         {/* Team-only: every welcome-flow email, rendered from the DB. Behind TeamGate. */}
                         <Route path="/email-preview" element={<EmailPreviewScreen />} />
+                        {/* The client help centre. Three routes rather than one with a splat, so the
+                            view is named here instead of being re-derived from the path inside the
+                            screen, and so `/help/requests` can never be read as a reference.
+
+                            Safe above the `/:clientSlug` catch-all below: that pattern matches a
+                            SINGLE segment, so it was never going to swallow a two-segment path in
+                            the first place — the risk is the `*` at the bottom, and React Router
+                            ranks a static segment above a splat, so `/x-dashboard/help` lands here
+                            and not on NotFound. Kept adjacent to the catch-all anyway, because the
+                            next person to add a client route will read these two lines together. */}
+                        <Route path="/:clientSlug/help" element={<HelpCenterScreen view="home" />} />
+                        <Route path="/:clientSlug/help/requests" element={<HelpCenterScreen view="list" />} />
+                        <Route path="/:clientSlug/help/requests/:reference" element={<HelpCenterScreen view="detail" />} />
                         <Route path="/:clientSlug" element={<ClientScreen />} />
                         <Route path="*" element={<NotFound />} />
                     </Routes>
