@@ -23,6 +23,9 @@
 const PORTAL_REF = "iymhjrmmgwrxdggcvmjn";
 const SITE = "docs-hgm";
 
+/** Exactly what Netlify's "all contexts" covers, named explicitly. */
+const CONTEXTS = ["production", "deploy-preview", "branch-deploy", "dev"];
+
 const need = (n) => {
     const v = process.env[n];
     if (!v) throw new Error(`${n} is not set in the environment`);
@@ -55,10 +58,47 @@ const site = sites.find((s) => s.name === SITE);
 if (!site) throw new Error(`no Netlify site called ${SITE} on this account`);
 
 const url = `https://api.netlify.com/api/v1/accounts/${site.account_slug}/env/SUPABASE_SERVICE_ROLE_KEY?site_id=${site.id}`;
+
+// READ THE VARIABLE'S OWN SHAPE FIRST, and resend it.
+//
+// PATCH would be the smaller change, but it refuses context "all" (422), and
+// this variable is set on "all". So it has to be PUT, which REPLACES the whole
+// variable - and a PUT that omits is_secret or scopes does not leave them
+// alone, it clears them. Silently un-secreting a service key is not a cosmetic
+// slip: a secret variable reads back as a 20-character MASK through the API,
+// and that mask has already been probed once in this project as though it were
+// the value, on the strength of which a working credential was overwritten
+// with a broken one. Hence: read, then resend what was there.
+const existing = await fetch(url, { headers: { Authorization: `Bearer ${netlifyToken}` } });
+if (!existing.ok) throw new Error(`could not read the variable before replacing it: HTTP ${existing.status}`);
+const current = await existing.json();
+console.log(`existing variable: is_secret=${current.is_secret}, scopes=${JSON.stringify(current.scopes)}`);
+
 const put = await fetch(url, {
     method: "PUT",
     headers: { Authorization: `Bearer ${netlifyToken}`, "content-type": "application/json" },
-    body: JSON.stringify({ context: "all", value: serviceKey }),
+    body: JSON.stringify({
+        key: "SUPABASE_SERVICE_ROLE_KEY",
+        scopes: current.scopes ?? ["builds", "functions", "runtime"],
+        is_secret: current.is_secret ?? true,
+        // NOT "all". Netlify no longer accepts that for a secret variable
+        // ("Secrets are not allowed to have 'All contexts' context"), and this
+        // one is a legacy row still set that way - so it cannot be rewritten
+        // without naming the contexts. These four ARE what "all" meant, so the
+        // surface is unchanged; only the row's shape is brought up to date.
+        values: CONTEXTS.map((context) => ({ context, value: serviceKey })),
+    }),
 });
 if (!put.ok) throw new Error(`Netlify refused the update: HTTP ${put.status} ${(await put.text()).slice(0, 200)}`);
+
+// Confirm the SHAPE survived. The value cannot be confirmed here - it is secret
+// and comes back masked - so it is confirmed by exercising the deployed
+// function instead, which is what reporting-system-proof does.
+const after = await (await fetch(url, { headers: { Authorization: `Bearer ${netlifyToken}` } })).json();
+if (after.is_secret !== true) throw new Error("the variable is no longer marked secret - fix that before deploying");
+const contextsNow = (after.values ?? []).map((v) => v.context).sort();
+for (const c of CONTEXTS) {
+    if (!contextsNow.includes(c)) throw new Error(`the ${c} context did not survive the write - the site would fall back to nothing there`);
+}
+console.log(`after: is_secret=${after.is_secret}, scopes=${JSON.stringify(after.scopes)}, contexts=${contextsNow.join(",")}`);
 console.log(`SUPABASE_SERVICE_ROLE_KEY updated on ${SITE}. Redeploy for it to take effect.`);
